@@ -76,30 +76,68 @@ fn import_bindings(line: &str) -> Vec<(String, usize)> {
     }
 
     let use_start = line.find("use ").unwrap_or(0) + "use ".len();
-    let clause = &line[use_start..];
+    let clause = line[use_start..]
+        .split_once(';')
+        .map_or(&line[use_start..], |(prefix, _)| prefix);
     let mut out = Vec::<(String, usize)>::new();
+    let mut search_from = 0usize;
 
-    let mut idx = 0usize;
-    let bytes = clause.as_bytes();
-    while idx < bytes.len() {
-        if !(bytes[idx].is_ascii_alphabetic() || bytes[idx] == b'_') {
-            idx += 1;
+    for binding in parse_use_clause_bindings(clause) {
+        let Some(relative) = clause[search_from..].find(&binding) else {
             continue;
-        }
-
-        let start = idx;
-        idx += 1;
-        while idx < bytes.len() && (bytes[idx].is_ascii_alphanumeric() || bytes[idx] == b'_') {
-            idx += 1;
-        }
-        let token = &clause[start..idx];
-        if matches!(token, "crate" | "super" | "self" | "as" | "pub") {
-            continue;
-        }
-        out.push((token.to_string(), use_start + start));
+        };
+        let absolute_relative = search_from + relative;
+        out.push((binding.clone(), use_start + absolute_relative));
+        search_from = absolute_relative + binding.len();
     }
 
     out
+}
+
+fn parse_use_clause_bindings(clause: &str) -> Vec<String> {
+    let trimmed = clause.trim();
+    let mut out = Vec::<String>::new();
+
+    if let (Some(open), Some(close)) = (trimmed.find('{'), trimmed.rfind('}'))
+        && open < close
+    {
+        let inner = &trimmed[open + 1..close];
+        for part in inner.split(',') {
+            if let Some(binding) = parse_single_import_binding(part) {
+                out.push(binding);
+            }
+        }
+        return out;
+    }
+
+    for part in trimmed.split(',') {
+        if let Some(binding) = parse_single_import_binding(part) {
+            out.push(binding);
+        }
+    }
+
+    out
+}
+
+fn parse_single_import_binding(part: &str) -> Option<String> {
+    let trimmed = part.trim();
+    if trimmed.is_empty() || trimmed == "*" {
+        return None;
+    }
+
+    let candidate = trimmed
+        .rsplit_once(" as ")
+        .map(|(_, alias)| alias.trim())
+        .unwrap_or_else(|| trimmed.rsplit("::").next().unwrap_or(trimmed).trim());
+    if candidate.is_empty() {
+        return None;
+    }
+
+    let candidate = candidate.trim_matches('{').trim_matches('}');
+    if candidate.is_empty() || matches!(candidate, "crate" | "super" | "self" | "pub" | "*") {
+        return None;
+    }
+    Some(candidate.to_string())
 }
 
 #[cfg(test)]
@@ -137,6 +175,23 @@ mod tests {
             vec![(
                 "src/main.nr".to_string(),
                 "fn main() { let value = 7; assert(value == 7); }".to_string(),
+            )],
+        );
+
+        let mut diagnostics = Vec::new();
+        Noir001UnusedRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn ignores_module_prefixes_in_use_paths() {
+        let project = ProjectModel::default();
+        let context = RuleContext::from_sources(
+            &project,
+            vec![(
+                "src/main.nr".to_string(),
+                "use math::add;\nfn main() { let x = add(1, 2); assert(x == 3); }".to_string(),
             )],
         );
 
