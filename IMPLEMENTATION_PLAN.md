@@ -341,7 +341,7 @@ Implement Aztec model builder and phase-1 Aztec rules (`AZTEC001`, `AZTEC010`, `
 ### Exit Criteria
 - Three phase-1 Aztec rules stable on fixtures and deterministic.
 
-## 11. Phase 7 - Taint Engine v1 + Additional Aztec Coverage
+## 11. Phase 7 - Taint Engine v1 + Additional Aztec Coverage **COMPLETED**
 
 ### Objective
 Implement taint propagation required by `SPEC.md:238` and enable remaining default-on privacy/soundness checks incrementally.
