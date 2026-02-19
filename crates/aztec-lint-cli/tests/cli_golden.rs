@@ -7,30 +7,36 @@ fn cli_bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_aztec-lint-cli"))
 }
 
+fn fixture_dir(path: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures")
+        .join(path)
+}
+
 #[test]
 fn rules_command_matches_golden_output() {
     let expected = "\
 RULE_ID\tPACK\tPOLICY\tCONFIDENCE\tSUMMARY\n\
 AZTEC001\taztec_pack\tprivacy\tmedium\tPrivate data reaches a public sink.\n\
-AZTEC002\taztec_pack\tprivacy\thigh\tSecret-dependent branching affects public state.\n\
-AZTEC003\taztec_pack\tprivacy\thigh\tPrivate entrypoint uses debug logging.\n\
+AZTEC002\taztec_pack\tprivacy\tlow\tSecret-dependent branching affects public state.\n\
+AZTEC003\taztec_pack\tprivacy\tmedium\tPrivate entrypoint uses debug logging.\n\
 AZTEC010\taztec_pack\tprotocol\thigh\tPrivate to public bridge requires #[only_self].\n\
-AZTEC011\taztec_pack\tprotocol\thigh\tNullifier domain separation fields are missing.\n\
-AZTEC012\taztec_pack\tprotocol\thigh\tCommitment domain separation fields are missing.\n\
+AZTEC011\taztec_pack\tprotocol\tmedium\tNullifier domain separation fields are missing.\n\
+AZTEC012\taztec_pack\tprotocol\tmedium\tCommitment domain separation fields are missing.\n\
 AZTEC020\taztec_pack\tsoundness\thigh\tUnconstrained influence reaches commitments, storage, or nullifiers.\n\
-AZTEC021\taztec_pack\tsoundness\thigh\tMissing range constraints before hashing or serialization.\n\
-AZTEC022\taztec_pack\tsoundness\thigh\tSuspicious Merkle witness usage.\n\
-AZTEC040\taztec_pack\tconstraint_cost\tmedium\tExpensive primitive appears inside a loop.\n\
-AZTEC041\taztec_pack\tconstraint_cost\tmedium\tRepeated membership proofs detected.\n\
+AZTEC021\taztec_pack\tsoundness\tmedium\tMissing range constraints before hashing or serialization.\n\
+AZTEC022\taztec_pack\tsoundness\tmedium\tSuspicious Merkle witness usage.\n\
+AZTEC040\taztec_pack\tconstraint_cost\tlow\tExpensive primitive appears inside a loop.\n\
+AZTEC041\taztec_pack\tconstraint_cost\tlow\tRepeated membership proofs detected.\n\
 NOIR001\tnoir_core\tcorrectness\thigh\tDetects trivially unreachable branch conditions.\n\
-NOIR002\tnoir_core\tcorrectness\thigh\tDetects suspicious variable shadowing.\n\
+NOIR002\tnoir_core\tcorrectness\tmedium\tDetects suspicious variable shadowing.\n\
 NOIR010\tnoir_core\tcorrectness\thigh\tBoolean value computed but never asserted.\n\
-NOIR020\tnoir_core\tcorrectness\thigh\tArray indexing appears without bounds validation.\n\
-NOIR030\tnoir_core\tcorrectness\thigh\tUnconstrained value influences constrained logic.\n\
+NOIR020\tnoir_core\tcorrectness\tmedium\tArray indexing appears without bounds validation.\n\
+NOIR030\tnoir_core\tcorrectness\tmedium\tUnconstrained value influences constrained logic.\n\
 NOIR100\tnoir_core\tmaintainability\tlow\tDetects magic-number literals that should be named.\n\
-NOIR110\tnoir_core\tmaintainability\tmedium\tFunction complexity exceeds the recommended limit.\n\
-NOIR120\tnoir_core\tmaintainability\tmedium\tExcessive nesting reduces code readability.\n\
-NOIR200\tnoir_core\tperformance\tmedium\tHeavy operation appears inside a loop.\n";
+NOIR110\tnoir_core\tmaintainability\tlow\tFunction complexity exceeds the recommended limit.\n\
+NOIR120\tnoir_core\tmaintainability\tlow\tExcessive nesting reduces code readability.\n\
+NOIR200\tnoir_core\tperformance\tlow\tHeavy operation appears inside a loop.\n";
 
     let mut cmd = cli_bin();
     cmd.arg("rules");
@@ -64,7 +70,7 @@ fn explain_supports_rules_from_full_catalog() {
 Rule: AZTEC041\n\
 Pack: aztec_pack\n\
 Policy: constraint_cost\n\
-Confidence: medium\n\
+Confidence: low\n\
 Summary: Repeated membership proofs detected.\n";
 
     let mut cmd = cli_bin();
@@ -77,11 +83,22 @@ fn check_loads_config_from_target_path() {
     let workspace = tempdir().expect("temp dir should be created");
     let project = workspace.path().join("project");
     fs::create_dir(&project).expect("project dir should be created");
+    fs::create_dir(project.join("src")).expect("src dir should be created");
     fs::write(
         project.join("aztec-lint.toml"),
         "[profile.default]\nruleset=[\"aztec_pack\"]\n",
     )
     .expect("config should be written");
+    fs::write(
+        project.join("Nargo.toml"),
+        "[package]\nname=\"project\"\ntype=\"bin\"\nauthors=[\"\"]\n",
+    )
+    .expect("nargo file should be written");
+    fs::write(
+        project.join("src/main.nr"),
+        "fn main() { let x = 1; assert(x == 1); }\n",
+    )
+    .expect("entry source should be written");
 
     let mut cmd = cli_bin();
     cmd.current_dir(workspace.path());
@@ -96,6 +113,40 @@ fn check_loads_config_from_target_path() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("active_rules=11"), "stdout was: {stdout}");
+}
+
+#[test]
+fn check_fixture_directory_returns_failure_when_any_project_has_errors() {
+    let mut cmd = cli_bin();
+    let fixture = fixture_dir("noir_core");
+    cmd.args(["check", fixture.to_string_lossy().as_ref()]);
+    cmd.assert().code(1);
+}
+
+#[test]
+fn check_severity_threshold_error_ignores_warning_only_results() {
+    let mut cmd = cli_bin();
+    let fixture = fixture_dir("noir_core/warnings_only");
+    cmd.args([
+        "check",
+        fixture.to_string_lossy().as_ref(),
+        "--severity-threshold",
+        "error",
+    ]);
+    cmd.assert().code(0);
+}
+
+#[test]
+fn check_warning_threshold_reports_warning_only_results() {
+    let mut cmd = cli_bin();
+    let fixture = fixture_dir("noir_core/warnings_only");
+    cmd.args([
+        "check",
+        fixture.to_string_lossy().as_ref(),
+        "--severity-threshold",
+        "warning",
+    ]);
+    cmd.assert().code(1);
 }
 
 #[test]

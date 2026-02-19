@@ -1,0 +1,4 @@
+[package]
+name = "errors"
+type = "bin"
+authors = [""]

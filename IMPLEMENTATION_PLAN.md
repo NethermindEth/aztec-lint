@@ -257,7 +257,7 @@ Build `ProjectModel` from Noir compiler crates with accurate symbols/types/spans
 ### Exit Criteria
 - `ProjectModel` populated from real Noir code in tests.
 
-## 9. Phase 5 - Rule Engine + `noir_core` Pack
+## 9. Phase 5 - Rule Engine + `noir_core` Pack **COMPLETED**
 
 ### Objective
 Implement generic deterministic rule runner and all 8 `noir_core` rules from phase 0 spec (`SPEC.md:446`).
