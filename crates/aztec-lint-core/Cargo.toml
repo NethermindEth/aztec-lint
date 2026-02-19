@@ -14,6 +14,7 @@ noir-compiler = ["dep:fm", "dep:noirc_driver", "dep:noirc_frontend", "dep:noirc_
 
 [dependencies]
 serde.workspace = true
+serde_json.workspace = true
 blake3.workspace = true
 toml.workspace = true
 fm = { git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "fm", optional = true }
@@ -22,5 +23,4 @@ noirc_frontend = { git = "https://github.com/noir-lang/noir.git", rev = "12ecac9
 noirc_errors = { git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "noirc_errors", optional = true }
 
 [dev-dependencies]
-serde_json.workspace = true
 tempfile = "3.13"
