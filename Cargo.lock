@@ -355,6 +355,7 @@ dependencies = [
  "aztec-lint-core",
  "aztec-lint-rules",
  "clap",
+ "serde_json",
  "tempfile",
 ]
 

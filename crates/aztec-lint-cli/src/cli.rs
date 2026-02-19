@@ -11,6 +11,7 @@ use crate::commands::{aztec_scan, check, explain, fix, rules};
 pub enum CliError {
     Config(ConfigError),
     UnknownRule { rule_id: String },
+    Runtime(String),
 }
 
 impl Display for CliError {
@@ -20,6 +21,7 @@ impl Display for CliError {
             Self::UnknownRule { rule_id } => {
                 write!(f, "unknown rule id '{rule_id}' (run `aztec-lint rules`)")
             }
+            Self::Runtime(message) => write!(f, "{message}"),
         }
     }
 }
