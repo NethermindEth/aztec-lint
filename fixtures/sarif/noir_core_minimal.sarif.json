@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main.nr"
+                },
+                "region": {
+                  "startColumn": 20,
+                  "startLine": 8
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "magic number `3` should be named"
+          },
+          "partialFingerprints": {
+            "aztecLint/v1": "f5cf1593791feb2f83de3d1d1ae46eeac9e7894064724640a755308355d7262a"
+          },
+          "properties": {
+            "confidence": "low",
+            "policy": "maintainability"
+          },
+          "ruleId": "NOIR100"
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main.nr"
+                },
+                "region": {
+                  "startColumn": 17,
+                  "startLine": 9
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "magic number `6` should be named"
+          },
+          "partialFingerprints": {
+            "aztecLint/v1": "1a59bec53ddec2caeddcc94f21ed4fd190b46913a5c50c53af615fc1d9f4e2cc"
+          },
+          "properties": {
+            "confidence": "low",
+            "policy": "maintainability"
+          },
+          "ruleId": "NOIR100"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "name": "aztec-lint",
+          "rules": [
+            {
+              "id": "NOIR100",
+              "name": "NOIR100",
+              "shortDescription": {
+                "text": "magic number `3` should be named"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

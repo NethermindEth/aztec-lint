@@ -375,7 +375,7 @@ Implement taint propagation required by `SPEC.md:238` and enable remaining defau
 ### Exit Criteria
 - Intra-procedural taint engine merged with stable results.
 
-## 12. Phase 8 - JSON/SARIF Output, Exit Codes, and CI Behavior
+## 12. Phase 8 - JSON/SARIF Output, Exit Codes, and CI Behavior **COMPLETED**
 
 ### Objective
 Finish machine interfaces and CI ergonomics.

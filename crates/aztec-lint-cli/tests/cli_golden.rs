@@ -1,4 +1,6 @@
 use assert_cmd::prelude::OutputAssertExt;
+use serde_json::Value;
+use std::collections::BTreeSet;
 use std::fs;
 use std::process::Command;
 use tempfile::tempdir;
@@ -124,6 +126,14 @@ fn check_fixture_directory_returns_failure_when_any_project_has_errors() {
 }
 
 #[test]
+fn check_subdirectory_inside_project_discovers_parent_project() {
+    let mut cmd = cli_bin();
+    let fixture = fixture_dir("noir_core/minimal/src");
+    cmd.args(["check", fixture.to_string_lossy().as_ref()]);
+    cmd.assert().code(1);
+}
+
+#[test]
 fn check_severity_threshold_error_ignores_warning_only_results() {
     let mut cmd = cli_bin();
     let fixture = fixture_dir("noir_core/warnings_only");
@@ -186,4 +196,162 @@ fn fix_accepts_changed_only_flag() {
     let mut cmd = cli_bin();
     cmd.args(["fix", ".", "--changed-only"]);
     cmd.assert().success();
+}
+
+#[test]
+fn check_json_output_is_deterministic() {
+    let fixture = fixture_dir("noir_core/minimal");
+
+    let mut first_cmd = cli_bin();
+    first_cmd.args([
+        "check",
+        fixture.to_string_lossy().as_ref(),
+        "--format",
+        "json",
+    ]);
+    let first = first_cmd.output().expect("first run should execute");
+    assert_eq!(
+        first.status.code(),
+        Some(1),
+        "first run should report findings"
+    );
+
+    let mut second_cmd = cli_bin();
+    second_cmd.args([
+        "check",
+        fixture.to_string_lossy().as_ref(),
+        "--format",
+        "json",
+    ]);
+    let second = second_cmd.output().expect("second run should execute");
+    assert_eq!(
+        second.status.code(),
+        Some(1),
+        "second run should report findings"
+    );
+
+    assert_eq!(
+        first.stdout, second.stdout,
+        "json output should be deterministic across runs"
+    );
+}
+
+#[test]
+fn check_sarif_output_matches_golden_snapshot() {
+    let fixture = fixture_dir("noir_core/minimal");
+    let expected_path = fixture_dir("sarif/noir_core_minimal.sarif.json");
+    let expected = fs::read_to_string(expected_path).expect("snapshot should be readable");
+
+    let mut cmd = cli_bin();
+    cmd.args([
+        "check",
+        fixture.to_string_lossy().as_ref(),
+        "--format",
+        "sarif",
+    ]);
+    let output = cmd.output().expect("command should execute");
+    assert_eq!(output.status.code(), Some(1), "run should report findings");
+
+    let actual = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(actual.trim_end(), expected.trim_end());
+}
+
+#[test]
+fn check_sarif_uses_relative_uri_and_partial_fingerprint() {
+    let fixture = fixture_dir("noir_core/minimal");
+    let fixture_path = fixture.to_string_lossy();
+
+    let mut cmd = cli_bin();
+    cmd.args(["check", fixture_path.as_ref(), "--format", "sarif"]);
+    let output = cmd.output().expect("command should execute");
+    assert_eq!(output.status.code(), Some(1), "run should report findings");
+
+    let value: Value =
+        serde_json::from_slice(&output.stdout).expect("sarif output should parse as json");
+    let results = value["runs"][0]["results"]
+        .as_array()
+        .expect("sarif results should be an array");
+    assert!(!results.is_empty(), "expected at least one sarif result");
+
+    for result in results {
+        let uri = result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+            .as_str()
+            .expect("uri should be a string");
+        assert!(
+            !uri.starts_with('/'),
+            "uri should be repository-relative: {uri}"
+        );
+        assert!(
+            !uri.contains(fixture_path.as_ref()),
+            "uri should not include absolute fixture path: {uri}"
+        );
+        let fingerprint = result["partialFingerprints"]["aztecLint/v1"]
+            .as_str()
+            .expect("partial fingerprint should be present");
+        assert!(
+            !fingerprint.is_empty(),
+            "partial fingerprint should not be empty"
+        );
+    }
+}
+
+#[test]
+fn check_sarif_paths_include_project_prefix_for_multi_project_targets() {
+    let fixture = fixture_dir("noir_core");
+    let mut cmd = cli_bin();
+    cmd.args([
+        "check",
+        fixture.to_string_lossy().as_ref(),
+        "--format",
+        "sarif",
+    ]);
+
+    let output = cmd.output().expect("command should execute");
+    assert_eq!(output.status.code(), Some(1), "run should report findings");
+
+    let value: Value =
+        serde_json::from_slice(&output.stdout).expect("sarif output should parse as json");
+    let results = value["runs"][0]["results"]
+        .as_array()
+        .expect("sarif results should be an array");
+    assert!(!results.is_empty(), "expected at least one sarif result");
+
+    let uris = results
+        .iter()
+        .filter_map(|result| {
+            result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+                .as_str()
+                .map(str::to_string)
+        })
+        .collect::<BTreeSet<_>>();
+
+    assert!(
+        uris.iter().any(|uri| uri.starts_with("minimal/")),
+        "expected at least one minimal project URI, got: {uris:?}"
+    );
+    assert!(
+        uris.iter().any(|uri| uri.starts_with("warnings_only/")),
+        "expected at least one warnings_only project URI, got: {uris:?}"
+    );
+}
+
+#[test]
+fn check_min_confidence_high_ignores_low_confidence_findings() {
+    let mut cmd = cli_bin();
+    let fixture = fixture_dir("noir_core/warnings_only");
+    cmd.args([
+        "check",
+        fixture.to_string_lossy().as_ref(),
+        "--min-confidence",
+        "high",
+    ]);
+    cmd.assert().code(0);
+}
+
+#[test]
+fn check_without_discoverable_project_returns_internal_error() {
+    let workspace = tempdir().expect("temp dir should be created");
+    let mut cmd = cli_bin();
+    cmd.arg("check").arg(workspace.path());
+    cmd.assert().code(2);
 }
