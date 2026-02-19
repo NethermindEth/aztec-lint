@@ -3,6 +3,7 @@
 pub mod detect;
 pub mod model_builder;
 pub mod patterns;
+pub mod taint;
 
 pub use detect::{SourceUnit, should_activate_aztec};
 pub use model_builder::build_aztec_model;

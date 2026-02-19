@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use std::io;
 use std::path::Path;
 
+use aztec_lint_core::config::AztecConfig;
 use aztec_lint_core::diagnostics::{Confidence, Diagnostic, Severity, normalize_file_path};
 use aztec_lint_core::model::AztecModel;
 use aztec_lint_core::model::{ProjectModel, Span};
@@ -80,6 +81,7 @@ pub struct RuleContext<'a> {
     files: Vec<SourceFile>,
     suppressions: Vec<SuppressionScope>,
     aztec_model: Option<AztecModel>,
+    aztec_config: Option<AztecConfig>,
 }
 
 impl<'a> RuleContext<'a> {
@@ -126,6 +128,7 @@ impl<'a> RuleContext<'a> {
             files,
             suppressions,
             aztec_model: None,
+            aztec_config: None,
         }
     }
 
@@ -143,6 +146,14 @@ impl<'a> RuleContext<'a> {
 
     pub fn set_aztec_model(&mut self, model: AztecModel) {
         self.aztec_model = Some(model);
+    }
+
+    pub fn aztec_config(&self) -> AztecConfig {
+        self.aztec_config.clone().unwrap_or_default()
+    }
+
+    pub fn set_aztec_config(&mut self, config: AztecConfig) {
+        self.aztec_config = Some(config);
     }
 
     pub fn suppression_reason(&self, rule_id: &str, span: &Span) -> Option<&str> {

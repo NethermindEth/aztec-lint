@@ -69,6 +69,7 @@ pub fn run(args: CheckArgs) -> Result<ExitCode, CliError> {
                     project.root.display()
                 ))
             })?;
+        context.set_aztec_config(loaded.config.aztec.clone());
 
         let sources = context
             .files()
