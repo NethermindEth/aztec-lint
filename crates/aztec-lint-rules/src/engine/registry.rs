@@ -5,8 +5,12 @@ use aztec_lint_core::policy::{CORRECTNESS, MAINTAINABILITY, PRIVACY, PROTOCOL, S
 use crate::Rule;
 use crate::aztec::{
     aztec001_privacy_leak::Aztec001PrivacyLeakRule,
+    aztec002_secret_branching::Aztec002SecretBranchingRule,
+    aztec003_private_debug_log::Aztec003PrivateDebugLogRule,
     aztec010_only_self_enqueue::Aztec010OnlySelfEnqueueRule,
     aztec020_unconstrained_influence::Aztec020UnconstrainedInfluenceRule,
+    aztec021_range_before_hash::Aztec021RangeBeforeHashRule,
+    aztec022_merkle_witness::Aztec022MerkleWitnessRule,
 };
 use crate::noir_core::{
     noir001_unused::Noir001UnusedRule, noir002_shadowing::Noir002ShadowingRule,
@@ -127,6 +131,26 @@ pub fn full_registry() -> Vec<RuleRegistration> {
         },
         RuleRegistration {
             metadata: RuleMetadata {
+                id: "AZTEC002",
+                pack: "aztec_pack",
+                policy: PRIVACY,
+                default_level: RuleLevel::Deny,
+                confidence: Confidence::Low,
+            },
+            rule: Box::new(Aztec002SecretBranchingRule),
+        },
+        RuleRegistration {
+            metadata: RuleMetadata {
+                id: "AZTEC003",
+                pack: "aztec_pack",
+                policy: PRIVACY,
+                default_level: RuleLevel::Deny,
+                confidence: Confidence::Medium,
+            },
+            rule: Box::new(Aztec003PrivateDebugLogRule),
+        },
+        RuleRegistration {
+            metadata: RuleMetadata {
                 id: "AZTEC010",
                 pack: "aztec_pack",
                 policy: PROTOCOL,
@@ -144,6 +168,26 @@ pub fn full_registry() -> Vec<RuleRegistration> {
                 confidence: Confidence::High,
             },
             rule: Box::new(Aztec020UnconstrainedInfluenceRule),
+        },
+        RuleRegistration {
+            metadata: RuleMetadata {
+                id: "AZTEC021",
+                pack: "aztec_pack",
+                policy: SOUNDNESS,
+                default_level: RuleLevel::Deny,
+                confidence: Confidence::Medium,
+            },
+            rule: Box::new(Aztec021RangeBeforeHashRule),
+        },
+        RuleRegistration {
+            metadata: RuleMetadata {
+                id: "AZTEC022",
+                pack: "aztec_pack",
+                policy: SOUNDNESS,
+                default_level: RuleLevel::Deny,
+                confidence: Confidence::Medium,
+            },
+            rule: Box::new(Aztec022MerkleWitnessRule),
         },
     ]);
 

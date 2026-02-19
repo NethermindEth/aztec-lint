@@ -1,18 +1,20 @@
+use std::collections::BTreeSet;
+
 use aztec_lint_aztec::SourceUnit;
 use aztec_lint_aztec::taint::{
     TaintSinkKind, TaintSourceKind, analyze_intra_procedural, build_def_use_graph,
 };
 use aztec_lint_core::diagnostics::Diagnostic;
-use aztec_lint_core::policy::SOUNDNESS;
+use aztec_lint_core::policy::PRIVACY;
 
 use crate::Rule;
 use crate::engine::context::RuleContext;
 
-pub struct Aztec020UnconstrainedInfluenceRule;
+pub struct Aztec002SecretBranchingRule;
 
-impl Rule for Aztec020UnconstrainedInfluenceRule {
+impl Rule for Aztec002SecretBranchingRule {
     fn id(&self) -> &'static str {
-        "AZTEC020"
+        "AZTEC002"
     }
 
     fn run(&self, ctx: &RuleContext<'_>, out: &mut Vec<Diagnostic>) {
@@ -29,21 +31,45 @@ impl Rule for Aztec020UnconstrainedInfluenceRule {
         let graph = build_def_use_graph(&sources, model, &config);
         let analysis = analyze_intra_procedural(&graph);
 
+        let effectful_functions = graph
+            .functions
+            .iter()
+            .filter(|function| {
+                function.sinks.iter().any(|sink| {
+                    matches!(
+                        sink.kind,
+                        TaintSinkKind::PublicOutput
+                            | TaintSinkKind::PublicStorageWrite
+                            | TaintSinkKind::EnqueuePublicCall
+                            | TaintSinkKind::OracleArgument
+                            | TaintSinkKind::LogEvent
+                    )
+                })
+            })
+            .map(|function| function.function_symbol_id.clone())
+            .collect::<BTreeSet<_>>();
+
         for flow in analysis.flows {
-            if flow.source_kind != TaintSourceKind::UnconstrainedCall {
+            if flow.sink_kind != TaintSinkKind::BranchCondition {
                 continue;
             }
             if !matches!(
-                flow.sink_kind,
-                TaintSinkKind::NullifierOrCommitment | TaintSinkKind::PublicStorageWrite
+                flow.source_kind,
+                TaintSourceKind::NoteRead
+                    | TaintSourceKind::PrivateEntrypointParam
+                    | TaintSourceKind::SecretState
             ) {
                 continue;
             }
+            if !effectful_functions.contains(&flow.function_symbol_id) {
+                continue;
+            }
+
             out.push(ctx.diagnostic(
                 self.id(),
-                SOUNDNESS,
+                PRIVACY,
                 format!(
-                    "unconstrained value `{}` influences nullifier/commitment or storage write",
+                    "secret-derived value `{}` controls a branch that affects public behavior",
                     flow.variable
                 ),
                 flow.sink_span,
@@ -62,19 +88,18 @@ mod tests {
     use crate::Rule;
     use crate::engine::context::RuleContext;
 
-    use super::Aztec020UnconstrainedInfluenceRule;
+    use super::Aztec002SecretBranchingRule;
 
     #[test]
-    fn reports_unconstrained_flow_to_nullifier() {
+    fn reports_secret_branch_when_public_effect_is_constant() {
         let source = r#"
 #[aztec]
 pub contract C {
-    unconstrained fn read_secret() -> Field { 7 }
-
     #[external("private")]
-    fn bridge() {
-        let secret = read_secret();
-        emit_nullifier(secret);
+    fn bridge(secret: Field) {
+        if secret > 10 {
+            emit(1);
+        }
     }
 }
 "#;
@@ -91,19 +116,20 @@ pub contract C {
         context.set_aztec_model(model);
 
         let mut diagnostics = Vec::new();
-        Aztec020UnconstrainedInfluenceRule.run(&context, &mut diagnostics);
+        Aztec002SecretBranchingRule.run(&context, &mut diagnostics);
         assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
-    fn ignores_when_sink_uses_constrained_value() {
+    fn ignores_secret_branch_without_public_effect() {
         let source = r#"
 #[aztec]
 pub contract C {
     #[external("private")]
-    fn bridge() {
-        let value = 7;
-        emit_nullifier(value);
+    fn bridge(secret: Field) {
+        if secret > 10 {
+            let x = secret + 1;
+        }
     }
 }
 "#;
@@ -120,7 +146,7 @@ pub contract C {
         context.set_aztec_model(model);
 
         let mut diagnostics = Vec::new();
-        Aztec020UnconstrainedInfluenceRule.run(&context, &mut diagnostics);
+        Aztec002SecretBranchingRule.run(&context, &mut diagnostics);
         assert!(diagnostics.is_empty());
     }
 }

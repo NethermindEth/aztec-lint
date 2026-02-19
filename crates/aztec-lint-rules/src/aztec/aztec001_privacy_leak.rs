@@ -1,5 +1,7 @@
-use std::collections::BTreeSet;
-
+use aztec_lint_aztec::SourceUnit;
+use aztec_lint_aztec::taint::{
+    TaintSinkKind, TaintSourceKind, analyze_intra_procedural, build_def_use_graph,
+};
 use aztec_lint_core::diagnostics::Diagnostic;
 use aztec_lint_core::policy::PRIVACY;
 
@@ -18,24 +20,34 @@ impl Rule for Aztec001PrivacyLeakRule {
             return;
         };
 
-        let tainted_functions = model
-            .note_read_sites
+        let config = ctx.aztec_config();
+        let sources = ctx
+            .files()
             .iter()
-            .map(|site| site.function_symbol_id.clone())
-            .collect::<BTreeSet<_>>();
-        if tainted_functions.is_empty() {
-            return;
-        }
+            .map(|file| SourceUnit::new(file.path().to_string(), file.text().to_string()))
+            .collect::<Vec<_>>();
+        let graph = build_def_use_graph(&sources, model, &config);
+        let analysis = analyze_intra_procedural(&graph);
 
-        for sink in &model.public_sinks {
-            if !tainted_functions.contains(&sink.function_symbol_id) {
+        for flow in analysis.flows {
+            if flow.source_kind != TaintSourceKind::NoteRead {
                 continue;
             }
+            if !matches!(
+                flow.sink_kind,
+                TaintSinkKind::PublicOutput
+                    | TaintSinkKind::PublicStorageWrite
+                    | TaintSinkKind::EnqueuePublicCall
+                    | TaintSinkKind::LogEvent
+            ) {
+                continue;
+            }
+
             out.push(ctx.diagnostic(
                 self.id(),
                 PRIVACY,
-                "private note-derived data reaches a public sink in the same function",
-                sink.span.clone(),
+                "private note-derived data reaches a public sink",
+                flow.sink_span,
             ));
         }
     }
@@ -70,6 +82,7 @@ pub contract C {
             &project,
             vec![("src/main.nr".to_string(), source.to_string())],
         );
+        context.set_aztec_config(AztecConfig::default());
         let model = build_aztec_model(
             &[SourceUnit::new("src/main.nr", source)],
             &AztecConfig::default(),
@@ -98,6 +111,7 @@ pub contract C {
             &project,
             vec![("src/main.nr".to_string(), source.to_string())],
         );
+        context.set_aztec_config(AztecConfig::default());
         let model = build_aztec_model(
             &[SourceUnit::new("src/main.nr", source)],
             &AztecConfig::default(),
