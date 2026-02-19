@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use aztec_lint_aztec::{SourceUnit, build_aztec_model, should_activate_aztec};
 use aztec_lint_core::config::load_from_dir;
 use aztec_lint_core::diagnostics::{Confidence, Diagnostic, Severity, sort_diagnostics};
 use aztec_lint_core::noir::build_project_model;
@@ -61,12 +62,24 @@ pub fn run(args: CheckArgs) -> Result<ExitCode, CliError> {
                 project.entry.display()
             ))
         })?;
-        let context = RuleContext::from_project_root(&project.root, &model).map_err(|source| {
-            CliError::Runtime(format!(
-                "failed to read Noir sources for '{}': {source}",
-                project.root.display()
-            ))
-        })?;
+        let mut context =
+            RuleContext::from_project_root(&project.root, &model).map_err(|source| {
+                CliError::Runtime(format!(
+                    "failed to read Noir sources for '{}': {source}",
+                    project.root.display()
+                ))
+            })?;
+
+        let sources = context
+            .files()
+            .iter()
+            .map(|file| SourceUnit::new(file.path().to_string(), file.text().to_string()))
+            .collect::<Vec<_>>();
+        if should_activate_aztec(&args.profile, &sources, &loaded.config.aztec) {
+            let aztec_model = build_aztec_model(&sources, &loaded.config.aztec);
+            context.set_aztec_model(aztec_model);
+        }
+
         diagnostics.extend(engine.run(&context, &effective_rules));
     }
 
@@ -296,10 +309,9 @@ fn discover_noir_projects(target: &Path) -> std::io::Result<Vec<NoirProject>> {
             .extension()
             .and_then(|ext| ext.to_str())
             .is_some_and(|ext| ext.eq_ignore_ascii_case("nr"))
+            && let Some(root) = nearest_project_root(target.parent().unwrap_or(Path::new(".")))
         {
-            if let Some(root) = nearest_project_root(target.parent().unwrap_or(Path::new("."))) {
-                roots.push(root);
-            }
+            roots.push(root);
         }
     } else {
         collect_project_roots(target, &mut roots)?;

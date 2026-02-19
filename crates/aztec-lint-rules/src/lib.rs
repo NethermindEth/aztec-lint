@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod aztec;
 pub mod engine;
 pub mod noir_core;
 

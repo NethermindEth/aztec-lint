@@ -305,7 +305,7 @@ pub trait Rule {
 ### Exit Criteria
 - 8 `noir_core` rules implemented and passing fixture suite.
 
-## 10. Phase 6 - Aztec Semantic Augmentation + Initial Aztec Rules
+## 10. Phase 6 - Aztec Semantic Augmentation + Initial Aztec Rules **COMPLETED**
 
 ### Objective
 Implement Aztec model builder and phase-1 Aztec rules (`AZTEC001`, `AZTEC010`, `AZTEC020`) per `SPEC.md:452`.

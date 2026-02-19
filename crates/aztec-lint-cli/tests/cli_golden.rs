@@ -150,6 +150,38 @@ fn check_warning_threshold_reports_warning_only_results() {
 }
 
 #[test]
+fn profile_default_excludes_aztec_pack() {
+    let mut cmd = cli_bin();
+    let fixture = fixture_dir("noir_core/minimal");
+    cmd.args([
+        "check",
+        fixture.to_string_lossy().as_ref(),
+        "--profile",
+        "default",
+    ]);
+
+    let output = cmd.output().expect("command should execute");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("active_rules=9"), "stdout was: {stdout}");
+}
+
+#[test]
+fn profile_aztec_includes_default_and_aztec_pack() {
+    let mut cmd = cli_bin();
+    let fixture = fixture_dir("noir_core/minimal");
+    cmd.args([
+        "check",
+        fixture.to_string_lossy().as_ref(),
+        "--profile",
+        "aztec",
+    ]);
+
+    let output = cmd.output().expect("command should execute");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("active_rules=20"), "stdout was: {stdout}");
+}
+
+#[test]
 fn fix_accepts_changed_only_flag() {
     let mut cmd = cli_bin();
     cmd.args(["fix", ".", "--changed-only"]);

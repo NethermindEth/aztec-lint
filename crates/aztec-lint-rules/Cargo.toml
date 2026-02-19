@@ -10,3 +10,4 @@ workspace = true
 
 [dependencies]
 aztec-lint-core.workspace = true
+aztec-lint-aztec.workspace = true

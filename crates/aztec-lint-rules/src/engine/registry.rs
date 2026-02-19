@@ -1,8 +1,13 @@
 use aztec_lint_core::config::RuleLevel;
 use aztec_lint_core::diagnostics::Confidence;
-use aztec_lint_core::policy::{CORRECTNESS, MAINTAINABILITY};
+use aztec_lint_core::policy::{CORRECTNESS, MAINTAINABILITY, PRIVACY, PROTOCOL, SOUNDNESS};
 
 use crate::Rule;
+use crate::aztec::{
+    aztec001_privacy_leak::Aztec001PrivacyLeakRule,
+    aztec010_only_self_enqueue::Aztec010OnlySelfEnqueueRule,
+    aztec020_unconstrained_influence::Aztec020UnconstrainedInfluenceRule,
+};
 use crate::noir_core::{
     noir001_unused::Noir001UnusedRule, noir002_shadowing::Noir002ShadowingRule,
     noir010_bool_not_asserted::Noir010BoolNotAssertedRule, noir020_bounds::Noir020BoundsRule,
@@ -25,8 +30,8 @@ pub struct RuleRegistration {
     pub rule: Box<dyn Rule>,
 }
 
-pub fn noir_core_registry() -> Vec<RuleRegistration> {
-    vec![
+pub fn full_registry() -> Vec<RuleRegistration> {
+    let mut registry = vec![
         RuleRegistration {
             metadata: RuleMetadata {
                 id: "NOIR001",
@@ -107,5 +112,40 @@ pub fn noir_core_registry() -> Vec<RuleRegistration> {
             },
             rule: Box::new(Noir120NestingRule),
         },
-    ]
+    ];
+
+    registry.extend([
+        RuleRegistration {
+            metadata: RuleMetadata {
+                id: "AZTEC001",
+                pack: "aztec_pack",
+                policy: PRIVACY,
+                default_level: RuleLevel::Deny,
+                confidence: Confidence::Medium,
+            },
+            rule: Box::new(Aztec001PrivacyLeakRule),
+        },
+        RuleRegistration {
+            metadata: RuleMetadata {
+                id: "AZTEC010",
+                pack: "aztec_pack",
+                policy: PROTOCOL,
+                default_level: RuleLevel::Deny,
+                confidence: Confidence::High,
+            },
+            rule: Box::new(Aztec010OnlySelfEnqueueRule),
+        },
+        RuleRegistration {
+            metadata: RuleMetadata {
+                id: "AZTEC020",
+                pack: "aztec_pack",
+                policy: SOUNDNESS,
+                default_level: RuleLevel::Deny,
+                confidence: Confidence::High,
+            },
+            rule: Box::new(Aztec020UnconstrainedInfluenceRule),
+        },
+    ]);
+
+    registry
 }

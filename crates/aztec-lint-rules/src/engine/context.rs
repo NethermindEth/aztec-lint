@@ -4,6 +4,7 @@ use std::io;
 use std::path::Path;
 
 use aztec_lint_core::diagnostics::{Confidence, Diagnostic, Severity, normalize_file_path};
+use aztec_lint_core::model::AztecModel;
 use aztec_lint_core::model::{ProjectModel, Span};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -78,6 +79,7 @@ pub struct RuleContext<'a> {
     project: &'a ProjectModel,
     files: Vec<SourceFile>,
     suppressions: Vec<SuppressionScope>,
+    aztec_model: Option<AztecModel>,
 }
 
 impl<'a> RuleContext<'a> {
@@ -123,6 +125,7 @@ impl<'a> RuleContext<'a> {
             project,
             files,
             suppressions,
+            aztec_model: None,
         }
     }
 
@@ -132,6 +135,14 @@ impl<'a> RuleContext<'a> {
 
     pub fn files(&self) -> &[SourceFile] {
         &self.files
+    }
+
+    pub fn aztec_model(&self) -> Option<&AztecModel> {
+        self.aztec_model.as_ref()
+    }
+
+    pub fn set_aztec_model(&mut self, model: AztecModel) {
+        self.aztec_model = Some(model);
     }
 
     pub fn suppression_reason(&self, rule_id: &str, span: &Span) -> Option<&str> {
@@ -187,7 +198,7 @@ fn parse_file_suppressions(source: &SourceFile) -> Vec<SuppressionScope> {
             pending_rule_ids.insert(rule_id);
         }
 
-        if is_item_start(trimmed) {
+        if line_contains_item_start(trimmed) {
             if !pending_rule_ids.is_empty() {
                 let scope_end = find_item_scope_end(source.text(), offset, offset + line.len());
                 for rule_id in pending_rule_ids.iter() {
@@ -274,6 +285,26 @@ fn is_item_start(line: &str) -> bool {
     ITEM_PREFIXES.iter().any(|prefix| line.starts_with(prefix))
 }
 
+fn line_contains_item_start(line: &str) -> bool {
+    if is_item_start(line) {
+        return true;
+    }
+
+    let mut remaining = line.trim_start();
+    loop {
+        if !remaining.starts_with("#[") {
+            return false;
+        }
+        let Some(close) = remaining.find(']') else {
+            return false;
+        };
+        remaining = remaining[close + 1..].trim_start();
+        if is_item_start(remaining) {
+            return true;
+        }
+    }
+}
+
 fn find_item_scope_end(source: &str, item_start: usize, line_end: usize) -> usize {
     let bytes = source.as_bytes();
     let Some(open_offset) = source[item_start..].find('{') else {
@@ -347,6 +378,28 @@ fn helper() {
         let source = r#"
 #[allow(NOIR001)]
 fn main() {
+    let unused = 7;
+}
+"#;
+        let context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), source.to_string())],
+        );
+
+        let marker = source.find("unused").expect("unused marker should exist");
+        let span = context.files()[0].span_for_range(marker, marker + 6);
+
+        assert_eq!(
+            context.suppression_reason("NOIR001", &span),
+            Some("allow(NOIR001)")
+        );
+    }
+
+    #[test]
+    fn supports_same_line_allow_and_item() {
+        let project = ProjectModel::default();
+        let source = r#"
+#[allow(NOIR001)] fn main() {
     let unused = 7;
 }
 "#;

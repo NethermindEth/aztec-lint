@@ -7,4 +7,4 @@ pub mod noir100_magic_numbers;
 pub mod noir110_complexity;
 pub mod noir120_nesting;
 
-mod util;
+pub(crate) mod util;

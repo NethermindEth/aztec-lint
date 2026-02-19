@@ -7,7 +7,7 @@ use aztec_lint_core::config::RuleLevel;
 use aztec_lint_core::diagnostics::{Diagnostic, Severity, sort_diagnostics};
 
 use self::context::RuleContext;
-use self::registry::{RuleRegistration, noir_core_registry};
+use self::registry::{RuleRegistration, full_registry};
 
 pub trait Rule {
     fn id(&self) -> &'static str;
@@ -32,7 +32,7 @@ impl Default for RuleEngine {
 impl RuleEngine {
     pub fn new() -> Self {
         Self {
-            registry: noir_core_registry(),
+            registry: full_registry(),
         }
     }
 
@@ -56,10 +56,9 @@ impl RuleEngine {
         let mut diagnostics = Vec::<Diagnostic>::new();
 
         for registration in &self.registry {
-            let level = effective_levels
-                .get(registration.metadata.id)
-                .copied()
-                .unwrap_or(registration.metadata.default_level);
+            let Some(level) = effective_levels.get(registration.metadata.id).copied() else {
+                continue;
+            };
             if level == RuleLevel::Allow {
                 continue;
             }
@@ -158,7 +157,10 @@ fn main() {
             rule: Box::new(TestRule),
         }]);
 
-        let diagnostics = engine.run(&context, &BTreeMap::new());
+        let diagnostics = engine.run(
+            &context,
+            &BTreeMap::from([("NOIR100".to_string(), RuleLevel::Warn)]),
+        );
         assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics[0].suppressed);
         assert_eq!(
