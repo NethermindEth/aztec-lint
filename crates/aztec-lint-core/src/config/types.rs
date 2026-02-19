@@ -6,29 +6,29 @@ use serde::{Deserialize, Serialize};
 use crate::config::ConfigError;
 
 const NOIR_CORE_RULES: &[(&str, RuleLevel)] = &[
-    ("NOIR001", RuleLevel::Warn),
-    ("NOIR002", RuleLevel::Warn),
-    ("NOIR010", RuleLevel::Warn),
-    ("NOIR020", RuleLevel::Warn),
-    ("NOIR030", RuleLevel::Warn),
+    ("NOIR001", RuleLevel::Deny),
+    ("NOIR002", RuleLevel::Deny),
+    ("NOIR010", RuleLevel::Deny),
+    ("NOIR020", RuleLevel::Deny),
+    ("NOIR030", RuleLevel::Deny),
     ("NOIR100", RuleLevel::Warn),
     ("NOIR110", RuleLevel::Warn),
     ("NOIR120", RuleLevel::Warn),
-    ("NOIR200", RuleLevel::Warn),
+    ("NOIR200", RuleLevel::Allow),
 ];
 
 const AZTEC_PACK_RULES: &[(&str, RuleLevel)] = &[
-    ("AZTEC001", RuleLevel::Warn),
-    ("AZTEC002", RuleLevel::Warn),
-    ("AZTEC003", RuleLevel::Warn),
-    ("AZTEC010", RuleLevel::Warn),
-    ("AZTEC011", RuleLevel::Warn),
-    ("AZTEC012", RuleLevel::Warn),
-    ("AZTEC020", RuleLevel::Warn),
-    ("AZTEC021", RuleLevel::Warn),
-    ("AZTEC022", RuleLevel::Warn),
-    ("AZTEC040", RuleLevel::Warn),
-    ("AZTEC041", RuleLevel::Warn),
+    ("AZTEC001", RuleLevel::Deny),
+    ("AZTEC002", RuleLevel::Deny),
+    ("AZTEC003", RuleLevel::Deny),
+    ("AZTEC010", RuleLevel::Deny),
+    ("AZTEC011", RuleLevel::Deny),
+    ("AZTEC012", RuleLevel::Deny),
+    ("AZTEC020", RuleLevel::Deny),
+    ("AZTEC021", RuleLevel::Deny),
+    ("AZTEC022", RuleLevel::Deny),
+    ("AZTEC040", RuleLevel::Allow),
+    ("AZTEC041", RuleLevel::Allow),
 ];
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
