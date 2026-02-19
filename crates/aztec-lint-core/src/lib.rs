@@ -3,6 +3,7 @@
 pub mod config;
 pub mod diagnostics;
 pub mod model;
+pub mod noir;
 pub mod policy;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
