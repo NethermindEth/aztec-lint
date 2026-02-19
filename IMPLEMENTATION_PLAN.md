@@ -84,8 +84,8 @@ Resolve ambiguity before coding to prevent rework and false positives.
 ### Exit Criteria
 - All 4 ADR files merged and referenced from `docs/architecture.md`.
 
-## 5. Phase 1 - Workspace and Build Baseline
-
+## 5. Phase 1 - Workspace and Build Baseline **COMPLETED**
+ 
 ### Objective
 Stand up deterministic Rust workspace and crate boundaries.
 
@@ -126,7 +126,7 @@ Expected:
 ### Exit Criteria
 - Clean baseline CI pass with zero tests failing.
 
-## 6. Phase 2 - Core Domain Model + Diagnostics Contract
+## 6. Phase 2 - Core Domain Model + Diagnostics Contract **COMPLETED**
 
 ### Objective
 Define stable core data types before implementing analyzers or rules.
