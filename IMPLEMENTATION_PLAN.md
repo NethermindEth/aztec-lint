@@ -184,7 +184,7 @@ pub struct Diagnostic {
 ### Exit Criteria
 - Public core API marked stable in docs.
 
-## 7. Phase 3 - Config System + CLI Surface
+## 7. Phase 3 - Config System + CLI Surface **COMPLETED**
 
 ### Objective
 Implement command/flag/config behavior independent of actual rule logic.
