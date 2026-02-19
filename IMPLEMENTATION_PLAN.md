@@ -222,7 +222,7 @@ Implement command/flag/config behavior independent of actual rule logic.
 ### Exit Criteria
 - CLI fully parses all spec-defined commands/flags.
 
-## 8. Phase 4 - Noir Frontend Integration (Generic Model Builder)
+## 8. Phase 4 - Noir Frontend Integration (Generic Model Builder) **COMPLETED**
 
 ### Objective
 Build `ProjectModel` from Noir compiler crates with accurate symbols/types/spans.
