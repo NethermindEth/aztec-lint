@@ -4,14 +4,19 @@ use std::process::ExitCode;
 
 use aztec_lint_aztec::{SourceUnit, build_aztec_model, should_activate_aztec};
 use aztec_lint_core::config::load_from_dir;
-use aztec_lint_core::diagnostics::{Confidence, Diagnostic, Severity, sort_diagnostics};
+use aztec_lint_core::diagnostics::{
+    Confidence, Diagnostic, Severity, normalize_file_path, sort_diagnostics,
+};
 use aztec_lint_core::noir::build_project_model;
+use aztec_lint_core::output::json as json_output;
+use aztec_lint_core::output::sarif as sarif_output;
+use aztec_lint_core::output::text::{CheckTextReport, render_check_report};
 use aztec_lint_rules::RuleEngine;
 use aztec_lint_rules::engine::context::RuleContext;
 use clap::Args;
-use serde_json::json;
 
 use crate::cli::{CliError, CommonLintFlags, MinConfidence, OutputFormat, SeverityThreshold};
+use crate::exit_codes;
 
 #[derive(Clone, Debug, Args)]
 pub struct CheckArgs {
@@ -50,6 +55,7 @@ pub fn run(args: CheckArgs) -> Result<ExitCode, CliError> {
             args.path.display()
         )));
     }
+    let report_root = report_root_for_target(args.path.as_path(), &projects);
 
     let engine = RuleEngine::new();
     let mut diagnostics = Vec::<Diagnostic>::new();
@@ -81,7 +87,13 @@ pub fn run(args: CheckArgs) -> Result<ExitCode, CliError> {
             context.set_aztec_model(aztec_model);
         }
 
-        diagnostics.extend(engine.run(&context, &effective_rules));
+        let mut project_diagnostics = engine.run(&context, &effective_rules);
+        rebase_diagnostic_paths(
+            &mut project_diagnostics,
+            project.root.as_path(),
+            report_root.as_path(),
+        );
+        diagnostics.extend(project_diagnostics);
     }
 
     sort_diagnostics(&mut diagnostics);
@@ -99,13 +111,10 @@ pub fn run(args: CheckArgs) -> Result<ExitCode, CliError> {
         args.changed_only,
         effective_rules.len(),
         &filtered,
+        report_root.as_path(),
     )?;
 
-    if filtered.is_empty() {
-        Ok(ExitCode::from(0))
-    } else {
-        Ok(ExitCode::from(1))
-    }
+    Ok(exit_codes::diagnostics_found(!filtered.is_empty()))
 }
 
 pub(crate) fn config_root_for_target(path: &Path) -> &Path {
@@ -122,109 +131,82 @@ fn render_result(
     changed_only: bool,
     effective_rules: usize,
     diagnostics: &[&Diagnostic],
+    sarif_root: &Path,
 ) -> Result<(), CliError> {
     match format {
         OutputFormat::Text => {
-            println!(
-                "checked={} profile={} changed_only={} active_rules={effective_rules}",
-                path.display(),
+            let rendered = render_check_report(CheckTextReport {
+                path,
                 profile,
-                changed_only
-            );
-
-            if diagnostics.is_empty() {
-                println!("No diagnostics.");
-                return Ok(());
-            }
-
-            for diagnostic in diagnostics {
-                println!(
-                    "{}:{}:{}: {}[{}] {} (confidence={}, policy={})",
-                    diagnostic.primary_span.file,
-                    diagnostic.primary_span.line,
-                    diagnostic.primary_span.col,
-                    severity_label(diagnostic.severity),
-                    diagnostic.rule_id,
-                    diagnostic.message,
-                    confidence_label(diagnostic.confidence),
-                    diagnostic.policy
-                );
-            }
-
-            let errors = diagnostics
-                .iter()
-                .filter(|diagnostic| diagnostic.severity == Severity::Error)
-                .count();
-            let warnings = diagnostics.len().saturating_sub(errors);
-            println!(
-                "diagnostics={} errors={} warnings={}",
-                diagnostics.len(),
-                errors,
-                warnings
-            );
+                changed_only,
+                active_rules: effective_rules,
+                diagnostics,
+            });
+            print!("{rendered}");
             Ok(())
         }
         OutputFormat::Json => {
-            let rendered = serde_json::to_string_pretty(diagnostics).map_err(|source| {
+            let rendered = json_output::render_diagnostics(diagnostics).map_err(|source| {
                 CliError::Runtime(format!("failed to serialize diagnostics as JSON: {source}"))
             })?;
             println!("{rendered}");
             Ok(())
         }
         OutputFormat::Sarif => {
-            let rules = diagnostics
-                .iter()
-                .map(|diagnostic| {
-                    json!({
-                        "id": diagnostic.rule_id,
-                        "name": diagnostic.rule_id,
-                        "shortDescription": {"text": diagnostic.message},
-                    })
-                })
-                .collect::<Vec<_>>();
-            let results = diagnostics
-                .iter()
-                .map(|diagnostic| {
-                    json!({
-                        "ruleId": diagnostic.rule_id,
-                        "level": sarif_level(diagnostic.severity),
-                        "message": {"text": diagnostic.message},
-                        "locations": [{
-                            "physicalLocation": {
-                                "artifactLocation": {"uri": diagnostic.primary_span.file},
-                                "region": {
-                                    "startLine": diagnostic.primary_span.line,
-                                    "startColumn": diagnostic.primary_span.col,
-                                }
-                            }
-                        }]
-                    })
-                })
-                .collect::<Vec<_>>();
-
-            let sarif = json!({
-                "version": "2.1.0",
-                "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
-                "runs": [{
-                    "tool": {
-                        "driver": {
-                            "name": "aztec-lint",
-                            "rules": rules,
-                        }
-                    },
-                    "results": results,
-                }]
-            });
-
-            let rendered = serde_json::to_string_pretty(&sarif).map_err(|source| {
-                CliError::Runtime(format!(
-                    "failed to serialize diagnostics as SARIF: {source}"
-                ))
-            })?;
+            let rendered =
+                sarif_output::render_diagnostics(sarif_root, diagnostics).map_err(|source| {
+                    CliError::Runtime(format!(
+                        "failed to serialize diagnostics as SARIF: {source}"
+                    ))
+                })?;
             println!("{rendered}");
             Ok(())
         }
     }
+}
+
+fn report_root_for_target(path: &Path, projects: &[NoirProject]) -> PathBuf {
+    if path.is_file()
+        && let Some(project) = projects.first()
+    {
+        return project.root.clone();
+    }
+
+    config_root_for_target(path)
+        .canonicalize()
+        .unwrap_or_else(|_| config_root_for_target(path).to_path_buf())
+}
+
+fn rebase_diagnostic_paths(
+    diagnostics: &mut [Diagnostic],
+    project_root: &Path,
+    report_root: &Path,
+) {
+    for diagnostic in diagnostics {
+        diagnostic.primary_span.file =
+            rebase_file_path(&diagnostic.primary_span.file, project_root, report_root);
+
+        for span in &mut diagnostic.secondary_spans {
+            span.file = rebase_file_path(&span.file, project_root, report_root);
+        }
+
+        for fix in &mut diagnostic.fixes {
+            fix.span.file = rebase_file_path(&fix.span.file, project_root, report_root);
+        }
+    }
+}
+
+fn rebase_file_path(file: &str, project_root: &Path, report_root: &Path) -> String {
+    let file_path = Path::new(file);
+    let absolute_path = if file_path.is_absolute() {
+        file_path.to_path_buf()
+    } else {
+        project_root.join(file_path)
+    };
+    let rebased = absolute_path
+        .strip_prefix(report_root)
+        .unwrap_or(absolute_path.as_path());
+    normalize_file_path(&rebased.to_string_lossy())
 }
 
 fn filter_diagnostics(
@@ -274,28 +256,6 @@ fn severity_threshold_rank(threshold: SeverityThreshold) -> u8 {
     }
 }
 
-fn severity_label(severity: Severity) -> &'static str {
-    match severity {
-        Severity::Warning => "warning",
-        Severity::Error => "error",
-    }
-}
-
-fn confidence_label(confidence: Confidence) -> &'static str {
-    match confidence {
-        Confidence::Low => "low",
-        Confidence::Medium => "medium",
-        Confidence::High => "high",
-    }
-}
-
-fn sarif_level(severity: Severity) -> &'static str {
-    match severity {
-        Severity::Warning => "warning",
-        Severity::Error => "error",
-    }
-}
-
 fn discover_noir_projects(target: &Path) -> std::io::Result<Vec<NoirProject>> {
     let mut roots = Vec::<PathBuf>::new();
 
@@ -314,6 +274,8 @@ fn discover_noir_projects(target: &Path) -> std::io::Result<Vec<NoirProject>> {
         {
             roots.push(root);
         }
+    } else if let Some(root) = nearest_project_root(target) {
+        roots.push(root);
     } else {
         collect_project_roots(target, &mut roots)?;
     }

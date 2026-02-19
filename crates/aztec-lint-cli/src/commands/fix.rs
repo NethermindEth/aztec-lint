@@ -2,10 +2,14 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use aztec_lint_core::config::load_from_dir;
+use aztec_lint_core::diagnostics::Diagnostic;
+use aztec_lint_core::output::json as json_output;
+use aztec_lint_core::output::sarif as sarif_output;
 use clap::Args;
 
 use crate::cli::{CliError, CommonLintFlags, OutputFormat};
 use crate::commands::check::config_root_for_target;
+use crate::exit_codes;
 
 #[derive(Clone, Debug, Args)]
 pub struct FixArgs {
@@ -31,8 +35,8 @@ pub fn run(args: FixArgs) -> Result<ExitCode, CliError> {
         &args.profile,
         args.changed_only,
         effective_rules.len(),
-    );
-    Ok(ExitCode::from(0))
+    )?;
+    Ok(exit_codes::success())
 }
 
 fn render_fix_result(
@@ -41,7 +45,9 @@ fn render_fix_result(
     profile: &str,
     changed_only: bool,
     effective_rules: usize,
-) {
+) -> Result<(), CliError> {
+    let diagnostics = Vec::<&Diagnostic>::new();
+
     match format {
         OutputFormat::Text => {
             println!(
@@ -51,12 +57,27 @@ fn render_fix_result(
                 changed_only
             );
             println!("No fixes applied.");
+            Ok(())
         }
         OutputFormat::Json => {
-            println!("[]");
+            let rendered = json_output::render_diagnostics(&diagnostics).map_err(|source| {
+                CliError::Runtime(format!(
+                    "failed to serialize fix diagnostics as JSON: {source}"
+                ))
+            })?;
+            println!("{rendered}");
+            Ok(())
         }
         OutputFormat::Sarif => {
-            println!(r#"{{"version":"2.1.0","runs":[]}}"#);
+            let rendered =
+                sarif_output::render_diagnostics(config_root_for_target(path), &diagnostics)
+                    .map_err(|source| {
+                        CliError::Runtime(format!(
+                            "failed to serialize fix diagnostics as SARIF: {source}"
+                        ))
+                    })?;
+            println!("{rendered}");
+            Ok(())
         }
     }
 }

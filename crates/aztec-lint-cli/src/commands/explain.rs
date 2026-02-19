@@ -4,6 +4,7 @@ use clap::Args;
 
 use crate::cli::CliError;
 use crate::commands::catalog::find_rule;
+use crate::exit_codes;
 
 #[derive(Debug, Args)]
 pub struct ExplainArgs {
@@ -18,5 +19,5 @@ pub fn run(args: ExplainArgs) -> Result<ExitCode, CliError> {
     println!("Policy: {}", rule.policy);
     println!("Confidence: {}", rule.confidence);
     println!("Summary: {}", rule.summary);
-    Ok(ExitCode::from(0))
+    Ok(exit_codes::success())
 }

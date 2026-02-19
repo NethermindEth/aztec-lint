@@ -6,6 +6,7 @@ use aztec_lint_core::config::{ConfigError, RuleOverrides};
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 use crate::commands::{aztec_scan, check, explain, fix, rules};
+use crate::exit_codes;
 
 #[derive(Debug)]
 pub enum CliError {
@@ -111,7 +112,7 @@ pub fn run() -> ExitCode {
     let cli = match Cli::try_parse() {
         Ok(value) => value,
         Err(err) => {
-            let code = code_to_exit(err.exit_code());
+            let code = exit_codes::clap_exit(err.exit_code());
             let _ = err.print();
             return code;
         }
@@ -121,7 +122,7 @@ pub fn run() -> ExitCode {
         Ok(code) => code,
         Err(err) => {
             eprintln!("{err}");
-            ExitCode::from(2)
+            exit_codes::internal_error()
         }
     }
 }
@@ -135,12 +136,5 @@ fn dispatch(cli: Cli) -> Result<ExitCode, CliError> {
         Command::Aztec(args) => match args.command {
             AztecSubcommand::Scan(scan_args) => aztec_scan::run(scan_args),
         },
-    }
-}
-
-fn code_to_exit(code: i32) -> ExitCode {
-    match u8::try_from(code) {
-        Ok(value) => ExitCode::from(value),
-        Err(_) => ExitCode::from(2),
     }
 }
