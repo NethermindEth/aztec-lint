@@ -26,3 +26,13 @@ The following ADRs are mandatory inputs to implementation:
 
 No Phase 1 work should proceed if any ADR above is not in `Accepted` state.
 
+## Phase 2 Core API Contract
+
+The following public APIs are frozen at Phase 2 exit and should be treated as stable
+contracts for later phases:
+
+- `aztec_lint_core::model::{Span, ProjectModel, AztecModel}`
+- `aztec_lint_core::diagnostics::{Diagnostic, Severity, Confidence}`
+- `aztec_lint_core::diagnostics::{sort_diagnostics, diagnostic_sort_key}`
+- `aztec_lint_core::diagnostics::{diagnostic_fingerprint, span_fingerprint}`
+- `aztec_lint_core::policy::*`
