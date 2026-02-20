@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use aztec_lint_core::config::RuleLevel;
 use aztec_lint_core::diagnostics::{Diagnostic, Severity, sort_diagnostics};
+use aztec_lint_core::lints::{all_lints, find_lint};
 
 use self::context::RuleContext;
 use self::registry::{RuleRegistration, full_registry};
@@ -33,6 +34,7 @@ impl RuleEngine {
     pub fn new() -> Self {
         let registry = full_registry();
         validate_registry_metadata(&registry);
+        validate_registry_integrity_with_catalog(&registry);
         Self { registry }
     }
 
@@ -92,7 +94,7 @@ impl RuleEngine {
 }
 
 fn validate_registry_metadata(registry: &[RuleRegistration]) {
-    let mut seen_rule_ids = BTreeSet::<String>::new();
+    let mut seen_rule_ids = BTreeSet::<&'static str>::new();
 
     for registration in registry {
         let metadata = &registration.metadata;
@@ -114,7 +116,7 @@ fn validate_registry_metadata(registry: &[RuleRegistration]) {
             metadata.id
         );
         assert!(
-            seen_rule_ids.insert(metadata.id.to_string()),
+            seen_rule_ids.insert(metadata.id),
             "duplicate rule metadata id '{}'",
             metadata.id
         );
@@ -135,6 +137,55 @@ fn validate_registry_metadata(registry: &[RuleRegistration]) {
             "rule implementation id '{}' does not match metadata id '{}'",
             registration.rule.id(),
             metadata.id
+        );
+    }
+}
+
+fn validate_registry_integrity_with_catalog(registry: &[RuleRegistration]) {
+    let mut seen_rule_ids = BTreeSet::<&'static str>::new();
+
+    for registration in registry {
+        let metadata = &registration.metadata;
+        seen_rule_ids.insert(metadata.id);
+
+        let canonical = find_lint(metadata.id).unwrap_or_else(|| {
+            panic!(
+                "runtime rule '{}' is missing from canonical lint catalog",
+                metadata.id
+            )
+        });
+        assert!(
+            canonical.lifecycle.is_active(),
+            "runtime rule '{}' maps to non-active canonical lint metadata",
+            metadata.id
+        );
+        assert_eq!(
+            metadata.pack, canonical.pack,
+            "runtime rule '{}' pack '{}' diverges from canonical pack '{}'",
+            metadata.id, metadata.pack, canonical.pack
+        );
+        assert_eq!(
+            metadata.policy, canonical.policy,
+            "runtime rule '{}' policy '{}' diverges from canonical policy '{}'",
+            metadata.id, metadata.policy, canonical.policy
+        );
+        assert_eq!(
+            metadata.default_level, canonical.default_level,
+            "runtime rule '{}' default level '{}' diverges from canonical default level '{}'",
+            metadata.id, metadata.default_level, canonical.default_level
+        );
+        assert_eq!(
+            metadata.confidence, canonical.confidence,
+            "runtime rule '{}' confidence '{:?}' diverges from canonical confidence '{:?}'",
+            metadata.id, metadata.confidence, canonical.confidence
+        );
+    }
+
+    for lint in all_lints().iter().filter(|lint| lint.lifecycle.is_active()) {
+        assert!(
+            seen_rule_ids.contains(lint.id),
+            "canonical lint '{}' is missing from runtime rule registry",
+            lint.id
         );
     }
 }
@@ -165,9 +216,9 @@ mod tests {
 
     use crate::Rule;
     use crate::engine::context::RuleContext;
-    use crate::engine::registry::{RuleMetadata, RuleRegistration};
+    use crate::engine::registry::{RuleMetadata, RuleRegistration, full_registry};
 
-    use super::RuleEngine;
+    use super::{RuleEngine, validate_registry_integrity_with_catalog};
 
     struct TestRule;
 
@@ -335,6 +386,24 @@ fn main() {
                     "NOIR100",
                 ),
             ]);
+        }));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn full_registry_matches_canonical_lint_catalog() {
+        validate_registry_integrity_with_catalog(&full_registry());
+    }
+
+    #[test]
+    fn integrity_check_rejects_rule_missing_from_catalog() {
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            validate_registry_integrity_with_catalog(&[test_registration(
+                "NOIR999",
+                "noir_core",
+                aztec_lint_core::policy::CORRECTNESS,
+                "NOIR999",
+            )]);
         }));
         assert!(result.is_err());
     }
