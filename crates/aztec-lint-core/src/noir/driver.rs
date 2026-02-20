@@ -1,9 +1,13 @@
 use std::path::Path;
 
 use crate::noir::NoirFrontendError;
+#[cfg(feature = "noir-compiler")]
+use crate::output::ansi::{Colorizer, Stream};
 
 #[cfg(feature = "noir-compiler")]
 use std::collections::HashMap;
+#[cfg(feature = "noir-compiler")]
+use std::fmt::Write as _;
 #[cfg(feature = "noir-compiler")]
 use std::path::PathBuf;
 
@@ -16,7 +20,7 @@ use nargo_toml::{PackageSelection, find_file_manifest, resolve_workspace_from_to
 #[cfg(feature = "noir-compiler")]
 use noirc_driver::{CompileOptions, CrateId, check_crate, prepare_crate};
 #[cfg(feature = "noir-compiler")]
-use noirc_errors::{CustomDiagnostic, reporter::report_all};
+use noirc_errors::{CustomDiagnostic, reporter::line_and_column_from_span};
 #[cfg(feature = "noir-compiler")]
 use noirc_frontend::{hir::Context, parse_program, parser::ParserError};
 
@@ -278,11 +282,145 @@ fn parse_all_files(
 #[cfg(feature = "noir-compiler")]
 fn emit_diagnostics(file_manager: &FileManager, diagnostics: &[CustomDiagnostic]) {
     let mut normalized = diagnostics.to_vec();
+    let colors = Colorizer::for_stream(Stream::Stderr);
     for diagnostic in &mut normalized {
         normalize_diagnostic_messages(diagnostic);
     }
-    let file_map = file_manager.as_file_map();
-    let _ = report_all(file_map, &normalized, false, false);
+    let mut rendered = String::new();
+    for diagnostic in &normalized {
+        render_compiler_diagnostic(&mut rendered, file_manager, diagnostic, colors);
+        let _ = writeln!(rendered);
+    }
+    eprint!("{rendered}");
+}
+
+#[cfg(feature = "noir-compiler")]
+fn render_compiler_diagnostic(
+    output: &mut String,
+    file_manager: &FileManager,
+    diagnostic: &CustomDiagnostic,
+    colors: Colorizer,
+) {
+    let severity = diagnostic_kind_label(diagnostic);
+    let severity = match severity {
+        "error" => colors.error(severity),
+        "warning" => colors.warning(severity),
+        "note" => colors.note(severity),
+        _ => severity.to_string(),
+    };
+    let accent_arrow = colors.accent("-->");
+    let accent_bar = colors.accent("|");
+
+    let _ = writeln!(output, "{}: {}", severity, diagnostic.message);
+
+    let (location, label_message) = diagnostic
+        .secondaries
+        .first()
+        .map(|label| (label.location, Some(label.message.as_str())))
+        .unwrap_or_else(|| {
+            (
+                noirc_errors::Location::new(noirc_errors::Span::single_char(0), diagnostic.file),
+                None,
+            )
+        });
+
+    let file_id = location.file;
+    let file_path = file_manager
+        .path(file_id)
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|| format!("file#{}", file_id.as_usize()));
+
+    let line_col = file_manager.fetch_file(file_id).map(|source| {
+        let (line, col) = line_and_column_from_span(source, &location.span);
+        (line.max(1), col.max(1), source)
+    });
+
+    let (line, col, source) = line_col
+        .map(|(line, col, source)| (line, col, Some(source)))
+        .unwrap_or((1, 1, None));
+
+    let _ = writeln!(output, "  {} {}:{line}:{col}", accent_arrow, file_path);
+    let _ = writeln!(output, "   {accent_bar}");
+
+    let line_no = line.to_string();
+    let gutter_width = line_no.len();
+    if let Some(source) = source {
+        if let Some(line_text) = source.lines().nth(line.saturating_sub(1) as usize) {
+            let _ = writeln!(output, " {line_no:>gutter_width$} {accent_bar} {line_text}");
+            let marker = marker_line(line_text, col, location.span.start(), location.span.end());
+            let marker = match diagnostic_kind_label(diagnostic) {
+                "warning" => colors.warning(&marker),
+                "error" => colors.error(&marker),
+                _ => colors.note(&marker),
+            };
+            if let Some(message) = label_message.filter(|message| !message.trim().is_empty()) {
+                let _ = writeln!(
+                    output,
+                    " {:>gutter_width$} {accent_bar} {marker} {message}",
+                    ""
+                );
+            } else {
+                let _ = writeln!(output, " {:>gutter_width$} {accent_bar} {marker}", "");
+            }
+        } else {
+            let marker = match diagnostic_kind_label(diagnostic) {
+                "warning" => colors.warning("^"),
+                "error" => colors.error("^"),
+                _ => colors.note("^"),
+            };
+            let _ = writeln!(
+                output,
+                " {line_no:>gutter_width$} {accent_bar} <source unavailable>"
+            );
+            let _ = writeln!(output, " {:>gutter_width$} {accent_bar} {marker}", "");
+        }
+    } else {
+        let marker = match diagnostic_kind_label(diagnostic) {
+            "warning" => colors.warning("^"),
+            "error" => colors.error("^"),
+            _ => colors.note("^"),
+        };
+        let _ = writeln!(
+            output,
+            " {line_no:>gutter_width$} {accent_bar} <source unavailable>"
+        );
+        let _ = writeln!(output, " {:>gutter_width$} {accent_bar} {marker}", "");
+    }
+    let _ = writeln!(output, "   {accent_bar}");
+
+    let note_label = colors.note("note");
+    for secondary in diagnostic.secondaries.iter().skip(1) {
+        if !secondary.message.trim().is_empty() {
+            let _ = writeln!(output, "   = {note_label}: {}", secondary.message);
+        }
+    }
+    for note in &diagnostic.notes {
+        if !note.trim().is_empty() {
+            let _ = writeln!(output, "   = {note_label}: {note}");
+        }
+    }
+}
+
+#[cfg(feature = "noir-compiler")]
+fn marker_line(line_text: &str, col: u32, span_start: u32, span_end: u32) -> String {
+    let line_width = line_text.chars().count();
+    let col_zero = usize::try_from(col.saturating_sub(1)).unwrap_or(0);
+    let start = col_zero.min(line_width);
+    let span_len = usize::try_from(span_end.saturating_sub(span_start)).unwrap_or(1);
+    let marker_len = span_len.max(1);
+
+    format!("{}{}", " ".repeat(start), "^".repeat(marker_len))
+}
+
+#[cfg(feature = "noir-compiler")]
+fn diagnostic_kind_label(diagnostic: &CustomDiagnostic) -> &'static str {
+    use noirc_errors::DiagnosticKind;
+
+    match diagnostic.kind {
+        DiagnosticKind::Error | DiagnosticKind::Bug => "error",
+        DiagnosticKind::Warning => "warning",
+        DiagnosticKind::Info => "note",
+    }
 }
 
 #[cfg(feature = "noir-compiler")]

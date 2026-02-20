@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::diagnostics::{Confidence, Diagnostic, Severity, diagnostic_sort_key};
+use crate::output::ansi::{Colorizer, Stream};
 
 pub struct CheckTextReport<'a> {
     pub path: &'a Path,
@@ -19,6 +20,7 @@ pub fn render_check_report(report: CheckTextReport<'_>) -> String {
     let mut output = String::new();
     let mut diagnostics = report.diagnostics.to_vec();
     let mut source_cache = HashMap::<String, Option<Vec<String>>>::new();
+    let colors = Colorizer::for_stream(Stream::Stdout);
     diagnostics.sort_by_key(|diagnostic| diagnostic_sort_key(diagnostic));
 
     if report.show_run_header {
@@ -43,6 +45,7 @@ pub fn render_check_report(report: CheckTextReport<'_>) -> String {
             report.source_root,
             diagnostic,
             &mut source_cache,
+            colors,
         );
         let _ = writeln!(output);
     }
@@ -66,20 +69,30 @@ fn render_diagnostic(
     source_root: &Path,
     diagnostic: &Diagnostic,
     source_cache: &mut HashMap<String, Option<Vec<String>>>,
+    colors: Colorizer,
 ) {
+    let severity = severity_label(diagnostic.severity);
+    let severity = match diagnostic.severity {
+        Severity::Warning => colors.warning(severity),
+        Severity::Error => colors.error(severity),
+    };
+    let accent_bar = colors.accent("|");
+    let accent_arrow = colors.accent("-->");
+
     let _ = writeln!(
         output,
         "{}[{}]: {}",
-        severity_label(diagnostic.severity),
-        diagnostic.rule_id,
-        diagnostic.message
+        severity, diagnostic.rule_id, diagnostic.message
     );
     let _ = writeln!(
         output,
-        "  --> {}:{}:{}",
-        diagnostic.primary_span.file, diagnostic.primary_span.line, diagnostic.primary_span.col
+        "  {} {}:{}:{}",
+        accent_arrow,
+        diagnostic.primary_span.file,
+        diagnostic.primary_span.line,
+        diagnostic.primary_span.col
     );
-    let _ = writeln!(output, "   |");
+    let _ = writeln!(output, "   {accent_bar}");
 
     let line_no = diagnostic.primary_span.line.to_string();
     let gutter_width = line_no.len();
@@ -89,21 +102,30 @@ fn render_diagnostic(
         source_cache,
         diagnostic.primary_span.line,
     ) {
-        let _ = writeln!(output, " {line_no:>gutter_width$} | {line_text}");
+        let marker = match diagnostic.severity {
+            Severity::Warning => {
+                colors.warning(&marker_line(&line_text, diagnostic.primary_span.col))
+            }
+            Severity::Error => colors.error(&marker_line(&line_text, diagnostic.primary_span.col)),
+        };
+        let _ = writeln!(output, " {line_no:>gutter_width$} {accent_bar} {line_text}");
+        let _ = writeln!(output, " {:>gutter_width$} {accent_bar} {}", "", marker);
+    } else {
+        let marker = match diagnostic.severity {
+            Severity::Warning => colors.warning("^"),
+            Severity::Error => colors.error("^"),
+        };
         let _ = writeln!(
             output,
-            " {:>gutter_width$} | {}",
-            "",
-            marker_line(&line_text, diagnostic.primary_span.col)
+            " {line_no:>gutter_width$} {accent_bar} <source unavailable>"
         );
-    } else {
-        let _ = writeln!(output, " {line_no:>gutter_width$} | <source unavailable>");
-        let _ = writeln!(output, " {:>gutter_width$} | ^", "");
+        let _ = writeln!(output, " {:>gutter_width$} {accent_bar} {marker}", "");
     }
-    let _ = writeln!(output, "   |");
+    let _ = writeln!(output, "   {accent_bar}");
+    let note_label = colors.note("note");
     let _ = writeln!(
         output,
-        "   = note: confidence={}, policy={}",
+        "   = {note_label}: confidence={}, policy={}",
         confidence_label(diagnostic.confidence),
         diagnostic.policy
     );
@@ -113,11 +135,12 @@ fn render_diagnostic(
             .suppression_reason
             .as_deref()
             .unwrap_or("suppressed");
-        let _ = writeln!(output, "   = note: [suppressed: {reason}]");
+        let _ = writeln!(output, "   = {note_label}: [suppressed: {reason}]");
     }
 
+    let help_label = colors.help("help");
     for suggestion in &diagnostic.suggestions {
-        let _ = writeln!(output, "   = help: {suggestion}");
+        let _ = writeln!(output, "   = {help_label}: {suggestion}");
     }
 }
 
