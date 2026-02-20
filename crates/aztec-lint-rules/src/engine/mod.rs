@@ -1,7 +1,7 @@
 pub mod context;
 pub mod registry;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use aztec_lint_core::config::RuleLevel;
 use aztec_lint_core::diagnostics::{Diagnostic, Severity, sort_diagnostics};
@@ -31,12 +31,13 @@ impl Default for RuleEngine {
 
 impl RuleEngine {
     pub fn new() -> Self {
-        Self {
-            registry: full_registry(),
-        }
+        let registry = full_registry();
+        validate_registry_metadata(&registry);
+        Self { registry }
     }
 
     pub fn with_registry(registry: Vec<RuleRegistration>) -> Self {
+        validate_registry_metadata(&registry);
         Self { registry }
     }
 
@@ -86,6 +87,61 @@ impl RuleEngine {
     }
 }
 
+fn validate_registry_metadata(registry: &[RuleRegistration]) {
+    let mut seen_rule_ids = BTreeSet::<String>::new();
+
+    for registration in registry {
+        let metadata = &registration.metadata;
+        let normalized_rule_id = metadata.id.trim().to_ascii_uppercase();
+        assert!(
+            !normalized_rule_id.is_empty(),
+            "rule metadata id cannot be empty"
+        );
+        assert_eq!(
+            metadata.id, normalized_rule_id,
+            "rule metadata id '{}' must be canonical uppercase",
+            metadata.id
+        );
+        assert!(
+            normalized_rule_id
+                .chars()
+                .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_'),
+            "rule metadata id '{}' contains unsupported characters",
+            metadata.id
+        );
+        assert!(
+            seen_rule_ids.insert(metadata.id.to_string()),
+            "duplicate rule metadata id '{}'",
+            metadata.id
+        );
+
+        assert!(
+            is_pack_name_canonical(metadata.pack),
+            "rule metadata pack '{}' must be lowercase snake_case",
+            metadata.pack
+        );
+        assert!(
+            aztec_lint_core::policy::is_supported_policy(metadata.policy),
+            "rule metadata policy '{}' is unsupported",
+            metadata.policy
+        );
+        assert_eq!(
+            registration.rule.id(),
+            metadata.id,
+            "rule implementation id '{}' does not match metadata id '{}'",
+            registration.rule.id(),
+            metadata.id
+        );
+    }
+}
+
+fn is_pack_name_canonical(pack: &str) -> bool {
+    !pack.is_empty()
+        && pack
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
+}
+
 fn level_to_severity(level: RuleLevel) -> Severity {
     match level {
         RuleLevel::Allow => Severity::Warning,
@@ -97,8 +153,10 @@ fn level_to_severity(level: RuleLevel) -> Severity {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
 
     use aztec_lint_core::config::RuleLevel;
+    use aztec_lint_core::diagnostics::Confidence;
     use aztec_lint_core::model::ProjectModel;
 
     use crate::Rule;
@@ -167,5 +225,113 @@ fn main() {
             diagnostics[0].suppression_reason.as_deref(),
             Some("allow(NOIR100)")
         );
+    }
+
+    struct StaticRule {
+        id: &'static str,
+    }
+
+    impl Rule for StaticRule {
+        fn id(&self) -> &'static str {
+            self.id
+        }
+
+        fn run(
+            &self,
+            _ctx: &RuleContext<'_>,
+            _out: &mut Vec<aztec_lint_core::diagnostics::Diagnostic>,
+        ) {
+        }
+    }
+
+    fn test_registration(
+        metadata_id: &'static str,
+        pack: &'static str,
+        policy: &'static str,
+        impl_id: &'static str,
+    ) -> RuleRegistration {
+        RuleRegistration {
+            metadata: RuleMetadata {
+                id: metadata_id,
+                pack,
+                policy,
+                default_level: RuleLevel::Warn,
+                confidence: Confidence::Medium,
+            },
+            rule: Box::new(StaticRule { id: impl_id }),
+        }
+    }
+
+    #[test]
+    fn engine_rejects_non_canonical_rule_id_metadata() {
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            RuleEngine::with_registry(vec![test_registration(
+                "noir100",
+                "noir_core",
+                aztec_lint_core::policy::CORRECTNESS,
+                "noir100",
+            )]);
+        }));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn engine_rejects_unsupported_policy_metadata() {
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            RuleEngine::with_registry(vec![test_registration(
+                "NOIR100",
+                "noir_core",
+                "non_deterministic",
+                "NOIR100",
+            )]);
+        }));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn engine_rejects_non_canonical_pack_metadata() {
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            RuleEngine::with_registry(vec![test_registration(
+                "NOIR100",
+                "NoirCore",
+                aztec_lint_core::policy::CORRECTNESS,
+                "NOIR100",
+            )]);
+        }));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn engine_rejects_rule_and_metadata_id_mismatch() {
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            RuleEngine::with_registry(vec![test_registration(
+                "NOIR100",
+                "noir_core",
+                aztec_lint_core::policy::CORRECTNESS,
+                "NOIR101",
+            )]);
+        }));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn engine_rejects_duplicate_rule_ids() {
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            RuleEngine::with_registry(vec![
+                test_registration(
+                    "NOIR100",
+                    "noir_core",
+                    aztec_lint_core::policy::CORRECTNESS,
+                    "NOIR100",
+                ),
+                test_registration(
+                    "NOIR100",
+                    "noir_core",
+                    aztec_lint_core::policy::CORRECTNESS,
+                    "NOIR100",
+                ),
+            ]);
+        }));
+        assert!(result.is_err());
     }
 }
