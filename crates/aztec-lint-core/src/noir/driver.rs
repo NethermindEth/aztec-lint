@@ -117,6 +117,22 @@ pub fn load_and_check_project(
         });
     }
 
+    // Keep compiler warnings visible in text mode, similar to cargo/clippy behavior.
+    let compiler_warnings = diagnostics
+        .iter()
+        .filter(|diag| diag.is_warning())
+        .filter(|diag| {
+            context
+                .file_manager
+                .path(diag.file)
+                .is_some_and(|path| path.starts_with(&package.root_dir))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if !compiler_warnings.is_empty() {
+        emit_diagnostics(&context.file_manager, &compiler_warnings);
+    }
+
     Ok(NoirCheckedProject {
         root: canonicalize_best_effort(&package.root_dir),
         entry: canonicalize_best_effort(&package.entry_path),
