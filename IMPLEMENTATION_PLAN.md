@@ -406,7 +406,7 @@ Finish machine interfaces and CI ergonomics.
 ### Exit Criteria
 - `--format json|sarif` production-ready for CI pipelines.
 
-## 13. Phase 9 - `fix`, `changed-only`, and Operational Hardening
+## 13. Phase 9 - `fix`, `changed-only`, and Operational Hardening **COMPLETED**
 
 ### Objective
 Complete remaining CLI behavior and production hardening.
