@@ -6,6 +6,8 @@ pub mod fix;
 pub mod model;
 pub mod noir;
 pub mod output;
+#[cfg(feature = "plugin-api")]
+pub mod plugin;
 pub mod policy;
 pub mod vcs;
 
