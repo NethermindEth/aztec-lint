@@ -240,6 +240,23 @@ fn rebase_diagnostic_paths(
             span.file = rebase_file_path(&span.file, project_root, report_root);
         }
 
+        for note in &mut diagnostic.notes {
+            if let Some(span) = &mut note.span {
+                span.file = rebase_file_path(&span.file, project_root, report_root);
+            }
+        }
+
+        for help in &mut diagnostic.helps {
+            if let Some(span) = &mut help.span {
+                span.file = rebase_file_path(&span.file, project_root, report_root);
+            }
+        }
+
+        for suggestion in &mut diagnostic.structured_suggestions {
+            suggestion.span.file =
+                rebase_file_path(&suggestion.span.file, project_root, report_root);
+        }
+
         for fix in &mut diagnostic.fixes {
             fix.span.file = rebase_file_path(&fix.span.file, project_root, report_root);
         }
