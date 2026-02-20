@@ -24,12 +24,64 @@ pub enum FixSafety {
     NeedsReview,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Applicability {
+    MachineApplicable,
+    MaybeIncorrect,
+    HasPlaceholders,
+    Unspecified,
+}
+
+impl Applicability {
+    pub fn to_fix_safety(self) -> FixSafety {
+        match self {
+            Self::MachineApplicable => FixSafety::Safe,
+            Self::MaybeIncorrect | Self::HasPlaceholders | Self::Unspecified => {
+                FixSafety::NeedsReview
+            }
+        }
+    }
+}
+
+impl From<Applicability> for FixSafety {
+    fn from(value: Applicability) -> Self {
+        value.to_fix_safety()
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Fix {
     pub description: String,
     pub span: Span,
     pub replacement: String,
     pub safety: FixSafety,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct StructuredMessage {
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span: Option<Span>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct StructuredSuggestion {
+    pub message: String,
+    pub span: Span,
+    pub replacement: String,
+    pub applicability: Applicability,
+}
+
+impl StructuredSuggestion {
+    pub fn to_fix(&self) -> Fix {
+        Fix {
+            description: self.message.clone(),
+            span: self.span.clone(),
+            replacement: self.replacement.clone(),
+            safety: self.applicability.into(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -42,6 +94,12 @@ pub struct Diagnostic {
     pub primary_span: Span,
     pub secondary_spans: Vec<Span>,
     pub suggestions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<StructuredMessage>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub helps: Vec<StructuredMessage>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub structured_suggestions: Vec<StructuredSuggestion>,
     pub fixes: Vec<Fix>,
     pub suppressed: bool,
     pub suppression_reason: Option<String>,
@@ -51,7 +109,10 @@ pub struct Diagnostic {
 mod tests {
     use serde_json::{Value, json};
 
-    use super::{Confidence, Diagnostic, Fix, FixSafety, Severity};
+    use super::{
+        Applicability, Confidence, Diagnostic, Fix, FixSafety, Severity, StructuredMessage,
+        StructuredSuggestion,
+    };
     use crate::model::Span;
 
     #[test]
@@ -65,6 +126,20 @@ mod tests {
             primary_span: Span::new("src/contract.nr", 20, 30, 3, 5),
             secondary_spans: vec![Span::new("src/contract.nr", 5, 12, 2, 1)],
             suggestions: vec!["remove the sink".to_string()],
+            notes: vec![StructuredMessage {
+                message: "taint reached a public sink".to_string(),
+                span: Some(Span::new("src/contract.nr", 5, 12, 2, 1)),
+            }],
+            helps: vec![StructuredMessage {
+                message: "consider constraining the value before emitting".to_string(),
+                span: None,
+            }],
+            structured_suggestions: vec![StructuredSuggestion {
+                message: "replace with constrained sink".to_string(),
+                span: Span::new("src/contract.nr", 20, 30, 3, 5),
+                replacement: "self.safe_sink(value);".to_string(),
+                applicability: Applicability::MaybeIncorrect,
+            }],
             fixes: vec![Fix {
                 description: "replace with constrained sink".to_string(),
                 span: Span::new("src/contract.nr", 20, 30, 3, 5),
@@ -100,6 +175,37 @@ mod tests {
                 }
             ],
             "suggestions": ["remove the sink"],
+            "notes": [
+                {
+                    "message": "taint reached a public sink",
+                    "span": {
+                        "file": "src/contract.nr",
+                        "start": 5,
+                        "end": 12,
+                        "line": 2,
+                        "col": 1
+                    }
+                }
+            ],
+            "helps": [
+                {
+                    "message": "consider constraining the value before emitting"
+                }
+            ],
+            "structured_suggestions": [
+                {
+                    "message": "replace with constrained sink",
+                    "span": {
+                        "file": "src/contract.nr",
+                        "start": 20,
+                        "end": 30,
+                        "line": 3,
+                        "col": 5
+                    },
+                    "replacement": "self.safe_sink(value);",
+                    "applicability": "maybe_incorrect"
+                }
+            ],
             "fixes": [
                 {
                     "description": "replace with constrained sink",
@@ -132,6 +238,9 @@ mod tests {
             primary_span: Span::new("src/main.nr", 1, 2, 1, 1),
             secondary_spans: Vec::new(),
             suggestions: Vec::new(),
+            notes: Vec::new(),
+            helps: Vec::new(),
+            structured_suggestions: Vec::new(),
             fixes: Vec::new(),
             suppressed: true,
             suppression_reason: Some("allow(noir_core::NOIR100)".to_string()),
@@ -160,5 +269,31 @@ mod tests {
 }"#;
 
         assert_eq!(rendered, expected);
+    }
+
+    #[test]
+    fn machine_applicable_suggestion_maps_to_safe_fix() {
+        let suggestion = StructuredSuggestion {
+            message: "replace value".to_string(),
+            span: Span::new("src/main.nr", 10, 12, 2, 3),
+            replacement: "42".to_string(),
+            applicability: Applicability::MachineApplicable,
+        };
+
+        let fix = suggestion.to_fix();
+        assert_eq!(fix.safety, FixSafety::Safe);
+    }
+
+    #[test]
+    fn non_machine_applicable_suggestion_maps_to_needs_review_fix() {
+        let suggestion = StructuredSuggestion {
+            message: "replace value".to_string(),
+            span: Span::new("src/main.nr", 10, 12, 2, 3),
+            replacement: "42".to_string(),
+            applicability: Applicability::MaybeIncorrect,
+        };
+
+        let fix = suggestion.to_fix();
+        assert_eq!(fix.safety, FixSafety::NeedsReview);
     }
 }

@@ -4,7 +4,10 @@ pub mod types;
 pub use fingerprint::{
     diagnostic_fingerprint, message_hash, normalize_file_path, span_fingerprint,
 };
-pub use types::{Confidence, Diagnostic, Fix, FixSafety, Severity};
+pub use types::{
+    Applicability, Confidence, Diagnostic, Fix, FixSafety, Severity, StructuredMessage,
+    StructuredSuggestion,
+};
 
 pub fn diagnostic_sort_key(diagnostic: &Diagnostic) -> (String, u32, u32, String, String) {
     (
@@ -36,6 +39,9 @@ mod tests {
             primary_span: Span::new(file, start, end, 1, 1),
             secondary_spans: Vec::new(),
             suggestions: Vec::new(),
+            notes: Vec::new(),
+            helps: Vec::new(),
+            structured_suggestions: Vec::new(),
             fixes: Vec::new(),
             suppressed: false,
             suppression_reason: None,

@@ -350,6 +350,9 @@ mod tests {
             primary_span: Span::new(file, start, end, 1, 1),
             secondary_spans: Vec::new(),
             suggestions: Vec::new(),
+            notes: Vec::new(),
+            helps: Vec::new(),
+            structured_suggestions: Vec::new(),
             fixes: vec![Fix {
                 description: "replace span".to_string(),
                 span: Span::new(file, start, end, 1, 1),
