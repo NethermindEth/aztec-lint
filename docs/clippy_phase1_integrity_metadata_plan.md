@@ -29,7 +29,7 @@ This phase is metadata/integrity work only. No new rule semantics are added here
 
 ## Discrete Testable Phases
 
-### Phase 1: Canonical Metadata Types + Catalog Seed
+### Phase 1: Canonical Metadata Types + Catalog Seed **COMPLETE**
 Objective:
 - Introduce one canonical lint metadata model and seed it with current implemented rules.
 
@@ -61,7 +61,7 @@ Exit criteria:
 
 ---
 
-### Phase 2: Migrate Config and Catalog to Canonical Source
+### Phase 2: Migrate Config and Catalog to Canonical Source **COMPLETE**
 Objective:
 - Eliminate duplicated rule ID/default metadata in config and CLI catalog.
 
