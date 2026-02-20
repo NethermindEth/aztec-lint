@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use aztec_lint_core::diagnostics::Diagnostic;
-use aztec_lint_core::fix::{FixApplicationMode, FixApplicationReport, apply_fixes};
+use aztec_lint_core::fix::{FixApplicationMode, FixApplicationReport, FixSource, apply_fixes};
 use aztec_lint_core::output::json as json_output;
 use aztec_lint_core::output::sarif as sarif_output;
 use aztec_lint_core::output::text::{CheckTextReport, render_check_report};
@@ -152,6 +152,14 @@ fn render_fix_result(context: FixRenderContext<'_>) -> Result<(), CliError> {
                 context.fix_report.skipped.len(),
                 context.fix_report.files_changed,
             );
+            let (selected_explicit, selected_structured) =
+                source_breakdown_selected(context.fix_report);
+            let (skipped_explicit, skipped_structured) =
+                source_breakdown_skipped(context.fix_report);
+            println!(
+                "fixes_selected_explicit={} fixes_selected_structured={} fixes_skipped_explicit={} fixes_skipped_structured={}",
+                selected_explicit, selected_structured, skipped_explicit, skipped_structured,
+            );
 
             let rendered = render_check_report(CheckTextReport {
                 path: context.path,
@@ -188,4 +196,24 @@ fn render_fix_result(context: FixRenderContext<'_>) -> Result<(), CliError> {
             Ok(())
         }
     }
+}
+
+fn source_breakdown_selected(report: &FixApplicationReport) -> (usize, usize) {
+    let explicit = report
+        .selected
+        .iter()
+        .filter(|selected| selected.source == FixSource::ExplicitFix)
+        .count();
+    let structured = report.selected.len().saturating_sub(explicit);
+    (explicit, structured)
+}
+
+fn source_breakdown_skipped(report: &FixApplicationReport) -> (usize, usize) {
+    let explicit = report
+        .skipped
+        .iter()
+        .filter(|skipped| skipped.source == FixSource::ExplicitFix)
+        .count();
+    let structured = report.skipped.len().saturating_sub(explicit);
+    (explicit, structured)
 }

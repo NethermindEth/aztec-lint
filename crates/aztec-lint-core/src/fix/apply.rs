@@ -5,7 +5,7 @@ use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::diagnostics::{Confidence, Diagnostic, FixSafety, normalize_file_path};
+use crate::diagnostics::{Applicability, Confidence, Diagnostic, FixSafety, normalize_file_path};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FixApplicationMode {
@@ -145,6 +145,7 @@ fn pending_fixes(diagnostic: &Diagnostic) -> Vec<PendingFix> {
         diagnostic
             .structured_suggestions
             .iter()
+            .filter(|suggestion| suggestion.applicability == Applicability::MachineApplicable)
             .map(|suggestion| PendingFix {
                 source: FixSource::StructuredSuggestion,
                 span: suggestion.span.clone(),
@@ -664,7 +665,7 @@ mod tests {
     }
 
     #[test]
-    fn non_machine_structured_suggestion_is_skipped_as_unsafe() {
+    fn non_machine_structured_suggestion_is_not_considered_candidate() {
         let dir = tempdir().expect("tempdir should be created");
         let source_path = dir.path().join("src/main.nr");
         fs::create_dir_all(source_path.parent().expect("source parent should exist"))
@@ -683,12 +684,9 @@ mod tests {
 
         let report = apply_fixes(dir.path(), &diagnostics, FixApplicationMode::Apply)
             .expect("apply should succeed");
-        assert_eq!(report.total_candidates, 1);
+        assert_eq!(report.total_candidates, 0);
         assert!(report.selected.is_empty());
-        assert!(report.skipped.iter().any(|skipped| {
-            skipped.source == FixSource::StructuredSuggestion
-                && skipped.reason == SkippedFixReason::UnsafeFix
-        }));
+        assert!(report.skipped.is_empty());
         assert_eq!(
             fs::read_to_string(&source_path).expect("file should be readable"),
             "let x = 1;\n"

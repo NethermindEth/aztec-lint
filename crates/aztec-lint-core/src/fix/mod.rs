@@ -1,6 +1,6 @@
 pub mod apply;
 
 pub use apply::{
-    FixApplicationMode, FixApplicationReport, FixApplicationResult, FixError, SkippedFix,
-    SkippedFixReason, apply_fixes,
+    FixApplicationMode, FixApplicationReport, FixApplicationResult, FixError, FixSource,
+    SkippedFix, SkippedFixReason, apply_fixes,
 };
