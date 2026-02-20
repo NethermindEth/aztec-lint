@@ -1,11 +1,12 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use serde_json::json;
+use serde_json::{Map, Value, json};
 
 use crate::diagnostics::{
     Diagnostic, Severity, diagnostic_fingerprint, diagnostic_sort_key, normalize_file_path,
 };
+use crate::model::Span;
 
 const PARTIAL_FINGERPRINT_KEY: &str = "aztecLint/v1";
 
@@ -13,8 +14,11 @@ pub fn render_diagnostics(
     repo_root: &Path,
     diagnostics: &[&Diagnostic],
 ) -> Result<String, serde_json::Error> {
-    let mut sorted = diagnostics.to_vec();
-    sorted.sort_by_key(|diagnostic| diagnostic_sort_key(diagnostic));
+    let mut sorted = diagnostics
+        .iter()
+        .map(|diagnostic| normalize_for_sarif((**diagnostic).clone()))
+        .collect::<Vec<_>>();
+    sorted.sort_by_key(diagnostic_sort_key);
 
     let mut rule_descriptions = BTreeMap::<String, String>::new();
     for diagnostic in &sorted {
@@ -34,33 +38,10 @@ pub fn render_diagnostics(
         })
         .collect::<Vec<_>>();
 
+    let (artifacts, artifact_indices) = build_artifact_catalog(repo_root, &sorted);
     let results = sorted
         .iter()
-        .map(|diagnostic| {
-            json!({
-                "ruleId": diagnostic.rule_id,
-                "level": sarif_level(diagnostic.severity),
-                "message": { "text": diagnostic.message },
-                "locations": [{
-                    "physicalLocation": {
-                        "artifactLocation": { "uri": repository_relative_uri(repo_root, &diagnostic.primary_span.file) },
-                        "region": {
-                            "startLine": diagnostic.primary_span.line,
-                            "startColumn": diagnostic.primary_span.col,
-                        }
-                    }
-                }],
-                "partialFingerprints": {
-                    PARTIAL_FINGERPRINT_KEY: diagnostic_fingerprint(diagnostic),
-                },
-                "properties": {
-                    "confidence": diagnostic.confidence,
-                    "policy": diagnostic.policy,
-                    "suppressed": diagnostic.suppressed,
-                    "suppressionReason": diagnostic.suppression_reason,
-                }
-            })
-        })
+        .map(|diagnostic| render_result(repo_root, diagnostic, &artifact_indices))
         .collect::<Vec<_>>();
 
     let sarif = json!({
@@ -73,11 +54,286 @@ pub fn render_diagnostics(
                     "rules": rules,
                 }
             },
+            "artifacts": artifacts,
             "results": results,
         }]
     });
 
     serde_json::to_string_pretty(&sarif)
+}
+
+fn normalize_for_sarif(mut diagnostic: Diagnostic) -> Diagnostic {
+    diagnostic.suggestions.sort();
+    diagnostic.notes.sort_by_key(|note| {
+        if let Some(span) = &note.span {
+            (
+                0u8,
+                span.file.clone(),
+                span.line,
+                span.col,
+                span.start,
+                span.end,
+                note.message.clone(),
+            )
+        } else {
+            (
+                1u8,
+                String::new(),
+                0u32,
+                0u32,
+                0u32,
+                0u32,
+                note.message.clone(),
+            )
+        }
+    });
+    diagnostic.helps.sort_by_key(|help| {
+        if let Some(span) = &help.span {
+            (
+                0u8,
+                span.file.clone(),
+                span.line,
+                span.col,
+                span.start,
+                span.end,
+                help.message.clone(),
+            )
+        } else {
+            (
+                1u8,
+                String::new(),
+                0u32,
+                0u32,
+                0u32,
+                0u32,
+                help.message.clone(),
+            )
+        }
+    });
+    diagnostic.structured_suggestions.sort_by_key(|suggestion| {
+        (
+            normalize_file_path(&suggestion.span.file),
+            suggestion.span.start,
+            suggestion.span.end,
+            suggestion.message.clone(),
+            suggestion.replacement.clone(),
+            suggestion.applicability.as_str().to_string(),
+        )
+    });
+    diagnostic.fixes.sort_by_key(|fix| {
+        (
+            normalize_file_path(&fix.span.file),
+            fix.span.start,
+            fix.span.end,
+            fix.description.clone(),
+            fix.replacement.clone(),
+            format!("{:?}", fix.safety),
+        )
+    });
+    diagnostic
+}
+
+fn render_result(
+    repo_root: &Path,
+    diagnostic: &Diagnostic,
+    artifact_indices: &BTreeMap<String, usize>,
+) -> Value {
+    let mut result = Map::<String, Value>::new();
+    result.insert(
+        "ruleId".to_string(),
+        Value::String(diagnostic.rule_id.clone()),
+    );
+    result.insert(
+        "level".to_string(),
+        Value::String(sarif_level(diagnostic.severity).to_string()),
+    );
+    result.insert(
+        "message".to_string(),
+        json!({ "text": diagnostic.message.clone() }),
+    );
+    result.insert(
+        "locations".to_string(),
+        Value::Array(vec![json!({
+            "physicalLocation": {
+                "artifactLocation": artifact_location_value(
+                    &repository_relative_uri(repo_root, &diagnostic.primary_span.file),
+                    artifact_indices,
+                ),
+                "region": region_for_span(&diagnostic.primary_span),
+            }
+        })]),
+    );
+    result.insert(
+        "partialFingerprints".to_string(),
+        json!({
+            PARTIAL_FINGERPRINT_KEY: diagnostic_fingerprint(diagnostic),
+        }),
+    );
+    result.insert(
+        "properties".to_string(),
+        json!({
+            "confidence": diagnostic.confidence,
+            "policy": diagnostic.policy,
+            "suppressed": diagnostic.suppressed,
+            "suppressionReason": diagnostic.suppression_reason,
+            "legacySuggestions": diagnostic.suggestions,
+            "notes": diagnostic.notes,
+            "helps": diagnostic.helps,
+            "structuredSuggestions": diagnostic.structured_suggestions,
+            "legacyFixes": diagnostic.fixes,
+        }),
+    );
+
+    let fixes = sarif_fixes(repo_root, diagnostic, artifact_indices);
+    if !fixes.is_empty() {
+        result.insert("fixes".to_string(), Value::Array(fixes));
+    }
+
+    Value::Object(result)
+}
+
+fn sarif_fixes(
+    repo_root: &Path,
+    diagnostic: &Diagnostic,
+    artifact_indices: &BTreeMap<String, usize>,
+) -> Vec<Value> {
+    let mut fixes = Vec::<Value>::new();
+
+    let mut legacy_fixes = diagnostic.fixes.clone();
+    legacy_fixes.sort_by_key(|fix| {
+        (
+            normalize_file_path(&fix.span.file),
+            fix.span.start,
+            fix.span.end,
+            fix.description.clone(),
+            fix.replacement.clone(),
+            format!("{:?}", fix.safety),
+        )
+    });
+
+    for fix in legacy_fixes {
+        let uri = repository_relative_uri(repo_root, &fix.span.file);
+        fixes.push(json!({
+            "description": { "text": fix.description },
+            "artifactChanges": [{
+                "artifactLocation": artifact_location_value(&uri, artifact_indices),
+                "replacements": [{
+                    "deletedRegion": region_for_span(&fix.span),
+                    "insertedContent": { "text": fix.replacement },
+                }]
+            }],
+            "properties": {
+                "source": "legacy_fix",
+                "safety": fix.safety,
+            }
+        }));
+    }
+
+    let mut structured_suggestions = diagnostic.structured_suggestions.clone();
+    structured_suggestions.sort_by_key(|suggestion| {
+        (
+            normalize_file_path(&suggestion.span.file),
+            suggestion.span.start,
+            suggestion.span.end,
+            suggestion.message.clone(),
+            suggestion.replacement.clone(),
+            suggestion.applicability.as_str().to_string(),
+        )
+    });
+
+    for suggestion in structured_suggestions {
+        let uri = repository_relative_uri(repo_root, &suggestion.span.file);
+        fixes.push(json!({
+            "description": { "text": suggestion.message },
+            "artifactChanges": [{
+                "artifactLocation": artifact_location_value(&uri, artifact_indices),
+                "replacements": [{
+                    "deletedRegion": region_for_span(&suggestion.span),
+                    "insertedContent": { "text": suggestion.replacement },
+                }]
+            }],
+            "properties": {
+                "source": "structured_suggestion",
+                "applicability": suggestion.applicability,
+            }
+        }));
+    }
+
+    fixes
+}
+
+fn build_artifact_catalog(
+    repo_root: &Path,
+    diagnostics: &[Diagnostic],
+) -> (Vec<Value>, BTreeMap<String, usize>) {
+    let mut uris = BTreeSet::<String>::new();
+    for diagnostic in diagnostics {
+        uris.insert(repository_relative_uri(
+            repo_root,
+            &diagnostic.primary_span.file,
+        ));
+        for span in &diagnostic.secondary_spans {
+            uris.insert(repository_relative_uri(repo_root, &span.file));
+        }
+        for note in &diagnostic.notes {
+            if let Some(span) = &note.span {
+                uris.insert(repository_relative_uri(repo_root, &span.file));
+            }
+        }
+        for help in &diagnostic.helps {
+            if let Some(span) = &help.span {
+                uris.insert(repository_relative_uri(repo_root, &span.file));
+            }
+        }
+        for suggestion in &diagnostic.structured_suggestions {
+            uris.insert(repository_relative_uri(repo_root, &suggestion.span.file));
+        }
+        for fix in &diagnostic.fixes {
+            uris.insert(repository_relative_uri(repo_root, &fix.span.file));
+        }
+    }
+
+    let ordered = uris.into_iter().collect::<Vec<_>>();
+    let artifacts = ordered
+        .iter()
+        .map(|uri| {
+            json!({
+                "location": {
+                    "uri": uri,
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    let indices = ordered
+        .iter()
+        .enumerate()
+        .map(|(idx, uri)| (uri.clone(), idx))
+        .collect::<BTreeMap<_, _>>();
+    (artifacts, indices)
+}
+
+fn artifact_location_value(uri: &str, artifact_indices: &BTreeMap<String, usize>) -> Value {
+    let mut artifact_location = Map::<String, Value>::new();
+    artifact_location.insert("uri".to_string(), Value::String(uri.to_string()));
+    if let Some(index) = artifact_indices.get(uri) {
+        artifact_location.insert("index".to_string(), json!(*index));
+    }
+    Value::Object(artifact_location)
+}
+
+fn region_for_span(span: &Span) -> Value {
+    let width = span.end.saturating_sub(span.start);
+    let end_column = if width == 0 {
+        span.col
+    } else {
+        span.col.saturating_add(width)
+    };
+    json!({
+        "startLine": span.line,
+        "startColumn": span.col,
+        "endLine": span.line,
+        "endColumn": end_column,
+    })
 }
 
 fn repository_relative_uri(repo_root: &Path, file: &str) -> String {
@@ -118,7 +374,9 @@ mod tests {
     use serde_json::Value;
 
     use super::{PARTIAL_FINGERPRINT_KEY, render_diagnostics};
-    use crate::diagnostics::{Confidence, Diagnostic, Severity};
+    use crate::diagnostics::{
+        Applicability, Confidence, Diagnostic, Fix, FixSafety, Severity, StructuredSuggestion,
+    };
     use crate::model::Span;
 
     fn diagnostic(rule_id: &str, file: &str, start: u32, line: u32, message: &str) -> Diagnostic {
@@ -171,5 +429,92 @@ mod tests {
         let right = render_diagnostics(root, &[&first, &second]).expect("right render should pass");
 
         assert_eq!(left, right);
+    }
+
+    #[test]
+    fn sarif_output_includes_structured_and_legacy_fixes() {
+        let root = Path::new("/repo");
+        let mut issue = diagnostic("NOIR100", "src/main.nr", 10, 2, "message");
+        issue.fixes = vec![Fix {
+            description: "legacy fix".to_string(),
+            span: Span::new("src/main.nr", 10, 11, 2, 2),
+            replacement: "CONST".to_string(),
+            safety: FixSafety::Safe,
+        }];
+        issue.structured_suggestions = vec![StructuredSuggestion {
+            message: "structured fix".to_string(),
+            span: Span::new("src/main.nr", 10, 11, 2, 2),
+            replacement: "NAMED".to_string(),
+            applicability: Applicability::MachineApplicable,
+        }];
+
+        let rendered = render_diagnostics(root, &[&issue]).expect("sarif render should succeed");
+        let value: Value = serde_json::from_str(&rendered).expect("sarif should parse");
+        let fixes = value["runs"][0]["results"][0]["fixes"]
+            .as_array()
+            .expect("fixes should be present");
+
+        assert_eq!(fixes.len(), 2);
+        assert_eq!(
+            fixes[0]["properties"]["source"].as_str(),
+            Some("legacy_fix")
+        );
+        assert_eq!(
+            fixes[1]["properties"]["source"].as_str(),
+            Some("structured_suggestion")
+        );
+        assert_eq!(
+            fixes[1]["properties"]["applicability"].as_str(),
+            Some("machine_applicable")
+        );
+        assert_eq!(
+            value["runs"][0]["artifacts"][0]["location"]["uri"].as_str(),
+            Some("src/main.nr")
+        );
+    }
+
+    #[test]
+    fn sarif_properties_are_deterministically_normalized() {
+        let root = Path::new("/repo");
+        let mut issue = diagnostic("NOIR100", "src/main.nr", 10, 2, "message");
+        issue.suggestions = vec!["z legacy".to_string(), "a legacy".to_string()];
+        issue.notes = vec![
+            crate::diagnostics::StructuredMessage {
+                message: "z note".to_string(),
+                span: Some(Span::new("src/main.nr", 20, 21, 3, 5)),
+            },
+            crate::diagnostics::StructuredMessage {
+                message: "a note".to_string(),
+                span: Some(Span::new("src/main.nr", 10, 11, 2, 2)),
+            },
+        ];
+        issue.helps = vec![
+            crate::diagnostics::StructuredMessage {
+                message: "z help".to_string(),
+                span: None,
+            },
+            crate::diagnostics::StructuredMessage {
+                message: "a help".to_string(),
+                span: None,
+            },
+        ];
+
+        let rendered = render_diagnostics(root, &[&issue]).expect("sarif render should succeed");
+        let value: Value = serde_json::from_str(&rendered).expect("sarif should parse");
+        let props = &value["runs"][0]["results"][0]["properties"];
+
+        let legacy = props["legacySuggestions"]
+            .as_array()
+            .expect("legacy suggestions should be an array");
+        assert_eq!(legacy[0].as_str(), Some("a legacy"));
+        assert_eq!(legacy[1].as_str(), Some("z legacy"));
+
+        let notes = props["notes"].as_array().expect("notes should be an array");
+        assert_eq!(notes[0]["message"].as_str(), Some("a note"));
+        assert_eq!(notes[1]["message"].as_str(), Some("z note"));
+
+        let helps = props["helps"].as_array().expect("helps should be an array");
+        assert_eq!(helps[0]["message"].as_str(), Some("a help"));
+        assert_eq!(helps[1]["message"].as_str(), Some("z help"));
     }
 }
