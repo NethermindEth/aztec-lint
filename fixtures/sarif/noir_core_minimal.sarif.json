@@ -2,6 +2,13 @@
   "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
   "runs": [
     {
+      "artifacts": [
+        {
+          "location": {
+            "uri": "src/main.nr"
+          }
+        }
+      ],
       "results": [
         {
           "level": "warning",
@@ -9,9 +16,12 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
+                  "index": 0,
                   "uri": "src/main.nr"
                 },
                 "region": {
+                  "endColumn": 21,
+                  "endLine": 8,
                   "startColumn": 20,
                   "startLine": 8
                 }
@@ -26,7 +36,12 @@
           },
           "properties": {
             "confidence": "low",
+            "helps": [],
+            "legacyFixes": [],
+            "legacySuggestions": [],
+            "notes": [],
             "policy": "maintainability",
+            "structuredSuggestions": [],
             "suppressed": false,
             "suppressionReason": null
           },
@@ -38,9 +53,12 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
+                  "index": 0,
                   "uri": "src/main.nr"
                 },
                 "region": {
+                  "endColumn": 18,
+                  "endLine": 9,
                   "startColumn": 17,
                   "startLine": 9
                 }
@@ -55,7 +73,12 @@
           },
           "properties": {
             "confidence": "low",
+            "helps": [],
+            "legacyFixes": [],
+            "legacySuggestions": [],
+            "notes": [],
             "policy": "maintainability",
+            "structuredSuggestions": [],
             "suppressed": false,
             "suppressionReason": null
           },
