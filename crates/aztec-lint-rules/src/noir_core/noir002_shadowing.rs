@@ -3,7 +3,7 @@ use aztec_lint_core::policy::CORRECTNESS;
 
 use crate::Rule;
 use crate::engine::context::RuleContext;
-use crate::noir_core::util::is_ident_continue;
+use crate::noir_core::util::{find_function_scopes, is_ident_continue};
 
 pub struct Noir002ShadowingRule;
 
@@ -14,26 +14,35 @@ impl Rule for Noir002ShadowingRule {
 
     fn run(&self, ctx: &RuleContext<'_>, out: &mut Vec<Diagnostic>) {
         for file in ctx.files() {
-            let mut depth = 0usize;
-            let mut active = Vec::<(String, usize)>::new();
+            for scope in find_function_scopes(file.text()) {
+                let body_start = scope.body_start.saturating_add(1);
+                let body_end = scope.body_end.saturating_sub(1);
+                if body_start >= body_end || body_end > file.text().len() {
+                    continue;
+                }
+                let body = &file.text()[body_start..body_end];
+                let bindings = let_bindings_with_depth(body, body_start);
 
-            for binding in let_bindings_with_depth(file.text()) {
-                active.retain(|(_, declared_depth)| *declared_depth <= binding.depth);
+                let mut depth = 0usize;
+                let mut active = Vec::<(String, usize)>::new();
+                for binding in bindings {
+                    active.retain(|(_, declared_depth)| *declared_depth <= binding.depth);
 
-                if active.iter().any(|(existing, _)| existing == &binding.name) {
-                    out.push(ctx.diagnostic(
-                        self.id(),
-                        CORRECTNESS,
-                        format!("`{}` shadows an existing binding in scope", binding.name),
-                        file.span_for_range(binding.start, binding.start + binding.name.len()),
-                    ));
+                    if active.iter().any(|(existing, _)| existing == &binding.name) {
+                        out.push(ctx.diagnostic(
+                            self.id(),
+                            CORRECTNESS,
+                            format!("`{}` shadows an existing binding in scope", binding.name),
+                            file.span_for_range(binding.start, binding.start + binding.name.len()),
+                        ));
+                    }
+
+                    active.push((binding.name, binding.depth));
+                    depth = binding.depth;
                 }
 
-                active.push((binding.name, binding.depth));
-                depth = binding.depth;
+                active.retain(|(_, declared_depth)| *declared_depth <= depth);
             }
-
-            active.retain(|(_, declared_depth)| *declared_depth <= depth);
         }
     }
 }
@@ -45,7 +54,7 @@ struct Binding {
     depth: usize,
 }
 
-fn let_bindings_with_depth(source: &str) -> Vec<Binding> {
+fn let_bindings_with_depth(source: &str, offset: usize) -> Vec<Binding> {
     let bytes = source.as_bytes();
     let mut depth = 0usize;
     let mut idx = 0usize;
@@ -78,7 +87,7 @@ fn let_bindings_with_depth(source: &str) -> Vec<Binding> {
         };
         out.push(Binding {
             name,
-            start: name_start,
+            start: offset + name_start,
             depth,
         });
         idx = next_idx;
@@ -188,6 +197,23 @@ mod tests {
             vec![(
                 "src/main.nr".to_string(),
                 "fn main() { { let value = 1; } let value = 2; assert(value == 2); }".to_string(),
+            )],
+        );
+
+        let mut diagnostics = Vec::new();
+        Noir002ShadowingRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn ignores_same_binding_name_in_different_functions() {
+        let project = ProjectModel::default();
+        let context = RuleContext::from_sources(
+            &project,
+            vec![(
+                "src/main.nr".to_string(),
+                "fn a() { let notes = 1; assert(notes == 1); } fn b() { let notes = 2; assert(notes == 2); }".to_string(),
             )],
         );
 
