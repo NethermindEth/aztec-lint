@@ -186,6 +186,7 @@ fn render_result(
             let rendered = render_check_report(CheckTextReport {
                 path,
                 source_root: sarif_root,
+                show_run_header: true,
                 profile,
                 changed_only,
                 active_rules: effective_rules,

@@ -8,6 +8,7 @@ use crate::diagnostics::{Confidence, Diagnostic, Severity, diagnostic_sort_key};
 pub struct CheckTextReport<'a> {
     pub path: &'a Path,
     pub source_root: &'a Path,
+    pub show_run_header: bool,
     pub profile: &'a str,
     pub changed_only: bool,
     pub active_rules: usize,
@@ -20,14 +21,16 @@ pub fn render_check_report(report: CheckTextReport<'_>) -> String {
     let mut source_cache = HashMap::<String, Option<Vec<String>>>::new();
     diagnostics.sort_by_key(|diagnostic| diagnostic_sort_key(diagnostic));
 
-    let _ = writeln!(
-        output,
-        "checked={} profile={} changed_only={} active_rules={}",
-        report.path.display(),
-        report.profile,
-        report.changed_only,
-        report.active_rules
-    );
+    if report.show_run_header {
+        let _ = writeln!(
+            output,
+            "checked={} profile={} changed_only={} active_rules={}",
+            report.path.display(),
+            report.profile,
+            report.changed_only,
+            report.active_rules
+        );
+    }
 
     if diagnostics.is_empty() {
         let _ = writeln!(output, "No diagnostics.");
@@ -199,6 +202,7 @@ mod tests {
         let report = CheckTextReport {
             path: Path::new("."),
             source_root: Path::new("."),
+            show_run_header: true,
             profile: "default",
             changed_only: false,
             active_rules: 2,
@@ -233,6 +237,7 @@ mod tests {
         let report = CheckTextReport {
             path: root,
             source_root: root,
+            show_run_header: true,
             profile: "default",
             changed_only: false,
             active_rules: 1,

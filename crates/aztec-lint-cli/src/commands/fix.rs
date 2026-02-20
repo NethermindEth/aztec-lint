@@ -5,6 +5,7 @@ use aztec_lint_core::diagnostics::Diagnostic;
 use aztec_lint_core::fix::{FixApplicationMode, FixApplicationReport, apply_fixes};
 use aztec_lint_core::output::json as json_output;
 use aztec_lint_core::output::sarif as sarif_output;
+use aztec_lint_core::output::text::{CheckTextReport, render_check_report};
 use clap::Args;
 
 use crate::cli::{CliError, CommonLintFlags, OutputFormat};
@@ -48,7 +49,8 @@ pub fn run(args: FixArgs) -> Result<ExitCode, CliError> {
     let fix_report = apply_fixes(initial.report_root.as_path(), &candidates, fix_mode)
         .map_err(|source| CliError::Runtime(format!("failed to apply fixes: {source}")))?;
 
-    let final_run = if args.dry_run {
+    let should_rerun_after_fix = !args.dry_run && !fix_report.selected.is_empty();
+    let final_run = if !should_rerun_after_fix {
         initial.clone()
     } else {
         collect_lint_run(
@@ -151,35 +153,16 @@ fn render_fix_result(context: FixRenderContext<'_>) -> Result<(), CliError> {
                 context.fix_report.files_changed,
             );
 
-            if context.diagnostics.is_empty() {
-                println!("No diagnostics.");
-                return Ok(());
-            }
-
-            for diagnostic in context.diagnostics {
-                let suppression = if diagnostic.suppressed {
-                    diagnostic
-                        .suppression_reason
-                        .as_deref()
-                        .map(|reason| format!(" [suppressed: {reason}]"))
-                        .unwrap_or_else(|| " [suppressed]".to_string())
-                } else {
-                    String::new()
-                };
-                println!(
-                    "{}:{}:{}: {}[{}] {}{}",
-                    diagnostic.primary_span.file,
-                    diagnostic.primary_span.line,
-                    diagnostic.primary_span.col,
-                    match diagnostic.severity {
-                        aztec_lint_core::diagnostics::Severity::Warning => "warning",
-                        aztec_lint_core::diagnostics::Severity::Error => "error",
-                    },
-                    diagnostic.rule_id,
-                    diagnostic.message,
-                    suppression,
-                );
-            }
+            let rendered = render_check_report(CheckTextReport {
+                path: context.path,
+                source_root: context.sarif_root,
+                show_run_header: false,
+                profile: context.profile,
+                changed_only: context.changed_only,
+                active_rules: context.effective_rules,
+                diagnostics: context.diagnostics,
+            });
+            print!("{rendered}");
             Ok(())
         }
         OutputFormat::Json => {
