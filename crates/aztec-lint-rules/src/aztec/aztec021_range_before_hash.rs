@@ -2,7 +2,7 @@ use aztec_lint_aztec::SourceUnit;
 use aztec_lint_aztec::taint::{
     TaintSinkKind, TaintSourceKind, analyze_intra_procedural, build_def_use_graph,
 };
-use aztec_lint_core::diagnostics::Diagnostic;
+use aztec_lint_core::diagnostics::{Applicability, Diagnostic};
 use aztec_lint_core::policy::SOUNDNESS;
 
 use crate::Rule;
@@ -43,15 +43,25 @@ impl Rule for Aztec021RangeBeforeHashRule {
                 continue;
             }
 
-            out.push(ctx.diagnostic(
-                self.id(),
-                SOUNDNESS,
-                format!(
-                    "missing range constraint before hashing/serialization of `{}`",
-                    flow.variable
+            let variable = flow.variable;
+            let sink_span = flow.sink_span;
+            out.push(
+                ctx.diagnostic(
+                    self.id(),
+                    SOUNDNESS,
+                    format!(
+                        "missing range constraint before hashing/serialization of `{variable}`"
+                    ),
+                    sink_span.clone(),
+                )
+                .help("constrain secret-derived values before hashing or serialization")
+                .span_suggestion(
+                    sink_span,
+                    format!("add an explicit range check for `{variable}` before this operation"),
+                    format!("assert_max_bits({variable}, <BITS>);"),
+                    Applicability::MaybeIncorrect,
                 ),
-                flow.sink_span,
-            ));
+            );
         }
     }
 }

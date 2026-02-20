@@ -121,7 +121,7 @@ Target files:
 - `crates/aztec-lint-core/src/output/json.rs`
 - `crates/aztec-lint-core/src/output/sarif.rs`
 
-### Phase 5: Fix pipeline alignment
+### Phase 5: Fix pipeline alignment **COMPLETE**
 1. Convert machine-applicable suggestions into fix candidates automatically.
 2. Keep explicit `Fix` support for rules that construct edits directly.
 3. Resolve overlap deterministically (already present), but include suggestion-source provenance.
@@ -131,7 +131,7 @@ Target files:
 - `crates/aztec-lint-core/src/fix/apply.rs`
 - `crates/aztec-lint-cli/src/commands/fix.rs`
 
-### Phase 6: Rule migration and quality controls
+### Phase 6: Rule migration and quality controls **COMPLETE**
 1. Start with a small pilot set (`NOIR001`, `NOIR100`, `AZTEC021`) to emit structured suggestions.
 2. Add per-rule tests for:
    - no suggestion when confidence is insufficient

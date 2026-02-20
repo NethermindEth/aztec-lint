@@ -1,0 +1,22 @@
+checked=<FIXTURE> profile=default changed_only=false active_rules=9
+warning[NOIR100]: magic number `3` should be named
+  --> src/main.nr:8:20
+   |
+ 8 |     let y = helper(3);
+   |                    ^
+   |                    ^ help: replace `3` with a named constant; replace with `NAMED_CONSTANT`
+   |
+   = note: confidence=low, policy=maintainability
+   = help: extract this literal into a named constant for readability
+
+warning[NOIR100]: magic number `6` should be named
+  --> src/main.nr:9:17
+   |
+ 9 |     assert(y == 6);
+   |                 ^
+   |                 ^ help: replace `6` with a named constant; replace with `NAMED_CONSTANT`
+   |
+   = note: confidence=low, policy=maintainability
+   = help: extract this literal into a named constant for readability
+
+diagnostics=2 errors=0 warnings=2

@@ -11,6 +11,38 @@
       ],
       "results": [
         {
+          "fixes": [
+            {
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "index": 0,
+                    "uri": "src/main.nr"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "endColumn": 21,
+                        "endLine": 8,
+                        "startColumn": 20,
+                        "startLine": 8
+                      },
+                      "insertedContent": {
+                        "text": "NAMED_CONSTANT"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "description": {
+                "text": "replace `3` with a named constant"
+              },
+              "properties": {
+                "applicability": "maybe_incorrect",
+                "source": "structured_suggestion"
+              }
+            }
+          ],
           "level": "warning",
           "locations": [
             {
@@ -36,18 +68,67 @@
           },
           "properties": {
             "confidence": "low",
-            "helps": [],
+            "helps": [
+              {
+                "message": "extract this literal into a named constant for readability"
+              }
+            ],
             "legacyFixes": [],
             "legacySuggestions": [],
             "notes": [],
             "policy": "maintainability",
-            "structuredSuggestions": [],
+            "structuredSuggestions": [
+              {
+                "applicability": "maybe_incorrect",
+                "message": "replace `3` with a named constant",
+                "replacement": "NAMED_CONSTANT",
+                "span": {
+                  "col": 20,
+                  "end": 97,
+                  "file": "src/main.nr",
+                  "line": 8,
+                  "start": 96
+                }
+              }
+            ],
             "suppressed": false,
             "suppressionReason": null
           },
           "ruleId": "NOIR100"
         },
         {
+          "fixes": [
+            {
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "index": 0,
+                    "uri": "src/main.nr"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "endColumn": 18,
+                        "endLine": 9,
+                        "startColumn": 17,
+                        "startLine": 9
+                      },
+                      "insertedContent": {
+                        "text": "NAMED_CONSTANT"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "description": {
+                "text": "replace `6` with a named constant"
+              },
+              "properties": {
+                "applicability": "maybe_incorrect",
+                "source": "structured_suggestion"
+              }
+            }
+          ],
           "level": "warning",
           "locations": [
             {
@@ -73,12 +154,29 @@
           },
           "properties": {
             "confidence": "low",
-            "helps": [],
+            "helps": [
+              {
+                "message": "extract this literal into a named constant for readability"
+              }
+            ],
             "legacyFixes": [],
             "legacySuggestions": [],
             "notes": [],
             "policy": "maintainability",
-            "structuredSuggestions": [],
+            "structuredSuggestions": [
+              {
+                "applicability": "maybe_incorrect",
+                "message": "replace `6` with a named constant",
+                "replacement": "NAMED_CONSTANT",
+                "span": {
+                  "col": 17,
+                  "end": 117,
+                  "file": "src/main.nr",
+                  "line": 9,
+                  "start": 116
+                }
+              }
+            ],
             "suppressed": false,
             "suppressionReason": null
           },

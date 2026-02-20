@@ -423,6 +423,23 @@ fn check_json_output_is_deterministic() {
 }
 
 #[test]
+fn check_text_output_matches_golden_snapshot_with_suggestions() {
+    let fixture = fixture_dir("noir_core/minimal");
+    let expected_path = fixture_dir("text/noir_core_minimal_with_suggestions.txt");
+    let expected = fs::read_to_string(expected_path).expect("snapshot should be readable");
+
+    let mut cmd = cli_bin();
+    cmd.args(["check", fixture.to_string_lossy().as_ref()]);
+    let output = cmd.output().expect("command should execute");
+    assert_eq!(output.status.code(), Some(1), "run should report findings");
+
+    let actual = String::from_utf8_lossy(&output.stdout);
+    let fixture_display = fixture.to_string_lossy();
+    let normalized = actual.replace(fixture_display.as_ref(), "<FIXTURE>");
+    assert_eq!(normalized.trim_end(), expected.trim_end());
+}
+
+#[test]
 fn check_sarif_output_matches_golden_snapshot() {
     let fixture = fixture_dir("noir_core/minimal");
     let expected_path = fixture_dir("sarif/noir_core_minimal.sarif.json");

@@ -56,7 +56,18 @@ fn aztec003_fixture_pair_and_suppression() {
 
 #[test]
 fn aztec021_fixture_pair_and_scoped_suppression() {
-    assert!(!run_rule("AZTEC021", &fixture_source("aztec021_positive.nr")).is_empty());
+    let positive = run_rule("AZTEC021", &fixture_source("aztec021_positive.nr"));
+    assert!(!positive.is_empty());
+    assert!(
+        positive
+            .iter()
+            .all(|diagnostic| !diagnostic.structured_suggestions.is_empty())
+    );
+    assert!(positive.iter().all(|diagnostic| {
+        diagnostic.structured_suggestions.iter().all(|suggestion| {
+            suggestion.applicability == aztec_lint_core::diagnostics::Applicability::MaybeIncorrect
+        })
+    }));
     assert!(run_rule("AZTEC021", &fixture_source("aztec021_negative.nr")).is_empty());
 
     let suppressed = run_rule("AZTEC021", &fixture_source("aztec021_suppressed.nr"));

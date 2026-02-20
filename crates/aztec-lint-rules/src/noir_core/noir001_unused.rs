@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use aztec_lint_core::diagnostics::Diagnostic;
+use aztec_lint_core::diagnostics::{Applicability, Diagnostic};
 use aztec_lint_core::policy::CORRECTNESS;
 
 use crate::Rule;
@@ -30,15 +30,25 @@ impl Rule for Noir001UnusedRule {
                         continue;
                     }
                     if count_identifier_occurrences(source, &name) <= 1 {
-                        out.push(ctx.diagnostic(
-                            self.id(),
-                            CORRECTNESS,
-                            format!("`{name}` is declared but never used"),
-                            file.span_for_range(
-                                declaration_offset,
-                                declaration_offset + name.len(),
+                        let span = file
+                            .span_for_range(declaration_offset, declaration_offset + name.len());
+                        out.push(
+                            ctx.diagnostic(
+                                self.id(),
+                                CORRECTNESS,
+                                format!("`{name}` is declared but never used"),
+                                span.clone(),
+                            )
+                            .help(
+                                "prefix intentionally unused local bindings with `_` to silence this warning",
+                            )
+                            .span_suggestion(
+                                span,
+                                format!("prefix `{name}` with `_`"),
+                                format!("_{name}"),
+                                Applicability::MachineApplicable,
                             ),
-                        ));
+                        );
                     }
                 }
 
@@ -51,15 +61,17 @@ impl Rule for Noir001UnusedRule {
                         continue;
                     }
                     if count_identifier_occurrences(source, &name) <= 1 {
-                        out.push(ctx.diagnostic(
-                            self.id(),
-                            CORRECTNESS,
-                            format!("import `{name}` is never used"),
-                            file.span_for_range(
-                                declaration_offset,
-                                declaration_offset + name.len(),
+                        out.push(
+                            ctx.diagnostic(
+                                self.id(),
+                                CORRECTNESS,
+                                format!("import `{name}` is never used"),
+                                file.span_for_range(declaration_offset, declaration_offset + name.len()),
+                            )
+                            .note(
+                                "no automatic fix is emitted for imports because aliasing or path changes can alter semantics",
                             ),
-                        ));
+                        );
                     }
                 }
 
@@ -142,6 +154,11 @@ fn parse_single_import_binding(part: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use aztec_lint_core::fix::{FixApplicationMode, FixSource, apply_fixes};
     use aztec_lint_core::model::ProjectModel;
 
     use crate::Rule;
@@ -199,5 +216,88 @@ mod tests {
         Noir001UnusedRule.run(&context, &mut diagnostics);
 
         assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn emits_machine_applicable_suggestion_for_unused_local_binding() {
+        let project = ProjectModel::default();
+        let context = RuleContext::from_sources(
+            &project,
+            vec![(
+                "src/main.nr".to_string(),
+                "fn main() { let value = 7; }".to_string(),
+            )],
+        );
+
+        let mut diagnostics = Vec::new();
+        Noir001UnusedRule.run(&context, &mut diagnostics);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].structured_suggestions.len(), 1);
+        assert_eq!(
+            diagnostics[0].structured_suggestions[0].applicability,
+            aztec_lint_core::diagnostics::Applicability::MachineApplicable
+        );
+        assert_eq!(
+            diagnostics[0].structured_suggestions[0].replacement,
+            "_value"
+        );
+    }
+
+    #[test]
+    fn omits_autofix_for_unused_import_when_confidence_is_insufficient() {
+        let project = ProjectModel::default();
+        let context = RuleContext::from_sources(
+            &project,
+            vec![(
+                "src/main.nr".to_string(),
+                "use math::add;\nfn main() {}".to_string(),
+            )],
+        );
+
+        let mut diagnostics = Vec::new();
+        Noir001UnusedRule.run(&context, &mut diagnostics);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].structured_suggestions.is_empty());
+    }
+
+    #[test]
+    fn machine_applicable_suggestion_produces_valid_fix_output() {
+        let project = ProjectModel::default();
+        let source_text = "fn main() { let value = 7; }\n";
+        let context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), source_text.to_string())],
+        );
+        let mut diagnostics = Vec::new();
+        Noir001UnusedRule.run(&context, &mut diagnostics);
+        assert_eq!(diagnostics.len(), 1);
+
+        let temp_root = temp_test_root("noir001_fix");
+        let source_path = temp_root.join("src/main.nr");
+        fs::create_dir_all(source_path.parent().expect("source parent should exist"))
+            .expect("source directory should exist");
+        fs::write(&source_path, source_text).expect("source file should be written");
+
+        let report = apply_fixes(&temp_root, &diagnostics, FixApplicationMode::Apply)
+            .expect("fix application should succeed");
+        assert_eq!(report.selected.len(), 1);
+        assert_eq!(report.selected[0].source, FixSource::StructuredSuggestion);
+
+        let updated = fs::read_to_string(&source_path).expect("updated source should be readable");
+        assert!(updated.contains("let _value = 7;"));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    fn temp_test_root(prefix: &str) -> PathBuf {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("aztec_lint_{prefix}_{timestamp}"));
+        fs::create_dir_all(&path).expect("temp root should be created");
+        path
     }
 }

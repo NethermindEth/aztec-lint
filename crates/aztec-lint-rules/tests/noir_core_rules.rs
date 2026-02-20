@@ -1,8 +1,11 @@
 use std::fs;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use aztec_lint_core::diagnostics::Diagnostic;
+use aztec_lint_core::fix::{FixApplicationMode, apply_fixes};
 use aztec_lint_core::model::ProjectModel;
+use aztec_lint_core::output::text::{CheckTextReport, render_check_report};
 use aztec_lint_rules::Rule;
 use aztec_lint_rules::engine::context::RuleContext;
 use aztec_lint_rules::noir_core::noir001_unused::Noir001UnusedRule;
@@ -89,4 +92,58 @@ fn noir120_fixture_pair() {
     let rule = Noir120NestingRule;
     assert!(!run_rule(&rule, &fixture_source("noir120_positive.nr")).is_empty());
     assert!(run_rule(&rule, &fixture_source("noir120_negative.nr")).is_empty());
+}
+
+#[test]
+fn noir100_maybe_incorrect_suggestions_are_rendered_but_not_auto_applied() {
+    let rule = Noir100MagicNumbersRule;
+    let source = "fn main() { let fee = 42; }\n";
+    let diagnostics = run_rule(&rule, source);
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].structured_suggestions.len(), 1);
+    assert_eq!(
+        diagnostics[0].structured_suggestions[0].applicability,
+        aztec_lint_core::diagnostics::Applicability::MaybeIncorrect
+    );
+
+    let temp_root = temp_test_root("noir100_text_and_fix");
+    let source_path = temp_root.join("src/main.nr");
+    fs::create_dir_all(source_path.parent().expect("source parent should exist"))
+        .expect("source directory should exist");
+    fs::write(&source_path, source).expect("source file should be written");
+
+    let rendered = render_check_report(CheckTextReport {
+        path: temp_root.as_path(),
+        source_root: temp_root.as_path(),
+        show_run_header: false,
+        profile: "default",
+        changed_only: false,
+        active_rules: 1,
+        diagnostics: &[&diagnostics[0]],
+    });
+    assert!(
+        rendered.contains("replace with `NAMED_CONSTANT`"),
+        "text output should include structured suggestion: {rendered}"
+    );
+
+    let report = apply_fixes(temp_root.as_path(), &diagnostics, FixApplicationMode::Apply)
+        .expect("fix application should succeed");
+    assert_eq!(report.total_candidates, 0);
+    assert!(report.selected.is_empty());
+    assert_eq!(
+        fs::read_to_string(&source_path).expect("source should remain readable"),
+        source
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+fn temp_test_root(prefix: &str) -> PathBuf {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock should be after unix epoch")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("aztec_lint_{prefix}_{timestamp}"));
+    fs::create_dir_all(&path).expect("temp root should be created");
+    path
 }

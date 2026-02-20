@@ -1,4 +1,4 @@
-use aztec_lint_core::diagnostics::Diagnostic;
+use aztec_lint_core::diagnostics::{Applicability, Diagnostic};
 use aztec_lint_core::policy::MAINTAINABILITY;
 
 use crate::Rule;
@@ -31,12 +31,22 @@ impl Rule for Noir100MagicNumbersRule {
                     }
 
                     let start = offset + column;
-                    out.push(ctx.diagnostic(
-                        self.id(),
-                        MAINTAINABILITY,
-                        format!("magic number `{literal}` should be named"),
-                        file.span_for_range(start, start + literal.len()),
-                    ));
+                    let span = file.span_for_range(start, start + literal.len());
+                    out.push(
+                        ctx.diagnostic(
+                            self.id(),
+                            MAINTAINABILITY,
+                            format!("magic number `{literal}` should be named"),
+                            span.clone(),
+                        )
+                        .help("extract this literal into a named constant for readability")
+                        .span_suggestion(
+                            span,
+                            format!("replace `{literal}` with a named constant"),
+                            "NAMED_CONSTANT".to_string(),
+                            Applicability::MaybeIncorrect,
+                        ),
+                    );
                 }
 
                 offset += line.len() + 1;
@@ -73,6 +83,11 @@ mod tests {
         Noir100MagicNumbersRule.run(&context, &mut diagnostics);
 
         assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].structured_suggestions.len(), 1);
+        assert_eq!(
+            diagnostics[0].structured_suggestions[0].applicability,
+            aztec_lint_core::diagnostics::Applicability::MaybeIncorrect
+        );
     }
 
     #[test]
