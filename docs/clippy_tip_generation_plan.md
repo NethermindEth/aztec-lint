@@ -72,7 +72,7 @@ Reference:
 
 ## Implementation Plan
 
-### Phase 1: Diagnostic model parity with Clippy concepts
+### Phase 1: Diagnostic model parity with Clippy concepts **COMPLETE**
 1. Add `Applicability` enum to core diagnostics.
 2. Add structured suggestion type:
    - span
