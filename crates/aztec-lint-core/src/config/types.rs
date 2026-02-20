@@ -262,6 +262,13 @@ pub fn builtin_profiles() -> BTreeMap<String, Profile> {
             },
         ),
         (
+            "noir".to_string(),
+            Profile {
+                extends: vec!["default".to_string()],
+                ruleset: Vec::new(),
+            },
+        ),
+        (
             "aztec".to_string(),
             Profile {
                 extends: vec!["default".to_string()],
@@ -428,6 +435,11 @@ commitment_requires = ["contract_address", "note_type"]
             .resolve_profile("aztec")
             .expect("aztec profile should resolve");
         assert_eq!(resolved.rulesets, vec!["noir_core", "aztec_pack"]);
+
+        let noir_resolved = config
+            .resolve_profile("noir")
+            .expect("noir profile should resolve");
+        assert_eq!(noir_resolved.rulesets, vec!["noir_core"]);
 
         assert_eq!(config.aztec.contract_attribute, "aztec");
         assert_eq!(config.aztec.external_attribute, "external");
