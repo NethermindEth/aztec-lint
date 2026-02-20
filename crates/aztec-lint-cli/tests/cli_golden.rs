@@ -39,6 +39,37 @@ fn create_git_project(main_source: &str) -> (tempfile::TempDir, PathBuf) {
     (workspace, project)
 }
 
+fn create_workspace_with_members() -> (tempfile::TempDir, PathBuf) {
+    let workspace = tempdir().expect("temp dir should be created");
+    let root = workspace.path().join("workspace");
+    fs::create_dir_all(&root).expect("workspace root should be created");
+    fs::write(
+        root.join("Nargo.toml"),
+        "[workspace]\nmembers=[\"a\",\"b\"]\n",
+    )
+    .expect("workspace nargo should be written");
+
+    for member in ["a", "b"] {
+        let member_root = root.join(member);
+        fs::create_dir_all(member_root.join("src")).expect("member src should be created");
+        fs::write(
+            member_root.join("Nargo.toml"),
+            format!(
+                "[package]\nname=\"{member}\"\ntype=\"bin\"\nauthors=[\"\"]\n",
+                member = member
+            ),
+        )
+        .expect("member nargo should be written");
+        fs::write(
+            member_root.join("src/main.nr"),
+            "fn main() { let x = 1; assert(x == 1); }\n",
+        )
+        .expect("member source should be written");
+    }
+
+    (workspace, root)
+}
+
 fn git(root: &Path, args: &[&str]) {
     let output = Command::new("git")
         .arg("-C")
@@ -509,4 +540,12 @@ fn check_without_discoverable_project_returns_internal_error() {
     let mut cmd = cli_bin();
     cmd.arg("check").arg(workspace.path());
     cmd.assert().code(2);
+}
+
+#[test]
+fn check_workspace_root_discovers_member_projects() {
+    let (_workspace, root) = create_workspace_with_members();
+    let mut cmd = cli_bin();
+    cmd.arg("check").arg(&root);
+    cmd.assert().code(0);
 }

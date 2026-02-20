@@ -16,6 +16,7 @@ use aztec_lint_core::vcs::changed_files_from_git;
 use aztec_lint_rules::RuleEngine;
 use aztec_lint_rules::engine::context::RuleContext;
 use clap::Args;
+use toml::Value as TomlValue;
 
 use crate::cli::{CliError, CommonLintFlags, MinConfidence, OutputFormat, SeverityThreshold};
 use crate::exit_codes;
@@ -349,17 +350,18 @@ fn discover_noir_projects(target: &Path) -> std::io::Result<Vec<NoirProject>> {
             .and_then(|name| name.to_str())
             .is_some_and(|name| name == "Nargo.toml")
         {
-            roots.push(target.parent().unwrap_or(Path::new(".")).to_path_buf());
+            let root = target.parent().unwrap_or(Path::new(".")).to_path_buf();
+            append_expanded_project_roots(&root, &mut roots)?;
         } else if target
             .extension()
             .and_then(|ext| ext.to_str())
             .is_some_and(|ext| ext.eq_ignore_ascii_case("nr"))
             && let Some(root) = nearest_project_root(target.parent().unwrap_or(Path::new(".")))
         {
-            roots.push(root);
+            append_expanded_project_roots(&root, &mut roots)?;
         }
     } else if let Some(root) = nearest_project_root(target) {
-        roots.push(root);
+        append_expanded_project_roots(&root, &mut roots)?;
     } else {
         collect_project_roots(target, &mut roots)?;
     }
@@ -382,6 +384,22 @@ fn discover_noir_projects(target: &Path) -> std::io::Result<Vec<NoirProject>> {
         .collect())
 }
 
+fn append_expanded_project_roots(root: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    let members = workspace_members(root)?;
+    if members.is_empty() {
+        out.push(root.to_path_buf());
+        return Ok(());
+    }
+
+    if select_entry_file(root).is_some() {
+        out.push(root.to_path_buf());
+    }
+    for member in members {
+        out.push(member);
+    }
+    Ok(())
+}
+
 fn nearest_project_root(start: &Path) -> Option<PathBuf> {
     let mut current = Some(start);
     while let Some(path) = current {
@@ -395,7 +413,7 @@ fn nearest_project_root(start: &Path) -> Option<PathBuf> {
 
 fn collect_project_roots(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     if dir.join("Nargo.toml").is_file() {
-        out.push(dir.to_path_buf());
+        append_expanded_project_roots(dir, out)?;
         return Ok(());
     }
 
@@ -410,6 +428,39 @@ fn collect_project_roots(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<
     }
 
     Ok(())
+}
+
+fn workspace_members(root: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let manifest_path = root.join("Nargo.toml");
+    if !manifest_path.is_file() {
+        return Ok(Vec::new());
+    }
+
+    let manifest = fs::read_to_string(&manifest_path)?;
+    let parsed = toml::from_str::<TomlValue>(&manifest).ok();
+    let Some(parsed) = parsed else {
+        return Ok(Vec::new());
+    };
+    let Some(workspace) = parsed.get("workspace") else {
+        return Ok(Vec::new());
+    };
+    let Some(members) = workspace.get("members").and_then(TomlValue::as_array) else {
+        return Ok(Vec::new());
+    };
+
+    let mut resolved = Vec::<PathBuf>::new();
+    for member in members {
+        let Some(member_path) = member.as_str() else {
+            continue;
+        };
+        let candidate = root.join(member_path);
+        if candidate.join("Nargo.toml").is_file() {
+            resolved.push(candidate);
+        }
+    }
+    resolved.sort();
+    resolved.dedup();
+    Ok(resolved)
 }
 
 fn select_entry_file(root: &Path) -> Option<PathBuf> {
@@ -453,4 +504,40 @@ fn collect_noir_sources(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::tempdir;
+
+    use super::workspace_members;
+
+    #[test]
+    fn reads_workspace_members_from_nargo_manifest() {
+        let tmp = tempdir().expect("temp dir should be created");
+        let root = tmp.path();
+        fs::write(
+            root.join("Nargo.toml"),
+            "[workspace]\nmembers=[\"a\",\"b\"]\n",
+        )
+        .expect("workspace manifest should be written");
+        for member in ["a", "b"] {
+            fs::create_dir_all(root.join(member)).expect("member dir should be created");
+            fs::write(
+                root.join(member).join("Nargo.toml"),
+                format!(
+                    "[package]\nname=\"{member}\"\ntype=\"bin\"\nauthors=[\"\"]\n",
+                    member = member
+                ),
+            )
+            .expect("member manifest should be written");
+        }
+
+        let members = workspace_members(root).expect("workspace parsing should succeed");
+        assert_eq!(members.len(), 2);
+        assert!(members.iter().any(|path| path.ends_with("a")));
+        assert!(members.iter().any(|path| path.ends_with("b")));
+    }
 }
