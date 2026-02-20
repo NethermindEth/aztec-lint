@@ -84,6 +84,15 @@ impl StructuredSuggestion {
     }
 }
 
+impl Diagnostic {
+    pub fn fixes_from_structured_suggestions(&self) -> Vec<Fix> {
+        self.structured_suggestions
+            .iter()
+            .map(StructuredSuggestion::to_fix)
+            .collect()
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Diagnostic {
     pub rule_id: String,
@@ -295,5 +304,85 @@ mod tests {
 
         let fix = suggestion.to_fix();
         assert_eq!(fix.safety, FixSafety::NeedsReview);
+    }
+
+    #[test]
+    fn all_non_machine_applicable_suggestions_map_to_needs_review_fix() {
+        let variants = [
+            Applicability::MaybeIncorrect,
+            Applicability::HasPlaceholders,
+            Applicability::Unspecified,
+        ];
+
+        for applicability in variants {
+            let suggestion = StructuredSuggestion {
+                message: "replace value".to_string(),
+                span: Span::new("src/main.nr", 10, 12, 2, 3),
+                replacement: "42".to_string(),
+                applicability,
+            };
+            assert_eq!(suggestion.to_fix().safety, FixSafety::NeedsReview);
+        }
+    }
+
+    #[test]
+    fn diagnostic_can_derive_fixes_from_structured_suggestions() {
+        let diagnostic = Diagnostic {
+            rule_id: "NOIR999".to_string(),
+            severity: Severity::Warning,
+            confidence: Confidence::Medium,
+            policy: "maintainability".to_string(),
+            message: "message".to_string(),
+            primary_span: Span::new("src/main.nr", 1, 2, 1, 1),
+            secondary_spans: Vec::new(),
+            suggestions: Vec::new(),
+            notes: Vec::new(),
+            helps: Vec::new(),
+            structured_suggestions: vec![StructuredSuggestion {
+                message: "replace value".to_string(),
+                span: Span::new("src/main.nr", 10, 12, 2, 3),
+                replacement: "42".to_string(),
+                applicability: Applicability::MachineApplicable,
+            }],
+            fixes: Vec::new(),
+            suppressed: false,
+            suppression_reason: None,
+        };
+
+        let derived = diagnostic.fixes_from_structured_suggestions();
+        assert_eq!(derived.len(), 1);
+        assert_eq!(derived[0].description, "replace value");
+        assert_eq!(derived[0].replacement, "42");
+        assert_eq!(derived[0].safety, FixSafety::Safe);
+    }
+
+    #[test]
+    fn legacy_diagnostic_json_deserializes_with_phase1_defaults() {
+        let legacy = json!({
+            "rule_id": "NOIR100",
+            "severity": "warning",
+            "confidence": "low",
+            "policy": "maintainability",
+            "message": "magic number",
+            "primary_span": {
+                "file": "src/main.nr",
+                "start": 1,
+                "end": 2,
+                "line": 1,
+                "col": 1
+            },
+            "secondary_spans": [],
+            "suggestions": [],
+            "fixes": [],
+            "suppressed": false,
+            "suppression_reason": null
+        });
+
+        let diagnostic: Diagnostic =
+            serde_json::from_value(legacy).expect("legacy shape should deserialize");
+
+        assert!(diagnostic.notes.is_empty());
+        assert!(diagnostic.helps.is_empty());
+        assert!(diagnostic.structured_suggestions.is_empty());
     }
 }
