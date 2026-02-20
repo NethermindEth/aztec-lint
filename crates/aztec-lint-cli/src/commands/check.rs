@@ -185,6 +185,7 @@ fn render_result(
         OutputFormat::Text => {
             let rendered = render_check_report(CheckTextReport {
                 path,
+                source_root: sarif_root,
                 profile,
                 changed_only,
                 active_rules: effective_rules,

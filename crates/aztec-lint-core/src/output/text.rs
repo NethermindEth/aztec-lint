@@ -1,10 +1,13 @@
+use std::collections::HashMap;
 use std::fmt::Write;
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use crate::diagnostics::{Confidence, Diagnostic, Severity, diagnostic_sort_key};
 
 pub struct CheckTextReport<'a> {
     pub path: &'a Path,
+    pub source_root: &'a Path,
     pub profile: &'a str,
     pub changed_only: bool,
     pub active_rules: usize,
@@ -14,6 +17,7 @@ pub struct CheckTextReport<'a> {
 pub fn render_check_report(report: CheckTextReport<'_>) -> String {
     let mut output = String::new();
     let mut diagnostics = report.diagnostics.to_vec();
+    let mut source_cache = HashMap::<String, Option<Vec<String>>>::new();
     diagnostics.sort_by_key(|diagnostic| diagnostic_sort_key(diagnostic));
 
     let _ = writeln!(
@@ -31,28 +35,13 @@ pub fn render_check_report(report: CheckTextReport<'_>) -> String {
     }
 
     for diagnostic in &diagnostics {
-        let suppression = if diagnostic.suppressed {
-            diagnostic
-                .suppression_reason
-                .as_deref()
-                .map(|reason| format!(" [suppressed: {reason}]"))
-                .unwrap_or_else(|| " [suppressed]".to_string())
-        } else {
-            String::new()
-        };
-        let _ = writeln!(
-            output,
-            "{}:{}:{}: {}[{}] {} (confidence={}, policy={}){}",
-            diagnostic.primary_span.file,
-            diagnostic.primary_span.line,
-            diagnostic.primary_span.col,
-            severity_label(diagnostic.severity),
-            diagnostic.rule_id,
-            diagnostic.message,
-            confidence_label(diagnostic.confidence),
-            diagnostic.policy,
-            suppression
+        render_diagnostic(
+            &mut output,
+            report.source_root,
+            diagnostic,
+            &mut source_cache,
         );
+        let _ = writeln!(output);
     }
 
     let errors = diagnostics
@@ -67,6 +56,98 @@ pub fn render_check_report(report: CheckTextReport<'_>) -> String {
         errors
     );
     output
+}
+
+fn render_diagnostic(
+    output: &mut String,
+    source_root: &Path,
+    diagnostic: &Diagnostic,
+    source_cache: &mut HashMap<String, Option<Vec<String>>>,
+) {
+    let _ = writeln!(
+        output,
+        "{}[{}]: {}",
+        severity_label(diagnostic.severity),
+        diagnostic.rule_id,
+        diagnostic.message
+    );
+    let _ = writeln!(
+        output,
+        "  --> {}:{}:{}",
+        diagnostic.primary_span.file, diagnostic.primary_span.line, diagnostic.primary_span.col
+    );
+    let _ = writeln!(output, "   |");
+
+    let line_no = diagnostic.primary_span.line.to_string();
+    let gutter_width = line_no.len();
+    if let Some(line_text) = source_line(
+        source_root,
+        &diagnostic.primary_span.file,
+        source_cache,
+        diagnostic.primary_span.line,
+    ) {
+        let _ = writeln!(output, " {line_no:>gutter_width$} | {line_text}");
+        let _ = writeln!(
+            output,
+            " {:>gutter_width$} | {}",
+            "",
+            marker_line(&line_text, diagnostic.primary_span.col)
+        );
+    } else {
+        let _ = writeln!(output, " {line_no:>gutter_width$} | <source unavailable>");
+        let _ = writeln!(output, " {:>gutter_width$} | ^", "");
+    }
+    let _ = writeln!(output, "   |");
+    let _ = writeln!(
+        output,
+        "   = note: confidence={}, policy={}",
+        confidence_label(diagnostic.confidence),
+        diagnostic.policy
+    );
+
+    if diagnostic.suppressed {
+        let reason = diagnostic
+            .suppression_reason
+            .as_deref()
+            .unwrap_or("suppressed");
+        let _ = writeln!(output, "   = note: [suppressed: {reason}]");
+    }
+
+    for suggestion in &diagnostic.suggestions {
+        let _ = writeln!(output, "   = help: {suggestion}");
+    }
+}
+
+fn source_line(
+    source_root: &Path,
+    file: &str,
+    source_cache: &mut HashMap<String, Option<Vec<String>>>,
+    line_number: u32,
+) -> Option<String> {
+    let lines = source_cache.entry(file.to_string()).or_insert_with(|| {
+        let path = source_path(source_root, file);
+        let contents = fs::read_to_string(path).ok()?;
+        Some(contents.lines().map(str::to_string).collect::<Vec<_>>())
+    });
+
+    let line_index = usize::try_from(line_number.saturating_sub(1)).ok()?;
+    lines.as_ref()?.get(line_index).cloned()
+}
+
+fn source_path(source_root: &Path, file: &str) -> PathBuf {
+    let path = Path::new(file);
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        source_root.join(path)
+    }
+}
+
+fn marker_line(line_text: &str, col: u32) -> String {
+    let line_width = line_text.chars().count();
+    let col = usize::try_from(col.saturating_sub(1)).unwrap_or(0);
+    let padding = " ".repeat(col.min(line_width));
+    format!("{padding}^")
 }
 
 fn severity_label(severity: Severity) -> &'static str {
@@ -86,7 +167,10 @@ fn confidence_label(confidence: Confidence) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use std::path::Path;
+
+    use tempfile::tempdir;
 
     use super::{CheckTextReport, render_check_report};
     use crate::diagnostics::{Confidence, Diagnostic, Severity};
@@ -114,6 +198,7 @@ mod tests {
         let first = diagnostic("src/main.nr", 1, 1, "AZTEC001", "first message");
         let report = CheckTextReport {
             path: Path::new("."),
+            source_root: Path::new("."),
             profile: "default",
             changed_only: false,
             active_rules: 2,
@@ -128,5 +213,36 @@ mod tests {
             .find("AZTEC020")
             .expect("second rule should exist in output");
         assert!(first_index < second_index);
+    }
+
+    #[test]
+    fn check_text_output_includes_clippy_style_snippet() {
+        let temp = tempdir().expect("temp dir should be created");
+        let root = temp.path();
+        fs::create_dir_all(root.join("src")).expect("source directory should be created");
+        fs::write(root.join("src/main.nr"), "fn main() { let x = 7; }\n")
+            .expect("source file should be written");
+
+        let issue = diagnostic(
+            "src/main.nr",
+            1,
+            17,
+            "NOIR100",
+            "magic number `7` should be named",
+        );
+        let report = CheckTextReport {
+            path: root,
+            source_root: root,
+            profile: "default",
+            changed_only: false,
+            active_rules: 1,
+            diagnostics: &[&issue],
+        };
+
+        let output = render_check_report(report);
+        assert!(output.contains("warning[NOIR100]: magic number `7` should be named"));
+        assert!(output.contains("  --> src/main.nr:1:17"));
+        assert!(output.contains("1 | fn main() { let x = 7; }"));
+        assert!(output.contains("|                 ^"));
     }
 }
