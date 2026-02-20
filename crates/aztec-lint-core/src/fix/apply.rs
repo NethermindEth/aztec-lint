@@ -13,9 +13,16 @@ pub enum FixApplicationMode {
     DryRun,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum FixSource {
+    ExplicitFix,
+    StructuredSuggestion,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FixApplicationResult {
     pub rule_id: String,
+    pub source: FixSource,
     pub file: String,
     pub start: u32,
     pub end: u32,
@@ -33,6 +40,7 @@ pub enum SkippedFixReason {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SkippedFix {
     pub rule_id: String,
+    pub source: FixSource,
     pub file: String,
     pub start: u32,
     pub end: u32,
@@ -82,6 +90,7 @@ impl Error for FixError {
 struct FixCandidate {
     ordinal: usize,
     rule_id: String,
+    source: FixSource,
     confidence: Confidence,
     file: String,
     start: usize,
@@ -89,10 +98,19 @@ struct FixCandidate {
     replacement: String,
 }
 
+#[derive(Clone, Debug)]
+struct PendingFix {
+    source: FixSource,
+    span: crate::model::Span,
+    replacement: String,
+    safety: FixSafety,
+}
+
 impl FixCandidate {
     fn to_skipped(&self, reason: SkippedFixReason) -> SkippedFix {
         SkippedFix {
             rule_id: self.rule_id.clone(),
+            source: self.source,
             file: self.file.clone(),
             start: u32::try_from(self.start).unwrap_or(u32::MAX),
             end: u32::try_from(self.end).unwrap_or(u32::MAX),
@@ -103,11 +121,39 @@ impl FixCandidate {
     fn to_selected(&self) -> FixApplicationResult {
         FixApplicationResult {
             rule_id: self.rule_id.clone(),
+            source: self.source,
             file: self.file.clone(),
             start: u32::try_from(self.start).unwrap_or(u32::MAX),
             end: u32::try_from(self.end).unwrap_or(u32::MAX),
         }
     }
+}
+
+fn pending_fixes(diagnostic: &Diagnostic) -> Vec<PendingFix> {
+    let mut pending = diagnostic
+        .fixes
+        .iter()
+        .map(|fix| PendingFix {
+            source: FixSource::ExplicitFix,
+            span: fix.span.clone(),
+            replacement: fix.replacement.clone(),
+            safety: fix.safety,
+        })
+        .collect::<Vec<_>>();
+
+    pending.extend(
+        diagnostic
+            .structured_suggestions
+            .iter()
+            .map(|suggestion| PendingFix {
+                source: FixSource::StructuredSuggestion,
+                span: suggestion.span.clone(),
+                replacement: suggestion.replacement.clone(),
+                safety: suggestion.applicability.to_fix_safety(),
+            }),
+    );
+
+    pending
 }
 
 pub fn apply_fixes(
@@ -127,43 +173,46 @@ pub fn apply_fixes(
     let mut ordinal = 0usize;
 
     for diagnostic in diagnostics {
-        for fix in &diagnostic.fixes {
+        for pending_fix in pending_fixes(diagnostic) {
             report.total_candidates += 1;
             ordinal += 1;
 
             if diagnostic.suppressed {
                 report.skipped.push(SkippedFix {
                     rule_id: diagnostic.rule_id.clone(),
-                    file: normalize_file_path(&fix.span.file),
-                    start: fix.span.start,
-                    end: fix.span.end,
+                    source: pending_fix.source,
+                    file: normalize_file_path(&pending_fix.span.file),
+                    start: pending_fix.span.start,
+                    end: pending_fix.span.end,
                     reason: SkippedFixReason::SuppressedDiagnostic,
                 });
                 continue;
             }
 
-            if fix.safety != FixSafety::Safe {
+            if pending_fix.safety != FixSafety::Safe {
                 report.skipped.push(SkippedFix {
                     rule_id: diagnostic.rule_id.clone(),
-                    file: normalize_file_path(&fix.span.file),
-                    start: fix.span.start,
-                    end: fix.span.end,
+                    source: pending_fix.source,
+                    file: normalize_file_path(&pending_fix.span.file),
+                    start: pending_fix.span.start,
+                    end: pending_fix.span.end,
                     reason: SkippedFixReason::UnsafeFix,
                 });
                 continue;
             }
 
             candidates_by_file
-                .entry(normalize_file_path(&fix.span.file))
+                .entry(normalize_file_path(&pending_fix.span.file))
                 .or_default()
                 .push(FixCandidate {
                     ordinal,
                     rule_id: diagnostic.rule_id.clone(),
+                    source: pending_fix.source,
                     confidence: diagnostic.confidence,
-                    file: normalize_file_path(&fix.span.file),
-                    start: usize::try_from(fix.span.start).unwrap_or(usize::MAX),
-                    end: usize::try_from(fix.span.end).unwrap_or(usize::MAX),
-                    replacement: fix.replacement.clone(),
+                    file: normalize_file_path(&pending_fix.span.file),
+                    start: usize::try_from(pending_fix.span.start).unwrap_or(usize::MAX),
+                    end: usize::try_from(pending_fix.span.end).unwrap_or(usize::MAX),
+                    replacement: pending_fix.replacement,
                 });
         }
     }
@@ -224,6 +273,7 @@ fn resolve_overlaps(
             left.start,
             left.end,
             left.rule_id.as_str(),
+            left.source,
             left.ordinal,
             left.replacement.as_str(),
         )
@@ -231,6 +281,7 @@ fn resolve_overlaps(
                 right.start,
                 right.end,
                 right.rule_id.as_str(),
+                right.source,
                 right.ordinal,
                 right.replacement.as_str(),
             ))
@@ -311,7 +362,13 @@ fn outranks(candidate: &FixCandidate, incumbent: &FixCandidate) -> bool {
     match candidate.rule_id.cmp(&incumbent.rule_id) {
         Ordering::Less => true,
         Ordering::Greater => false,
-        Ordering::Equal => candidate.ordinal < incumbent.ordinal,
+        Ordering::Equal => {
+            match source_rank(candidate.source).cmp(&source_rank(incumbent.source)) {
+                Ordering::Greater => true,
+                Ordering::Less => false,
+                Ordering::Equal => candidate.ordinal < incumbent.ordinal,
+            }
+        }
     }
 }
 
@@ -323,14 +380,23 @@ fn confidence_rank(confidence: Confidence) -> u8 {
     }
 }
 
+fn source_rank(source: FixSource) -> u8 {
+    match source {
+        FixSource::ExplicitFix => 2,
+        FixSource::StructuredSuggestion => 1,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
 
     use tempfile::tempdir;
 
-    use super::{FixApplicationMode, SkippedFixReason, apply_fixes};
-    use crate::diagnostics::{Confidence, Diagnostic, Fix, FixSafety, Severity};
+    use super::{FixApplicationMode, FixSource, SkippedFixReason, apply_fixes};
+    use crate::diagnostics::{
+        Applicability, Confidence, Diagnostic, Fix, FixSafety, Severity, StructuredSuggestion,
+    };
     use crate::model::Span;
 
     fn diagnostic_with_fix(
@@ -359,6 +425,38 @@ mod tests {
                 replacement: replacement.to_string(),
                 safety: FixSafety::Safe,
             }],
+            suppressed: false,
+            suppression_reason: None,
+        }
+    }
+
+    fn diagnostic_with_structured_suggestion(
+        rule_id: &str,
+        confidence: Confidence,
+        file: &str,
+        start: u32,
+        end: u32,
+        replacement: &str,
+        applicability: Applicability,
+    ) -> Diagnostic {
+        Diagnostic {
+            rule_id: rule_id.to_string(),
+            severity: Severity::Warning,
+            confidence,
+            policy: "maintainability".to_string(),
+            message: "message".to_string(),
+            primary_span: Span::new(file, start, end, 1, 1),
+            secondary_spans: Vec::new(),
+            suggestions: Vec::new(),
+            notes: Vec::new(),
+            helps: Vec::new(),
+            structured_suggestions: vec![StructuredSuggestion {
+                message: "replace span".to_string(),
+                span: Span::new(file, start, end, 1, 1),
+                replacement: replacement.to_string(),
+                applicability,
+            }],
+            fixes: Vec::new(),
             suppressed: false,
             suppression_reason: None,
         }
@@ -533,6 +631,106 @@ mod tests {
         assert_eq!(
             fs::read_to_string(&source_path).expect("file should be readable"),
             "aXc\n"
+        );
+    }
+
+    #[test]
+    fn machine_applicable_structured_suggestion_is_applied() {
+        let dir = tempdir().expect("tempdir should be created");
+        let source_path = dir.path().join("src/main.nr");
+        fs::create_dir_all(source_path.parent().expect("source parent should exist"))
+            .expect("source directory should exist");
+        fs::write(&source_path, "let x = 1;\n").expect("fixture should be written");
+
+        let diagnostics = vec![diagnostic_with_structured_suggestion(
+            "NOIR100",
+            Confidence::Medium,
+            "src/main.nr",
+            8,
+            9,
+            "2",
+            Applicability::MachineApplicable,
+        )];
+
+        let report = apply_fixes(dir.path(), &diagnostics, FixApplicationMode::Apply)
+            .expect("apply should succeed");
+        assert_eq!(report.total_candidates, 1);
+        assert_eq!(report.selected.len(), 1);
+        assert_eq!(report.selected[0].source, FixSource::StructuredSuggestion);
+        assert_eq!(
+            fs::read_to_string(&source_path).expect("file should be readable"),
+            "let x = 2;\n"
+        );
+    }
+
+    #[test]
+    fn non_machine_structured_suggestion_is_skipped_as_unsafe() {
+        let dir = tempdir().expect("tempdir should be created");
+        let source_path = dir.path().join("src/main.nr");
+        fs::create_dir_all(source_path.parent().expect("source parent should exist"))
+            .expect("source directory should exist");
+        fs::write(&source_path, "let x = 1;\n").expect("fixture should be written");
+
+        let diagnostics = vec![diagnostic_with_structured_suggestion(
+            "NOIR100",
+            Confidence::Medium,
+            "src/main.nr",
+            8,
+            9,
+            "2",
+            Applicability::MaybeIncorrect,
+        )];
+
+        let report = apply_fixes(dir.path(), &diagnostics, FixApplicationMode::Apply)
+            .expect("apply should succeed");
+        assert_eq!(report.total_candidates, 1);
+        assert!(report.selected.is_empty());
+        assert!(report.skipped.iter().any(|skipped| {
+            skipped.source == FixSource::StructuredSuggestion
+                && skipped.reason == SkippedFixReason::UnsafeFix
+        }));
+        assert_eq!(
+            fs::read_to_string(&source_path).expect("file should be readable"),
+            "let x = 1;\n"
+        );
+    }
+
+    #[test]
+    fn overlap_reports_source_provenance() {
+        let dir = tempdir().expect("tempdir should be created");
+        let source_path = dir.path().join("src/main.nr");
+        fs::create_dir_all(source_path.parent().expect("source parent should exist"))
+            .expect("source directory should exist");
+        fs::write(&source_path, "let x = 1;\n").expect("fixture should be written");
+
+        let explicit = diagnostic_with_fix("NOIR100", Confidence::Medium, "src/main.nr", 8, 9, "2");
+        let structured = diagnostic_with_structured_suggestion(
+            "NOIR100",
+            Confidence::Medium,
+            "src/main.nr",
+            8,
+            9,
+            "3",
+            Applicability::MachineApplicable,
+        );
+
+        let report = apply_fixes(
+            dir.path(),
+            &[structured, explicit],
+            FixApplicationMode::Apply,
+        )
+        .expect("apply should succeed");
+
+        assert_eq!(report.total_candidates, 2);
+        assert_eq!(report.selected.len(), 1);
+        assert_eq!(report.selected[0].source, FixSource::ExplicitFix);
+        assert!(report.skipped.iter().any(|skip| {
+            skip.source == FixSource::StructuredSuggestion
+                && skip.reason == SkippedFixReason::OverlappingFix
+        }));
+        assert_eq!(
+            fs::read_to_string(&source_path).expect("file should be readable"),
+            "let x = 2;\n"
         );
     }
 }
