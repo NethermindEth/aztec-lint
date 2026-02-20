@@ -3,7 +3,10 @@ use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::diagnostics::{Confidence, Diagnostic, Severity, diagnostic_sort_key};
+use crate::diagnostics::{
+    Confidence, Diagnostic, Severity, StructuredMessage, StructuredSuggestion, diagnostic_sort_key,
+};
+use crate::model::Span;
 use crate::output::ansi::{Colorizer, Stream};
 
 pub struct CheckTextReport<'a> {
@@ -96,12 +99,13 @@ fn render_diagnostic(
 
     let line_no = diagnostic.primary_span.line.to_string();
     let gutter_width = line_no.len();
-    if let Some(line_text) = source_line(
+    let primary_line_text = source_line(
         source_root,
         &diagnostic.primary_span.file,
         source_cache,
         diagnostic.primary_span.line,
-    ) {
+    );
+    if let Some(line_text) = primary_line_text.clone() {
         let marker = match diagnostic.severity {
             Severity::Warning => {
                 colors.warning(&marker_line(&line_text, diagnostic.primary_span.col))
@@ -110,6 +114,16 @@ fn render_diagnostic(
         };
         let _ = writeln!(output, " {line_no:>gutter_width$} {accent_bar} {line_text}");
         let _ = writeln!(output, " {:>gutter_width$} {accent_bar} {}", "", marker);
+
+        for suggestion in primary_span_suggestions(diagnostic) {
+            let marker = colors.help(&marker_line(&line_text, suggestion.span.col));
+            let help_label = colors.help("help");
+            let _ = writeln!(
+                output,
+                " {:>gutter_width$} {accent_bar} {} {help_label}: {}; replace with `{}`",
+                "", marker, suggestion.message, suggestion.replacement
+            );
+        }
     } else {
         let marker = match diagnostic.severity {
             Severity::Warning => colors.warning("^"),
@@ -138,9 +152,58 @@ fn render_diagnostic(
         let _ = writeln!(output, "   = {note_label}: [suppressed: {reason}]");
     }
 
+    for note in sorted_structured_messages(&diagnostic.notes) {
+        render_structured_annotation(
+            output,
+            source_root,
+            source_cache,
+            note,
+            AnnotationKind::Note,
+            colors,
+        );
+    }
+
+    for help in sorted_structured_messages(&diagnostic.helps) {
+        render_structured_annotation(
+            output,
+            source_root,
+            source_cache,
+            help,
+            AnnotationKind::Help,
+            colors,
+        );
+    }
+
     let help_label = colors.help("help");
-    for suggestion in &diagnostic.suggestions {
+    let mut legacy_suggestions = diagnostic.suggestions.clone();
+    legacy_suggestions.sort();
+    for suggestion in legacy_suggestions {
         let _ = writeln!(output, "   = {help_label}: {suggestion}");
+    }
+
+    for suggestion in non_primary_span_suggestions(diagnostic) {
+        render_span_annotation(
+            output,
+            source_root,
+            source_cache,
+            &suggestion.span,
+            format!(
+                "{}; replace with `{}`",
+                suggestion.message, suggestion.replacement
+            ),
+            AnnotationKind::Help,
+            colors,
+        );
+    }
+
+    if primary_line_text.is_none() {
+        for suggestion in primary_span_suggestions(diagnostic) {
+            let _ = writeln!(
+                output,
+                "   = {help_label}: {}; replace with `{}`",
+                suggestion.message, suggestion.replacement
+            );
+        }
     }
 }
 
@@ -167,6 +230,150 @@ fn source_path(source_root: &Path, file: &str) -> PathBuf {
     } else {
         source_root.join(path)
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AnnotationKind {
+    Note,
+    Help,
+}
+
+fn render_structured_annotation(
+    output: &mut String,
+    source_root: &Path,
+    source_cache: &mut HashMap<String, Option<Vec<String>>>,
+    message: StructuredMessage,
+    kind: AnnotationKind,
+    colors: Colorizer,
+) {
+    let label = match kind {
+        AnnotationKind::Note => colors.note("note"),
+        AnnotationKind::Help => colors.help("help"),
+    };
+    let _ = writeln!(output, "   = {label}: {}", message.message);
+    if let Some(span) = message.span {
+        render_span_annotation(
+            output,
+            source_root,
+            source_cache,
+            &span,
+            message.message,
+            kind,
+            colors,
+        );
+    }
+}
+
+fn render_span_annotation(
+    output: &mut String,
+    source_root: &Path,
+    source_cache: &mut HashMap<String, Option<Vec<String>>>,
+    span: &Span,
+    annotation: String,
+    kind: AnnotationKind,
+    colors: Colorizer,
+) {
+    let accent_bar = colors.accent("|");
+    let accent_arrow = colors.accent("-->");
+    let _ = writeln!(
+        output,
+        "  {} {}:{}:{}",
+        accent_arrow, span.file, span.line, span.col
+    );
+    let _ = writeln!(output, "   {accent_bar}");
+    let line_no = span.line.to_string();
+    let gutter_width = line_no.len();
+    let label = match kind {
+        AnnotationKind::Note => colors.note("note"),
+        AnnotationKind::Help => colors.help("help"),
+    };
+    if let Some(line_text) = source_line(source_root, &span.file, source_cache, span.line) {
+        let marker = marker_line(&line_text, span.col);
+        let marker = match kind {
+            AnnotationKind::Note => colors.note(&marker),
+            AnnotationKind::Help => colors.help(&marker),
+        };
+        let _ = writeln!(output, " {line_no:>gutter_width$} {accent_bar} {line_text}");
+        let _ = writeln!(
+            output,
+            " {:>gutter_width$} {accent_bar} {} {label}: {annotation}",
+            "", marker
+        );
+    } else {
+        let marker = match kind {
+            AnnotationKind::Note => colors.note("^"),
+            AnnotationKind::Help => colors.help("^"),
+        };
+        let _ = writeln!(
+            output,
+            " {line_no:>gutter_width$} {accent_bar} <source unavailable>"
+        );
+        let _ = writeln!(
+            output,
+            " {:>gutter_width$} {accent_bar} {} {label}: {annotation}",
+            "", marker
+        );
+    }
+    let _ = writeln!(output, "   {accent_bar}");
+}
+
+fn sorted_structured_messages(messages: &[StructuredMessage]) -> Vec<StructuredMessage> {
+    let mut items = messages.to_vec();
+    items.sort_by_key(|item| {
+        if let Some(span) = &item.span {
+            (
+                0u8,
+                span.file.clone(),
+                span.line,
+                span.col,
+                span.start,
+                span.end,
+                item.message.clone(),
+            )
+        } else {
+            (
+                1u8,
+                String::new(),
+                0u32,
+                0u32,
+                0u32,
+                0u32,
+                item.message.clone(),
+            )
+        }
+    });
+    items
+}
+
+fn sorted_structured_suggestions(diagnostic: &Diagnostic) -> Vec<StructuredSuggestion> {
+    let mut items = diagnostic.structured_suggestions.clone();
+    items.sort_by_key(|suggestion| {
+        (
+            suggestion.span.file.clone(),
+            suggestion.span.line,
+            suggestion.span.col,
+            suggestion.span.start,
+            suggestion.span.end,
+            suggestion.message.clone(),
+            suggestion.replacement.clone(),
+            suggestion.applicability.as_str().to_string(),
+        )
+    });
+    items
+}
+
+fn primary_span_suggestions(diagnostic: &Diagnostic) -> Vec<StructuredSuggestion> {
+    sorted_structured_suggestions(diagnostic)
+        .into_iter()
+        .filter(|suggestion| suggestion.span == diagnostic.primary_span)
+        .collect()
+}
+
+fn non_primary_span_suggestions(diagnostic: &Diagnostic) -> Vec<StructuredSuggestion> {
+    sorted_structured_suggestions(diagnostic)
+        .into_iter()
+        .filter(|suggestion| suggestion.span != diagnostic.primary_span)
+        .collect()
 }
 
 fn marker_line(line_text: &str, col: u32) -> String {
@@ -199,7 +406,9 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{CheckTextReport, render_check_report};
-    use crate::diagnostics::{Confidence, Diagnostic, Severity};
+    use crate::diagnostics::{
+        Applicability, Confidence, Diagnostic, Severity, StructuredMessage, StructuredSuggestion,
+    };
     use crate::model::Span;
 
     fn strip_ansi(input: &str) -> String {
@@ -303,5 +512,93 @@ mod tests {
         assert!(output.contains("  --> src/main.nr:1:17"));
         assert!(output.contains("1 | fn main() { let x = 7; }"));
         assert!(output.contains("|                 ^"));
+    }
+
+    #[test]
+    fn check_text_output_renders_structured_notes_helps_and_suggestions() {
+        let temp = tempdir().expect("temp dir should be created");
+        let root = temp.path();
+        fs::create_dir_all(root.join("src")).expect("source directory should be created");
+        fs::write(
+            root.join("src/main.nr"),
+            "fn main() {\n    let x = 7;\n    let y = x;\n}\n",
+        )
+        .expect("source file should be written");
+
+        let mut issue = diagnostic(
+            "src/main.nr",
+            2,
+            13,
+            "NOIR100",
+            "magic number `7` should be named",
+        );
+        issue.notes = vec![
+            StructuredMessage {
+                message: "z note".to_string(),
+                span: Some(Span::new("src/main.nr", 28, 29, 3, 9)),
+            },
+            StructuredMessage {
+                message: "a note".to_string(),
+                span: Some(Span::new("src/main.nr", 16, 17, 2, 5)),
+            },
+            StructuredMessage {
+                message: "plain note".to_string(),
+                span: None,
+            },
+        ];
+        issue.helps = vec![
+            StructuredMessage {
+                message: "plain help".to_string(),
+                span: None,
+            },
+            StructuredMessage {
+                message: "span help".to_string(),
+                span: Some(Span::new("src/main.nr", 16, 17, 2, 5)),
+            },
+        ];
+        issue.suggestions = vec!["z legacy help".to_string(), "a legacy help".to_string()];
+        issue.structured_suggestions = vec![
+            StructuredSuggestion {
+                message: "replace assignment".to_string(),
+                span: Span::new("src/main.nr", 28, 33, 3, 9),
+                replacement: "let y = NAMED_CONST;".to_string(),
+                applicability: Applicability::MaybeIncorrect,
+            },
+            StructuredSuggestion {
+                message: "introduce named constant".to_string(),
+                span: Span::new("src/main.nr", 20, 21, 2, 13),
+                replacement: "NAMED_CONST".to_string(),
+                applicability: Applicability::MachineApplicable,
+            },
+        ];
+
+        let report = CheckTextReport {
+            path: root,
+            source_root: root,
+            show_run_header: false,
+            profile: "default",
+            changed_only: false,
+            active_rules: 1,
+            diagnostics: &[&issue],
+        };
+
+        let output = strip_ansi(&render_check_report(report));
+        assert!(output.contains("= note: plain note"));
+        assert!(output.contains("= help: plain help"));
+        assert!(output.contains("help: introduce named constant; replace with `NAMED_CONST`"));
+        assert!(output.contains("help: replace assignment; replace with `let y = NAMED_CONST;`"));
+        assert!(output.contains("  --> src/main.nr:3:9"));
+
+        let a_note_index = output.find("a note").expect("a note must exist");
+        let z_note_index = output.find("z note").expect("z note must exist");
+        assert!(a_note_index < z_note_index);
+
+        let a_legacy_index = output
+            .find("= help: a legacy help")
+            .expect("a legacy help must exist");
+        let z_legacy_index = output
+            .find("= help: z legacy help")
+            .expect("z legacy help must exist");
+        assert!(a_legacy_index < z_legacy_index);
     }
 }
