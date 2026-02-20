@@ -21,10 +21,10 @@ pub enum NoirFrontendError {
         entry: PathBuf,
     },
     ParserDiagnostics {
-        messages: Vec<String>,
+        count: usize,
     },
     CheckDiagnostics {
-        messages: Vec<String>,
+        count: usize,
     },
     Internal(String),
 }
@@ -52,14 +52,16 @@ impl Display for NoirFrontendError {
                     entry.display()
                 )
             }
-            Self::ParserDiagnostics { messages } => {
-                write!(f, "Noir parser reported {} issue(s)", messages.len())
-            }
-            Self::CheckDiagnostics { messages } => {
+            Self::ParserDiagnostics { count } => {
                 write!(
                     f,
-                    "Noir semantic checks reported {} issue(s)",
-                    messages.len()
+                    "Noir parser reported {count} issue(s). See diagnostics above."
+                )
+            }
+            Self::CheckDiagnostics { count } => {
+                write!(
+                    f,
+                    "Noir semantic checks reported {count} issue(s). See diagnostics above."
                 )
             }
             Self::Internal(message) => write!(f, "internal noir frontend error: {message}"),
@@ -77,5 +79,19 @@ impl Error for NoirFrontendError {
             | Self::CheckDiagnostics { .. }
             | Self::Internal(_) => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NoirFrontendError;
+
+    #[test]
+    fn semantic_error_display_references_reported_diagnostics() {
+        let err = NoirFrontendError::CheckDiagnostics { count: 2 };
+
+        let rendered = err.to_string();
+        assert!(rendered.contains("2 issue(s)"));
+        assert!(rendered.contains("See diagnostics above"));
     }
 }

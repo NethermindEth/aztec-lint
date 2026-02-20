@@ -10,7 +10,14 @@ workspace = true
 
 [features]
 default = ["noir-compiler"]
-noir-compiler = ["dep:fm", "dep:noirc_driver", "dep:noirc_frontend", "dep:noirc_errors"]
+noir-compiler = [
+  "dep:fm",
+  "dep:noirc_driver",
+  "dep:noirc_frontend",
+  "dep:noirc_errors",
+  "dep:nargo",
+  "dep:nargo_toml",
+]
 plugin-api = ["dep:aztec-lint-sdk"]
 
 [dependencies]
@@ -23,6 +30,8 @@ fm = { git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896c
 noirc_driver = { git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "noirc_driver", optional = true }
 noirc_frontend = { git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "noirc_frontend", optional = true }
 noirc_errors = { git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "noirc_errors", optional = true }
+nargo = { git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "nargo", optional = true }
+nargo_toml = { git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "nargo_toml", optional = true }
 
 [dev-dependencies]
 tempfile = "3.13"
