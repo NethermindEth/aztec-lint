@@ -59,6 +59,7 @@ pub fn load_and_check_project(
     root: &Path,
     entry: &Path,
 ) -> Result<NoirCheckedProject, NoirFrontendError> {
+    let project_root = canonicalize_best_effort(root);
     let requested_entry = if entry.is_absolute() {
         entry.to_path_buf()
     } else {
@@ -125,7 +126,7 @@ pub fn load_and_check_project(
             context
                 .file_manager
                 .path(diag.file)
-                .is_some_and(|path| path.starts_with(&package.root_dir))
+                .is_some_and(|path| canonicalize_best_effort(path).starts_with(&project_root))
         })
         .cloned()
         .collect::<Vec<_>>();
