@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::ffi::OsString;
 use std::fmt::{Display, Formatter};
 use std::process::ExitCode;
 
@@ -85,9 +86,26 @@ impl CommonLintFlags {
 
 #[derive(Debug, Parser)]
 #[command(name = "aztec-lint", version, about = "Aztec/Noir linting CLI")]
-struct Cli {
+struct SubcommandCli {
     #[command(subcommand)]
     command: Command,
+}
+
+#[derive(Debug, Parser)]
+#[command(name = "aztec-lint", version, about = "Aztec/Noir linting CLI")]
+struct DefaultCli {
+    #[arg(default_value = ".")]
+    path: std::path::PathBuf,
+    #[arg(long, default_value = "aztec")]
+    profile: String,
+    #[arg(long)]
+    changed_only: bool,
+    #[arg(long)]
+    fix: bool,
+    #[arg(long)]
+    dry_run: bool,
+    #[command(flatten)]
+    lint: CommonLintFlags,
 }
 
 #[derive(Debug, Subcommand)]
@@ -111,16 +129,28 @@ enum AztecSubcommand {
 }
 
 pub fn run() -> ExitCode {
-    let cli = match Cli::try_parse() {
-        Ok(value) => value,
-        Err(err) => {
-            let code = exit_codes::clap_exit(err.exit_code());
-            let _ = err.print();
-            return code;
+    let args = std::env::args_os().collect::<Vec<_>>();
+    let result = if starts_with_subcommand(&args) {
+        match parse_subcommand_mode(args) {
+            Ok(cli) => dispatch_subcommand(cli),
+            Err(err) => {
+                let code = exit_codes::clap_exit(err.exit_code());
+                let _ = err.print();
+                return code;
+            }
+        }
+    } else {
+        match parse_default_mode(args) {
+            Ok(cli) => dispatch_default(cli),
+            Err(err) => {
+                let code = exit_codes::clap_exit(err.exit_code());
+                let _ = err.print();
+                return code;
+            }
         }
     };
 
-    match dispatch(cli) {
+    match result {
         Ok(code) => code,
         Err(err) => {
             eprintln!("{err}");
@@ -129,7 +159,21 @@ pub fn run() -> ExitCode {
     }
 }
 
-fn dispatch(cli: Cli) -> Result<ExitCode, CliError> {
+fn starts_with_subcommand(args: &[OsString]) -> bool {
+    args.get(1)
+        .and_then(|arg| arg.to_str())
+        .is_some_and(|arg| matches!(arg, "check" | "fix" | "rules" | "explain" | "aztec"))
+}
+
+fn parse_subcommand_mode(args: Vec<OsString>) -> Result<SubcommandCli, clap::Error> {
+    SubcommandCli::try_parse_from(args)
+}
+
+fn parse_default_mode(args: Vec<OsString>) -> Result<DefaultCli, clap::Error> {
+    DefaultCli::try_parse_from(args)
+}
+
+fn dispatch_subcommand(cli: SubcommandCli) -> Result<ExitCode, CliError> {
     match cli.command {
         Command::Check(args) => check::run(args),
         Command::Fix(args) => fix::run(args),
@@ -138,5 +182,29 @@ fn dispatch(cli: Cli) -> Result<ExitCode, CliError> {
         Command::Aztec(args) => match args.command {
             AztecSubcommand::Scan(scan_args) => aztec_scan::run(scan_args),
         },
+    }
+}
+
+fn dispatch_default(cli: DefaultCli) -> Result<ExitCode, CliError> {
+    if cli.fix {
+        fix::run(fix::FixArgs {
+            path: cli.path,
+            profile: cli.profile,
+            changed_only: cli.changed_only,
+            dry_run: cli.dry_run,
+            lint: cli.lint,
+        })
+    } else {
+        if cli.dry_run {
+            return Err(CliError::Runtime(
+                "`--dry-run` is only valid with `--fix`".to_string(),
+            ));
+        }
+        check::run(check::CheckArgs {
+            path: cli.path,
+            profile: cli.profile,
+            changed_only: cli.changed_only,
+            lint: cli.lint,
+        })
     }
 }

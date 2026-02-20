@@ -246,6 +246,22 @@ fn profile_default_excludes_aztec_pack() {
 }
 
 #[test]
+fn profile_noir_excludes_aztec_pack() {
+    let mut cmd = cli_bin();
+    let fixture = fixture_dir("noir_core/minimal");
+    cmd.args([
+        "check",
+        fixture.to_string_lossy().as_ref(),
+        "--profile",
+        "noir",
+    ]);
+
+    let output = cmd.output().expect("command should execute");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("active_rules=9"), "stdout was: {stdout}");
+}
+
+#[test]
 fn profile_aztec_includes_default_and_aztec_pack() {
     let mut cmd = cli_bin();
     let fixture = fixture_dir("noir_core/minimal");
@@ -259,6 +275,36 @@ fn profile_aztec_includes_default_and_aztec_pack() {
     let output = cmd.output().expect("command should execute");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("active_rules=20"), "stdout was: {stdout}");
+}
+
+#[test]
+fn bare_invocation_runs_check_with_aztec_profile_by_default() {
+    let mut cmd = cli_bin();
+    let fixture = fixture_dir("noir_core/minimal");
+    cmd.arg(fixture.to_string_lossy().as_ref());
+
+    let output = cmd.output().expect("command should execute");
+    assert_eq!(output.status.code(), Some(1), "run should report findings");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("active_rules=20"),
+        "bare invocation should default to aztec profile: {stdout}"
+    );
+}
+
+#[test]
+fn bare_invocation_fix_flag_runs_fix_mode() {
+    let mut cmd = cli_bin();
+    let fixture = fixture_dir("noir_core/minimal");
+    cmd.args([fixture.to_string_lossy().as_ref(), "--fix", "--dry-run"]);
+
+    let output = cmd.output().expect("command should execute");
+    assert_eq!(output.status.code(), Some(1), "run should report findings");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("fix path="),
+        "expected fix banner in stdout: {stdout}"
+    );
 }
 
 #[test]

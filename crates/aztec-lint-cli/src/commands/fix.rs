@@ -18,7 +18,7 @@ use crate::exit_codes;
 pub struct FixArgs {
     #[arg(default_value = ".")]
     pub path: PathBuf,
-    #[arg(long, default_value = "default")]
+    #[arg(long, default_value = "aztec")]
     pub profile: String,
     #[arg(long)]
     pub changed_only: bool,

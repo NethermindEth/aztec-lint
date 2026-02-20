@@ -8,6 +8,14 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[[bin]]
+name = "aztec-lint-cli"
+path = "src/main.rs"
+
+[[bin]]
+name = "aztec-lint"
+path = "src/bin/aztec-lint.rs"
+
 [dependencies]
 aztec-lint-core.workspace = true
 aztec-lint-rules.workspace = true
