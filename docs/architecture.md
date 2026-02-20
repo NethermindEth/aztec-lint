@@ -26,6 +26,11 @@ The following ADRs are mandatory inputs to implementation:
 
 No Phase 1 work should proceed if any ADR above is not in `Accepted` state.
 
+## Operator and Author Docs
+
+- `docs/suppression.md`
+- `docs/rule-authoring.md`
+
 ## Phase 2 Core API Contract
 
 The following public APIs are frozen at Phase 2 exit and should be treated as stable
