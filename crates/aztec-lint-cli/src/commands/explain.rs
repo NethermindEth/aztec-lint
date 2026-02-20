@@ -3,7 +3,7 @@ use std::process::ExitCode;
 use clap::Args;
 
 use crate::cli::CliError;
-use crate::commands::catalog::find_rule;
+use crate::commands::catalog::{confidence_label, find_rule};
 use crate::exit_codes;
 
 #[derive(Debug, Args)]
@@ -17,7 +17,7 @@ pub fn run(args: ExplainArgs) -> Result<ExitCode, CliError> {
     println!("Rule: {}", rule.id);
     println!("Pack: {}", rule.pack);
     println!("Policy: {}", rule.policy);
-    println!("Confidence: {}", rule.confidence);
-    println!("Summary: {}", rule.summary);
+    println!("Confidence: {}", confidence_label(rule.confidence));
+    println!("Summary: {}", rule.docs.summary);
     Ok(exit_codes::success())
 }

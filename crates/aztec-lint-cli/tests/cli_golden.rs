@@ -93,22 +93,17 @@ AZTEC001\taztec_pack\tprivacy\tmedium\tPrivate data reaches a public sink.\n\
 AZTEC002\taztec_pack\tprivacy\tlow\tSecret-dependent branching affects public state.\n\
 AZTEC003\taztec_pack\tprivacy\tmedium\tPrivate entrypoint uses debug logging.\n\
 AZTEC010\taztec_pack\tprotocol\thigh\tPrivate to public bridge requires #[only_self].\n\
-AZTEC011\taztec_pack\tprotocol\tmedium\tNullifier domain separation fields are missing.\n\
-AZTEC012\taztec_pack\tprotocol\tmedium\tCommitment domain separation fields are missing.\n\
 AZTEC020\taztec_pack\tsoundness\thigh\tUnconstrained influence reaches commitments, storage, or nullifiers.\n\
 AZTEC021\taztec_pack\tsoundness\tmedium\tMissing range constraints before hashing or serialization.\n\
 AZTEC022\taztec_pack\tsoundness\tmedium\tSuspicious Merkle witness usage.\n\
-AZTEC040\taztec_pack\tconstraint_cost\tlow\tExpensive primitive appears inside a loop.\n\
-AZTEC041\taztec_pack\tconstraint_cost\tlow\tRepeated membership proofs detected.\n\
-NOIR001\tnoir_core\tcorrectness\thigh\tDetects trivially unreachable branch conditions.\n\
-NOIR002\tnoir_core\tcorrectness\tmedium\tDetects suspicious variable shadowing.\n\
-NOIR010\tnoir_core\tcorrectness\thigh\tBoolean value computed but never asserted.\n\
-NOIR020\tnoir_core\tcorrectness\tmedium\tArray indexing appears without bounds validation.\n\
+NOIR001\tnoir_core\tcorrectness\thigh\tUnused variable or import.\n\
+NOIR002\tnoir_core\tcorrectness\tmedium\tSuspicious shadowing.\n\
+NOIR010\tnoir_core\tcorrectness\thigh\tBoolean computed but not asserted.\n\
+NOIR020\tnoir_core\tcorrectness\tmedium\tArray indexing without bounds validation.\n\
 NOIR030\tnoir_core\tcorrectness\tmedium\tUnconstrained value influences constrained logic.\n\
-NOIR100\tnoir_core\tmaintainability\tlow\tDetects magic-number literals that should be named.\n\
-NOIR110\tnoir_core\tmaintainability\tlow\tFunction complexity exceeds the recommended limit.\n\
-NOIR120\tnoir_core\tmaintainability\tlow\tExcessive nesting reduces code readability.\n\
-NOIR200\tnoir_core\tperformance\tlow\tHeavy operation appears inside a loop.\n";
+NOIR100\tnoir_core\tmaintainability\tlow\tMagic number literal should be named.\n\
+NOIR110\tnoir_core\tmaintainability\tlow\tFunction complexity exceeds threshold.\n\
+NOIR120\tnoir_core\tmaintainability\tlow\tFunction nesting depth exceeds threshold.\n";
 
     let mut cmd = cli_bin();
     cmd.arg("rules");
@@ -137,16 +132,37 @@ fn invalid_flag_combination_returns_exit_code_two() {
 }
 
 #[test]
-fn explain_supports_rules_from_full_catalog() {
+fn check_rejects_unknown_rule_override() {
+    let mut cmd = cli_bin();
+    let fixture = fixture_dir("noir_core/minimal");
+    cmd.args([
+        "check",
+        fixture.to_string_lossy().as_ref(),
+        "--deny",
+        "DOES_NOT_EXIST",
+    ]);
+
+    let output = cmd.output().expect("command should execute");
+    assert_eq!(output.status.code(), Some(2));
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown rule id 'DOES_NOT_EXIST' in --deny override"),
+        "stderr was: {stderr}"
+    );
+}
+
+#[test]
+fn explain_supports_rules_from_canonical_catalog() {
     let expected = "\
-Rule: AZTEC041\n\
+Rule: AZTEC022\n\
 Pack: aztec_pack\n\
-Policy: constraint_cost\n\
-Confidence: low\n\
-Summary: Repeated membership proofs detected.\n";
+Policy: soundness\n\
+Confidence: medium\n\
+Summary: Suspicious Merkle witness usage.\n";
 
     let mut cmd = cli_bin();
-    cmd.args(["explain", "aztec041"]);
+    cmd.args(["explain", "aztec022"]);
     cmd.assert().success().stdout(expected);
 }
 
@@ -184,7 +200,7 @@ fn check_loads_config_from_target_path() {
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("active_rules=11"), "stdout was: {stdout}");
+    assert!(stdout.contains("active_rules=7"), "stdout was: {stdout}");
 }
 
 #[test]
@@ -242,7 +258,7 @@ fn profile_default_excludes_aztec_pack() {
 
     let output = cmd.output().expect("command should execute");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("active_rules=9"), "stdout was: {stdout}");
+    assert!(stdout.contains("active_rules=8"), "stdout was: {stdout}");
 }
 
 #[test]
@@ -258,7 +274,7 @@ fn profile_noir_excludes_aztec_pack() {
 
     let output = cmd.output().expect("command should execute");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("active_rules=9"), "stdout was: {stdout}");
+    assert!(stdout.contains("active_rules=8"), "stdout was: {stdout}");
 }
 
 #[test]
@@ -274,7 +290,7 @@ fn profile_aztec_includes_default_and_aztec_pack() {
 
     let output = cmd.output().expect("command should execute");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("active_rules=20"), "stdout was: {stdout}");
+    assert!(stdout.contains("active_rules=15"), "stdout was: {stdout}");
 }
 
 #[test]
@@ -287,7 +303,7 @@ fn bare_invocation_runs_check_with_aztec_profile_by_default() {
     assert_eq!(output.status.code(), Some(1), "run should report findings");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("active_rules=20"),
+        stdout.contains("active_rules=15"),
         "bare invocation should default to aztec profile: {stdout}"
     );
 }

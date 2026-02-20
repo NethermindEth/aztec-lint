@@ -1,4 +1,4 @@
-checked=<FIXTURE> profile=aztec changed_only=false active_rules=20
+checked=<FIXTURE> profile=aztec changed_only=false active_rules=15
 warning[NOIR100]: magic number `3` should be named
   --> src/main.nr:8:20
    |

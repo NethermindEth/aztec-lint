@@ -3,7 +3,7 @@ use std::process::ExitCode;
 use clap::Args;
 
 use crate::cli::CliError;
-use crate::commands::catalog::all_rules;
+use crate::commands::catalog::{all_rules, confidence_label};
 use crate::exit_codes;
 
 #[derive(Debug, Args)]
@@ -14,7 +14,11 @@ pub fn run(_args: RulesArgs) -> Result<ExitCode, CliError> {
     for rule in all_rules() {
         println!(
             "{}\t{}\t{}\t{}\t{}",
-            rule.id, rule.pack, rule.policy, rule.confidence, rule.summary
+            rule.id,
+            rule.pack,
+            rule.policy,
+            confidence_label(rule.confidence),
+            rule.docs.summary
         );
     }
     Ok(exit_codes::success())
