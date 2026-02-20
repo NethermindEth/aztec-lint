@@ -2,10 +2,12 @@
 
 pub mod config;
 pub mod diagnostics;
+pub mod fix;
 pub mod model;
 pub mod noir;
 pub mod output;
 pub mod policy;
+pub mod vcs;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const CORE_API_STABILITY: &str = "phase-2-stable";

@@ -56,6 +56,8 @@ pub fn render_diagnostics(
                 "properties": {
                     "confidence": diagnostic.confidence,
                     "policy": diagnostic.policy,
+                    "suppressed": diagnostic.suppressed,
+                    "suppressionReason": diagnostic.suppression_reason,
                 }
             })
         })

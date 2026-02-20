@@ -31,9 +31,18 @@ pub fn render_check_report(report: CheckTextReport<'_>) -> String {
     }
 
     for diagnostic in &diagnostics {
+        let suppression = if diagnostic.suppressed {
+            diagnostic
+                .suppression_reason
+                .as_deref()
+                .map(|reason| format!(" [suppressed: {reason}]"))
+                .unwrap_or_else(|| " [suppressed]".to_string())
+        } else {
+            String::new()
+        };
         let _ = writeln!(
             output,
-            "{}:{}:{}: {}[{}] {} (confidence={}, policy={})",
+            "{}:{}:{}: {}[{}] {} (confidence={}, policy={}){}",
             diagnostic.primary_span.file,
             diagnostic.primary_span.line,
             diagnostic.primary_span.col,
@@ -41,7 +50,8 @@ pub fn render_check_report(report: CheckTextReport<'_>) -> String {
             diagnostic.rule_id,
             diagnostic.message,
             confidence_label(diagnostic.confidence),
-            diagnostic.policy
+            diagnostic.policy,
+            suppression
         );
     }
 
