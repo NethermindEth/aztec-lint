@@ -202,6 +202,34 @@ mod tests {
     use crate::diagnostics::{Confidence, Diagnostic, Severity};
     use crate::model::Span;
 
+    fn strip_ansi(input: &str) -> String {
+        let bytes = input.as_bytes();
+        let mut output = String::with_capacity(input.len());
+        let mut cursor = 0usize;
+
+        while cursor < bytes.len() {
+            if bytes[cursor] == 0x1b {
+                cursor += 1;
+                if cursor < bytes.len() && bytes[cursor] == b'[' {
+                    cursor += 1;
+                    while cursor < bytes.len() {
+                        let b = bytes[cursor];
+                        cursor += 1;
+                        if b.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+
+            output.push(bytes[cursor] as char);
+            cursor += 1;
+        }
+
+        output
+    }
+
     fn diagnostic(file: &str, line: u32, col: u32, rule_id: &str, message: &str) -> Diagnostic {
         Diagnostic {
             rule_id: rule_id.to_string(),
@@ -270,7 +298,7 @@ mod tests {
             diagnostics: &[&issue],
         };
 
-        let output = render_check_report(report);
+        let output = strip_ansi(&render_check_report(report));
         assert!(output.contains("warning[NOIR100]: magic number `7` should be named"));
         assert!(output.contains("  --> src/main.nr:1:17"));
         assert!(output.contains("1 | fn main() { let x = 7; }"));
