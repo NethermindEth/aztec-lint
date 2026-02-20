@@ -102,7 +102,7 @@ Target files:
 - `crates/aztec-lint-rules/src/engine/context.rs`
 - `crates/aztec-lint-rules/src/engine/mod.rs`
 
-### Phase 3: Text output parity (Clippy-like presentation)
+### Phase 3: Text output parity (Clippy-like presentation) **COMPLETE**
 1. Render suggestion lines with `help:` and replacement text tied to span.
 2. If suggestion span equals primary span, render inline marker-style help.
 3. Render additional notes/help blocks in deterministic order.
@@ -112,7 +112,7 @@ Target files:
 - `crates/aztec-lint-core/src/output/text.rs`
 - `crates/aztec-lint-core/src/output/ansi.rs`
 
-### Phase 4: JSON/SARIF schema extension
+### Phase 4: JSON/SARIF schema extension **COMPLETE**
 1. JSON output should include structured suggestions + applicability.
 2. SARIF output should map suggestions to `fixes`/`artifacts` where possible.
 3. Preserve existing fields for backward compatibility for one release.
