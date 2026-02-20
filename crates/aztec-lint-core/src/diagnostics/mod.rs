@@ -5,8 +5,8 @@ pub use fingerprint::{
     diagnostic_fingerprint, message_hash, normalize_file_path, span_fingerprint,
 };
 pub use types::{
-    Applicability, Confidence, Diagnostic, Fix, FixSafety, Severity, StructuredMessage,
-    StructuredSuggestion,
+    Applicability, Confidence, Diagnostic, Fix, FixSafety, MultipartSuggestionPart, Severity,
+    StructuredMessage, StructuredSuggestion,
 };
 
 pub fn diagnostic_sort_key(diagnostic: &Diagnostic) -> (String, u32, u32, String, String) {

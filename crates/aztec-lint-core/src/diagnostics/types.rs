@@ -34,6 +34,15 @@ pub enum Applicability {
 }
 
 impl Applicability {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::MachineApplicable => "machine-applicable",
+            Self::MaybeIncorrect => "maybe-incorrect",
+            Self::HasPlaceholders => "has-placeholders",
+            Self::Unspecified => "unspecified",
+        }
+    }
+
     pub fn to_fix_safety(self) -> FixSafety {
         match self {
             Self::MachineApplicable => FixSafety::Safe,
@@ -84,7 +93,79 @@ impl StructuredSuggestion {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct MultipartSuggestionPart {
+    pub span: Span,
+    pub replacement: String,
+}
+
 impl Diagnostic {
+    pub fn note(mut self, message: impl Into<String>) -> Self {
+        self.notes.push(StructuredMessage {
+            message: message.into(),
+            span: None,
+        });
+        self
+    }
+
+    pub fn span_note(mut self, span: Span, message: impl Into<String>) -> Self {
+        self.notes.push(StructuredMessage {
+            message: message.into(),
+            span: Some(span),
+        });
+        self
+    }
+
+    pub fn help(mut self, message: impl Into<String>) -> Self {
+        self.helps.push(StructuredMessage {
+            message: message.into(),
+            span: None,
+        });
+        self
+    }
+
+    pub fn span_help(mut self, span: Span, message: impl Into<String>) -> Self {
+        self.helps.push(StructuredMessage {
+            message: message.into(),
+            span: Some(span),
+        });
+        self
+    }
+
+    pub fn span_suggestion(
+        mut self,
+        span: Span,
+        message: impl Into<String>,
+        replacement: impl Into<String>,
+        applicability: Applicability,
+    ) -> Self {
+        self.structured_suggestions.push(StructuredSuggestion {
+            message: message.into(),
+            span,
+            replacement: replacement.into(),
+            applicability,
+        });
+        self
+    }
+
+    pub fn multipart_suggestion(
+        mut self,
+        message: impl Into<String>,
+        parts: impl IntoIterator<Item = MultipartSuggestionPart>,
+        applicability: Applicability,
+    ) -> Self {
+        let message = message.into();
+        for part in parts {
+            self.structured_suggestions.push(StructuredSuggestion {
+                message: message.clone(),
+                span: part.span,
+                replacement: part.replacement,
+                applicability,
+            });
+        }
+        self
+    }
+
     pub fn fixes_from_structured_suggestions(&self) -> Vec<Fix> {
         self.structured_suggestions
             .iter()
@@ -119,8 +200,8 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{
-        Applicability, Confidence, Diagnostic, Fix, FixSafety, Severity, StructuredMessage,
-        StructuredSuggestion,
+        Applicability, Confidence, Diagnostic, Fix, FixSafety, MultipartSuggestionPart, Severity,
+        StructuredMessage, StructuredSuggestion,
     };
     use crate::model::Span;
 
@@ -323,6 +404,95 @@ mod tests {
             };
             assert_eq!(suggestion.to_fix().safety, FixSafety::NeedsReview);
         }
+    }
+
+    #[test]
+    fn applicability_has_stable_labels() {
+        assert_eq!(
+            Applicability::MachineApplicable.as_str(),
+            "machine-applicable"
+        );
+        assert_eq!(Applicability::MaybeIncorrect.as_str(), "maybe-incorrect");
+        assert_eq!(Applicability::HasPlaceholders.as_str(), "has-placeholders");
+        assert_eq!(Applicability::Unspecified.as_str(), "unspecified");
+    }
+
+    #[test]
+    fn diagnostic_helpers_append_structured_messages_and_suggestions() {
+        let diagnostic = Diagnostic {
+            rule_id: "NOIR999".to_string(),
+            severity: Severity::Warning,
+            confidence: Confidence::Medium,
+            policy: "maintainability".to_string(),
+            message: "message".to_string(),
+            primary_span: Span::new("src/main.nr", 1, 2, 1, 1),
+            secondary_spans: Vec::new(),
+            suggestions: Vec::new(),
+            notes: Vec::new(),
+            helps: Vec::new(),
+            structured_suggestions: Vec::new(),
+            fixes: Vec::new(),
+            suppressed: false,
+            suppression_reason: None,
+        }
+        .note("plain note")
+        .span_note(Span::new("src/main.nr", 10, 12, 2, 3), "span note")
+        .help("plain help")
+        .span_help(Span::new("src/main.nr", 14, 16, 2, 7), "span help")
+        .span_suggestion(
+            Span::new("src/main.nr", 20, 24, 3, 2),
+            "replace expression",
+            "replacement()",
+            Applicability::MachineApplicable,
+        )
+        .multipart_suggestion(
+            "replace multiple locations",
+            vec![
+                MultipartSuggestionPart {
+                    span: Span::new("src/main.nr", 30, 32, 4, 3),
+                    replacement: "lhs".to_string(),
+                },
+                MultipartSuggestionPart {
+                    span: Span::new("src/main.nr", 40, 42, 5, 3),
+                    replacement: "rhs".to_string(),
+                },
+            ],
+            Applicability::MaybeIncorrect,
+        );
+
+        assert_eq!(diagnostic.notes.len(), 2);
+        assert_eq!(diagnostic.notes[0].message, "plain note");
+        assert!(diagnostic.notes[0].span.is_none());
+        assert_eq!(diagnostic.notes[1].message, "span note");
+        assert!(diagnostic.notes[1].span.is_some());
+
+        assert_eq!(diagnostic.helps.len(), 2);
+        assert_eq!(diagnostic.helps[0].message, "plain help");
+        assert!(diagnostic.helps[0].span.is_none());
+        assert_eq!(diagnostic.helps[1].message, "span help");
+        assert!(diagnostic.helps[1].span.is_some());
+
+        assert_eq!(diagnostic.structured_suggestions.len(), 3);
+        assert_eq!(
+            diagnostic.structured_suggestions[0].message,
+            "replace expression"
+        );
+        assert_eq!(
+            diagnostic.structured_suggestions[1].message,
+            "replace multiple locations"
+        );
+        assert_eq!(
+            diagnostic.structured_suggestions[1].replacement,
+            "lhs".to_string()
+        );
+        assert_eq!(
+            diagnostic.structured_suggestions[2].replacement,
+            "rhs".to_string()
+        );
+        assert_eq!(
+            diagnostic.structured_suggestions[2].applicability,
+            Applicability::MaybeIncorrect
+        );
     }
 
     #[test]
