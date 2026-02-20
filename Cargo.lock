@@ -363,6 +363,7 @@ dependencies = [
 name = "aztec-lint-core"
 version = "0.1.0"
 dependencies = [
+ "aztec-lint-sdk",
  "blake3",
  "fm",
  "noirc_driver",
@@ -380,6 +381,14 @@ version = "0.1.0"
 dependencies = [
  "aztec-lint-aztec",
  "aztec-lint-core",
+]
+
+[[package]]
+name = "aztec-lint-sdk"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

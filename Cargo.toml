@@ -4,6 +4,7 @@ members = [
   "crates/aztec-lint-core",
   "crates/aztec-lint-rules",
   "crates/aztec-lint-aztec",
+  "crates/aztec-lint-sdk",
 ]
 resolver = "2"
 
@@ -17,6 +18,7 @@ rust-version = "1.93.0"
 aztec-lint-core = { path = "crates/aztec-lint-core" }
 aztec-lint-rules = { path = "crates/aztec-lint-rules" }
 aztec-lint-aztec = { path = "crates/aztec-lint-aztec" }
+aztec-lint-sdk = { path = "crates/aztec-lint-sdk" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 blake3 = "1.8"
