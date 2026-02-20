@@ -3,6 +3,7 @@
 pub mod config;
 pub mod diagnostics;
 pub mod fix;
+pub mod lints;
 pub mod model;
 pub mod noir;
 pub mod output;
