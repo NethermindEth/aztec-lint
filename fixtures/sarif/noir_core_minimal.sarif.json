@@ -26,7 +26,9 @@
           },
           "properties": {
             "confidence": "low",
-            "policy": "maintainability"
+            "policy": "maintainability",
+            "suppressed": false,
+            "suppressionReason": null
           },
           "ruleId": "NOIR100"
         },
@@ -53,7 +55,9 @@
           },
           "properties": {
             "confidence": "low",
-            "policy": "maintainability"
+            "policy": "maintainability",
+            "suppressed": false,
+            "suppressionReason": null
           },
           "ruleId": "NOIR100"
         }

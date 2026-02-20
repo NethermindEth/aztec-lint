@@ -69,6 +69,8 @@ pub struct CommonLintFlags {
     pub allow: Vec<String>,
     #[arg(long, default_value = "low", value_enum)]
     pub min_confidence: MinConfidence,
+    #[arg(long)]
+    pub show_suppressed: bool,
 }
 
 impl CommonLintFlags {

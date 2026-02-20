@@ -2,6 +2,7 @@ use assert_cmd::prelude::OutputAssertExt;
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::tempdir;
 
@@ -13,6 +14,44 @@ fn fixture_dir(path: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../fixtures")
         .join(path)
+}
+
+fn create_git_project(main_source: &str) -> (tempfile::TempDir, PathBuf) {
+    let workspace = tempdir().expect("temp dir should be created");
+    let project = workspace.path().join("project");
+    fs::create_dir_all(project.join("src")).expect("src dir should be created");
+    fs::write(
+        project.join("Nargo.toml"),
+        "[package]\nname=\"project\"\ntype=\"bin\"\nauthors=[\"\"]\n",
+    )
+    .expect("nargo file should be written");
+    fs::write(project.join("src/main.nr"), main_source).expect("main source should be written");
+
+    git(project.as_path(), &["init", "--quiet"]);
+    git(project.as_path(), &["config", "user.name", "Test User"]);
+    git(
+        project.as_path(),
+        &["config", "user.email", "test@example.com"],
+    );
+    git(project.as_path(), &["add", "."]);
+    git(project.as_path(), &["commit", "-m", "init", "--quiet"]);
+
+    (workspace, project)
+}
+
+fn git(root: &Path, args: &[&str]) {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .output()
+        .expect("git command should execute");
+    assert!(
+        output.status.success(),
+        "git {:?} failed: {}",
+        args,
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
@@ -193,9 +232,125 @@ fn profile_aztec_includes_default_and_aztec_pack() {
 
 #[test]
 fn fix_accepts_changed_only_flag() {
+    let (_workspace, project) = create_git_project("fn main() { let x = 3; assert(x == 3); }\n");
+    fs::write(
+        project.join("src/main.nr"),
+        "fn main() { let x = 7; assert(x == 7); }\n",
+    )
+    .expect("changed source should be written");
+
     let mut cmd = cli_bin();
+    cmd.current_dir(&project);
     cmd.args(["fix", ".", "--changed-only"]);
-    cmd.assert().success();
+    cmd.assert().code(1);
+}
+
+#[test]
+fn check_changed_only_ignores_diagnostics_in_unchanged_files() {
+    let (_workspace, project) = create_git_project("fn main() { let x = 3; assert(x == 3); }\n");
+
+    let mut cmd = cli_bin();
+    cmd.current_dir(&project);
+    cmd.args(["check", ".", "--changed-only"]);
+    cmd.assert().code(0);
+}
+
+#[test]
+fn check_changed_only_includes_unstaged_changes() {
+    let (_workspace, project) = create_git_project("fn main() { let x = 3; assert(x == 3); }\n");
+    fs::write(
+        project.join("src/main.nr"),
+        "fn main() { let x = 11; assert(x == 11); }\n",
+    )
+    .expect("changed source should be written");
+
+    let mut cmd = cli_bin();
+    cmd.current_dir(&project);
+    cmd.args(["check", ".", "--changed-only"]);
+    cmd.assert().code(1);
+}
+
+#[test]
+fn check_changed_only_includes_staged_changes() {
+    let (_workspace, project) = create_git_project("fn main() { let x = 3; assert(x == 3); }\n");
+    fs::write(
+        project.join("src/main.nr"),
+        "fn main() { let x = 9; assert(x == 9); }\n",
+    )
+    .expect("changed source should be written");
+    git(project.as_path(), &["add", "src/main.nr"]);
+
+    let mut cmd = cli_bin();
+    cmd.current_dir(&project);
+    cmd.args(["check", ".", "--changed-only"]);
+    cmd.assert().code(1);
+}
+
+#[test]
+fn check_json_output_includes_suppressed_diagnostics() {
+    let (_workspace, project) =
+        create_git_project("#[allow(NOIR100)]\nfn main() { let x = 42; assert(x == 42); }\n");
+
+    let mut cmd = cli_bin();
+    cmd.current_dir(&project);
+    cmd.args(["check", ".", "--format", "json"]);
+    let output = cmd.output().expect("command should execute");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "suppressed findings are non-blocking"
+    );
+
+    let diagnostics: Value =
+        serde_json::from_slice(&output.stdout).expect("json output should parse");
+    let diagnostics = diagnostics
+        .as_array()
+        .expect("json diagnostics should be an array");
+    assert!(
+        !diagnostics.is_empty(),
+        "expected at least one suppressed diagnostic"
+    );
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic["suppressed"] == Value::Bool(true))
+    );
+    assert!(diagnostics.iter().all(|diagnostic| {
+        diagnostic["suppression_reason"] == Value::String("allow(NOIR100)".to_string())
+    }));
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic["rule_id"] == Value::String("NOIR100".to_string()))
+    );
+}
+
+#[test]
+fn check_text_show_suppressed_flag_controls_visibility() {
+    let (_workspace, project) =
+        create_git_project("#[allow(NOIR100)]\nfn main() { let x = 42; assert(x == 42); }\n");
+
+    let mut hidden = cli_bin();
+    hidden.current_dir(&project);
+    hidden.args(["check", "."]);
+    let hidden_output = hidden.output().expect("command should execute");
+    assert_eq!(hidden_output.status.code(), Some(0));
+    let hidden_stdout = String::from_utf8_lossy(&hidden_output.stdout);
+    assert!(
+        hidden_stdout.contains("No diagnostics."),
+        "default text output should hide suppressed diagnostics: {hidden_stdout}"
+    );
+
+    let mut visible = cli_bin();
+    visible.current_dir(&project);
+    visible.args(["check", ".", "--show-suppressed"]);
+    let visible_output = visible.output().expect("command should execute");
+    assert_eq!(visible_output.status.code(), Some(0));
+    let visible_stdout = String::from_utf8_lossy(&visible_output.stdout);
+    assert!(
+        visible_stdout.contains("[suppressed: allow(NOIR100)]"),
+        "show-suppressed output should include suppression metadata: {visible_stdout}"
+    );
 }
 
 #[test]

@@ -1,14 +1,16 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use aztec_lint_core::config::load_from_dir;
 use aztec_lint_core::diagnostics::Diagnostic;
+use aztec_lint_core::fix::{FixApplicationMode, FixApplicationReport, apply_fixes};
 use aztec_lint_core::output::json as json_output;
 use aztec_lint_core::output::sarif as sarif_output;
 use clap::Args;
 
 use crate::cli::{CliError, CommonLintFlags, OutputFormat};
-use crate::commands::check::config_root_for_target;
+use crate::commands::check::{
+    collect_lint_run, has_blocking_diagnostics, passes_thresholds, suppression_visible,
+};
 use crate::exit_codes;
 
 #[derive(Clone, Debug, Args)]
@@ -19,63 +21,186 @@ pub struct FixArgs {
     pub profile: String,
     #[arg(long)]
     pub changed_only: bool,
+    #[arg(long)]
+    pub dry_run: bool,
     #[command(flatten)]
     pub lint: CommonLintFlags,
 }
 
 pub fn run(args: FixArgs) -> Result<ExitCode, CliError> {
-    let loaded = load_from_dir(config_root_for_target(args.path.as_path()))?;
-    let effective_rules = loaded
-        .config
-        .effective_rule_levels(&args.profile, &args.lint.rule_overrides())?;
-
-    render_fix_result(
-        args.lint.format,
+    let initial = collect_lint_run(
         args.path.as_path(),
         &args.profile,
         args.changed_only,
-        effective_rules.len(),
+        args.lint.rule_overrides(),
     )?;
-    Ok(exit_codes::success())
+
+    let fix_mode = if args.dry_run {
+        FixApplicationMode::DryRun
+    } else {
+        FixApplicationMode::Apply
+    };
+    let candidates = diagnostics_for_fix(
+        &initial.diagnostics,
+        args.lint.min_confidence,
+        args.lint.severity_threshold,
+    );
+    let fix_report = apply_fixes(initial.report_root.as_path(), &candidates, fix_mode)
+        .map_err(|source| CliError::Runtime(format!("failed to apply fixes: {source}")))?;
+
+    let final_run = if args.dry_run {
+        initial.clone()
+    } else {
+        collect_lint_run(
+            args.path.as_path(),
+            &args.profile,
+            args.changed_only,
+            args.lint.rule_overrides(),
+        )?
+    };
+
+    let include_suppressed = suppression_visible(args.lint.format, args.lint.show_suppressed);
+    let diagnostics = diagnostics_for_output(
+        &final_run.diagnostics,
+        args.lint.min_confidence,
+        args.lint.severity_threshold,
+        include_suppressed,
+    );
+
+    render_fix_result(FixRenderContext {
+        format: args.lint.format,
+        path: args.path.as_path(),
+        profile: &args.profile,
+        changed_only: args.changed_only,
+        dry_run: args.dry_run,
+        effective_rules: final_run.effective_rules,
+        diagnostics: &diagnostics,
+        sarif_root: final_run.report_root.as_path(),
+        fix_report: &fix_report,
+    })?;
+
+    let blocking = has_blocking_diagnostics(
+        &final_run.diagnostics,
+        args.lint.min_confidence,
+        args.lint.severity_threshold,
+    );
+    Ok(exit_codes::diagnostics_found(blocking))
 }
 
-fn render_fix_result(
-    format: OutputFormat,
-    path: &Path,
-    profile: &str,
-    changed_only: bool,
-    effective_rules: usize,
-) -> Result<(), CliError> {
-    let diagnostics = Vec::<&Diagnostic>::new();
+fn diagnostics_for_fix(
+    diagnostics: &[Diagnostic],
+    min_confidence: crate::cli::MinConfidence,
+    severity_threshold: crate::cli::SeverityThreshold,
+) -> Vec<Diagnostic> {
+    diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            !diagnostic.suppressed
+                && passes_thresholds(diagnostic, min_confidence, severity_threshold)
+        })
+        .cloned()
+        .collect()
+}
 
-    match format {
+fn diagnostics_for_output(
+    diagnostics: &[Diagnostic],
+    min_confidence: crate::cli::MinConfidence,
+    severity_threshold: crate::cli::SeverityThreshold,
+    include_suppressed: bool,
+) -> Vec<&Diagnostic> {
+    diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            if diagnostic.suppressed {
+                return include_suppressed;
+            }
+            passes_thresholds(diagnostic, min_confidence, severity_threshold)
+        })
+        .collect()
+}
+
+struct FixRenderContext<'a> {
+    format: OutputFormat,
+    path: &'a Path,
+    profile: &'a str,
+    changed_only: bool,
+    dry_run: bool,
+    effective_rules: usize,
+    diagnostics: &'a [&'a Diagnostic],
+    sarif_root: &'a Path,
+    fix_report: &'a FixApplicationReport,
+}
+
+fn render_fix_result(context: FixRenderContext<'_>) -> Result<(), CliError> {
+    match context.format {
         OutputFormat::Text => {
+            let mode_label = if context.dry_run { "dry-run" } else { "apply" };
             println!(
-                "fix path={} profile={} changed_only={} active_rules={effective_rules}",
-                path.display(),
-                profile,
-                changed_only
+                "fix path={} profile={} changed_only={} mode={} active_rules={effective_rules}",
+                context.path.display(),
+                context.profile,
+                context.changed_only,
+                mode_label,
+                effective_rules = context.effective_rules
             );
-            println!("No fixes applied.");
+            println!(
+                "fixes_total={} fixes_selected={} fixes_skipped={} files_changed={}",
+                context.fix_report.total_candidates,
+                context.fix_report.selected.len(),
+                context.fix_report.skipped.len(),
+                context.fix_report.files_changed,
+            );
+
+            if context.diagnostics.is_empty() {
+                println!("No diagnostics.");
+                return Ok(());
+            }
+
+            for diagnostic in context.diagnostics {
+                let suppression = if diagnostic.suppressed {
+                    diagnostic
+                        .suppression_reason
+                        .as_deref()
+                        .map(|reason| format!(" [suppressed: {reason}]"))
+                        .unwrap_or_else(|| " [suppressed]".to_string())
+                } else {
+                    String::new()
+                };
+                println!(
+                    "{}:{}:{}: {}[{}] {}{}",
+                    diagnostic.primary_span.file,
+                    diagnostic.primary_span.line,
+                    diagnostic.primary_span.col,
+                    match diagnostic.severity {
+                        aztec_lint_core::diagnostics::Severity::Warning => "warning",
+                        aztec_lint_core::diagnostics::Severity::Error => "error",
+                    },
+                    diagnostic.rule_id,
+                    diagnostic.message,
+                    suppression,
+                );
+            }
             Ok(())
         }
         OutputFormat::Json => {
-            let rendered = json_output::render_diagnostics(&diagnostics).map_err(|source| {
-                CliError::Runtime(format!(
-                    "failed to serialize fix diagnostics as JSON: {source}"
-                ))
-            })?;
+            let rendered =
+                json_output::render_diagnostics(context.diagnostics).map_err(|source| {
+                    CliError::Runtime(format!(
+                        "failed to serialize fix diagnostics as JSON: {source}"
+                    ))
+                })?;
             println!("{rendered}");
             Ok(())
         }
         OutputFormat::Sarif => {
             let rendered =
-                sarif_output::render_diagnostics(config_root_for_target(path), &diagnostics)
-                    .map_err(|source| {
+                sarif_output::render_diagnostics(context.sarif_root, context.diagnostics).map_err(
+                    |source| {
                         CliError::Runtime(format!(
                             "failed to serialize fix diagnostics as SARIF: {source}"
                         ))
-                    })?;
+                    },
+                )?;
             println!("{rendered}");
             Ok(())
         }

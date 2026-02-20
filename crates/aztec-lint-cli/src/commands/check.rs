@@ -1,9 +1,10 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use aztec_lint_aztec::{SourceUnit, build_aztec_model, should_activate_aztec};
-use aztec_lint_core::config::load_from_dir;
+use aztec_lint_core::config::{RuleOverrides, load_from_dir};
 use aztec_lint_core::diagnostics::{
     Confidence, Diagnostic, Severity, normalize_file_path, sort_diagnostics,
 };
@@ -11,6 +12,7 @@ use aztec_lint_core::noir::build_project_model;
 use aztec_lint_core::output::json as json_output;
 use aztec_lint_core::output::sarif as sarif_output;
 use aztec_lint_core::output::text::{CheckTextReport, render_check_report};
+use aztec_lint_core::vcs::changed_files_from_git;
 use aztec_lint_rules::RuleEngine;
 use aztec_lint_rules::engine::context::RuleContext;
 use clap::Args;
@@ -36,26 +38,72 @@ struct NoirProject {
     entry: PathBuf,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct LintRun {
+    pub effective_rules: usize,
+    pub diagnostics: Vec<Diagnostic>,
+    pub report_root: PathBuf,
+}
+
 pub fn run(args: CheckArgs) -> Result<ExitCode, CliError> {
-    let loaded = load_from_dir(config_root_for_target(args.path.as_path()))?;
+    let lint_run = collect_lint_run(
+        args.path.as_path(),
+        &args.profile,
+        args.changed_only,
+        args.lint.rule_overrides(),
+    )?;
+
+    let include_suppressed = suppression_visible(args.lint.format, args.lint.show_suppressed);
+    let diagnostics = diagnostics_for_output(
+        &lint_run.diagnostics,
+        args.lint.min_confidence,
+        args.lint.severity_threshold,
+        include_suppressed,
+    );
+
+    render_result(
+        args.lint.format,
+        args.path.as_path(),
+        &args.profile,
+        args.changed_only,
+        lint_run.effective_rules,
+        &diagnostics,
+        lint_run.report_root.as_path(),
+    )?;
+
+    let blocking = has_blocking_diagnostics(
+        &lint_run.diagnostics,
+        args.lint.min_confidence,
+        args.lint.severity_threshold,
+    );
+    Ok(exit_codes::diagnostics_found(blocking))
+}
+
+pub(crate) fn collect_lint_run(
+    path: &Path,
+    profile: &str,
+    changed_only: bool,
+    rule_overrides: RuleOverrides,
+) -> Result<LintRun, CliError> {
+    let loaded = load_from_dir(config_root_for_target(path))?;
     let effective_rules = loaded
         .config
-        .effective_rule_levels(&args.profile, &args.lint.rule_overrides())?;
+        .effective_rule_levels(profile, &rule_overrides)?;
 
-    let projects = discover_noir_projects(args.path.as_path()).map_err(|source| {
+    let projects = discover_noir_projects(path).map_err(|source| {
         CliError::Runtime(format!(
             "failed to discover Noir projects under '{}': {source}",
-            args.path.display()
+            path.display()
         ))
     })?;
 
     if projects.is_empty() {
         return Err(CliError::Runtime(format!(
             "no Noir project found under '{}'",
-            args.path.display()
+            path.display()
         )));
     }
-    let report_root = report_root_for_target(args.path.as_path(), &projects);
+    let report_root = report_root_for_target(path, &projects);
 
     let engine = RuleEngine::new();
     let mut diagnostics = Vec::<Diagnostic>::new();
@@ -82,7 +130,7 @@ pub fn run(args: CheckArgs) -> Result<ExitCode, CliError> {
             .iter()
             .map(|file| SourceUnit::new(file.path().to_string(), file.text().to_string()))
             .collect::<Vec<_>>();
-        if should_activate_aztec(&args.profile, &sources, &loaded.config.aztec) {
+        if should_activate_aztec(profile, &sources, &loaded.config.aztec) {
             let aztec_model = build_aztec_model(&sources, &loaded.config.aztec);
             context.set_aztec_model(aztec_model);
         }
@@ -98,23 +146,22 @@ pub fn run(args: CheckArgs) -> Result<ExitCode, CliError> {
 
     sort_diagnostics(&mut diagnostics);
 
-    let filtered = filter_diagnostics(
-        &diagnostics,
-        args.lint.min_confidence,
-        args.lint.severity_threshold,
-    );
+    if changed_only {
+        let changed = changed_files_from_git(path).map_err(|source| {
+            CliError::Runtime(format!(
+                "failed to compute changed files for '{}': {source}",
+                path.display()
+            ))
+        })?;
+        let changed_files = changed.files_for_root(report_root.as_path());
+        retain_changed_only(&mut diagnostics, &changed_files);
+    }
 
-    render_result(
-        args.lint.format,
-        args.path.as_path(),
-        &args.profile,
-        args.changed_only,
-        effective_rules.len(),
-        &filtered,
-        report_root.as_path(),
-    )?;
-
-    Ok(exit_codes::diagnostics_found(!filtered.is_empty()))
+    Ok(LintRun {
+        effective_rules: effective_rules.len(),
+        diagnostics,
+        report_root,
+    })
 }
 
 pub(crate) fn config_root_for_target(path: &Path) -> &Path {
@@ -209,21 +256,58 @@ fn rebase_file_path(file: &str, project_root: &Path, report_root: &Path) -> Stri
     normalize_file_path(&rebased.to_string_lossy())
 }
 
-fn filter_diagnostics(
+fn retain_changed_only(diagnostics: &mut Vec<Diagnostic>, changed_files: &BTreeSet<String>) {
+    let normalized = changed_files
+        .iter()
+        .map(|file| normalize_file_path(file))
+        .collect::<BTreeSet<_>>();
+
+    diagnostics.retain(|diagnostic| {
+        normalized.contains(&normalize_file_path(&diagnostic.primary_span.file))
+    });
+}
+
+fn diagnostics_for_output(
     diagnostics: &[Diagnostic],
     min_confidence: MinConfidence,
     severity_threshold: SeverityThreshold,
+    include_suppressed: bool,
 ) -> Vec<&Diagnostic> {
     diagnostics
         .iter()
-        .filter(|diagnostic| !diagnostic.suppressed)
         .filter(|diagnostic| {
-            confidence_rank(diagnostic.confidence) >= min_confidence_rank(min_confidence)
-        })
-        .filter(|diagnostic| {
-            severity_rank(diagnostic.severity) >= severity_threshold_rank(severity_threshold)
+            if diagnostic.suppressed {
+                return include_suppressed;
+            }
+            passes_thresholds(diagnostic, min_confidence, severity_threshold)
         })
         .collect()
+}
+
+pub(crate) fn has_blocking_diagnostics(
+    diagnostics: &[Diagnostic],
+    min_confidence: MinConfidence,
+    severity_threshold: SeverityThreshold,
+) -> bool {
+    diagnostics.iter().any(|diagnostic| {
+        !diagnostic.suppressed && passes_thresholds(diagnostic, min_confidence, severity_threshold)
+    })
+}
+
+pub(crate) fn passes_thresholds(
+    diagnostic: &Diagnostic,
+    min_confidence: MinConfidence,
+    severity_threshold: SeverityThreshold,
+) -> bool {
+    confidence_rank(diagnostic.confidence) >= min_confidence_rank(min_confidence)
+        && severity_rank(diagnostic.severity) >= severity_threshold_rank(severity_threshold)
+}
+
+pub(crate) fn suppression_visible(format: OutputFormat, show_suppressed: bool) -> bool {
+    match format {
+        OutputFormat::Text => show_suppressed,
+        OutputFormat::Json | OutputFormat::Sarif => true,
+    }
 }
 
 fn confidence_rank(confidence: Confidence) -> u8 {
