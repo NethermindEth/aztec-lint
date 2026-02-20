@@ -41,6 +41,10 @@ pub enum ConfigError {
         existing: RuleLevel,
         requested: RuleLevel,
     },
+    UnknownRuleId {
+        rule_id: String,
+        source: String,
+    },
 }
 
 impl Display for ConfigError {
@@ -85,6 +89,10 @@ impl Display for ConfigError {
                 f,
                 "conflicting CLI override for rule '{rule_id}': {existing} vs {requested}"
             ),
+            Self::UnknownRuleId { rule_id, source } => write!(
+                f,
+                "unknown rule id '{rule_id}' in {source} override (run `aztec-lint rules`)"
+            ),
         }
     }
 }
@@ -98,7 +106,8 @@ impl Error for ConfigError {
             | Self::ParentProfileNotFound { .. }
             | Self::ProfileCycle { .. }
             | Self::UnknownRuleset { .. }
-            | Self::ConflictingRuleOverride { .. } => None,
+            | Self::ConflictingRuleOverride { .. }
+            | Self::UnknownRuleId { .. } => None,
         }
     }
 }

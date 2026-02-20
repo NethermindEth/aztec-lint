@@ -4,32 +4,7 @@ use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use crate::config::ConfigError;
-
-const NOIR_CORE_RULES: &[(&str, RuleLevel)] = &[
-    ("NOIR001", RuleLevel::Deny),
-    ("NOIR002", RuleLevel::Deny),
-    ("NOIR010", RuleLevel::Deny),
-    ("NOIR020", RuleLevel::Deny),
-    ("NOIR030", RuleLevel::Deny),
-    ("NOIR100", RuleLevel::Warn),
-    ("NOIR110", RuleLevel::Warn),
-    ("NOIR120", RuleLevel::Warn),
-    ("NOIR200", RuleLevel::Allow),
-];
-
-const AZTEC_PACK_RULES: &[(&str, RuleLevel)] = &[
-    ("AZTEC001", RuleLevel::Deny),
-    ("AZTEC002", RuleLevel::Deny),
-    ("AZTEC003", RuleLevel::Deny),
-    ("AZTEC010", RuleLevel::Deny),
-    ("AZTEC011", RuleLevel::Deny),
-    ("AZTEC012", RuleLevel::Deny),
-    ("AZTEC020", RuleLevel::Deny),
-    ("AZTEC021", RuleLevel::Deny),
-    ("AZTEC022", RuleLevel::Deny),
-    ("AZTEC040", RuleLevel::Allow),
-    ("AZTEC041", RuleLevel::Allow),
-];
+use crate::lints::{all_lints, find_lint};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RawConfig {
@@ -199,7 +174,7 @@ impl Config {
                     ruleset: ruleset.clone(),
                 })?;
             for (rule_id, level) in defaults {
-                levels.insert((*rule_id).to_string(), *level);
+                levels.insert(rule_id.to_string(), level);
             }
         }
 
@@ -295,9 +270,9 @@ fn apply_rule_overrides(
     overrides: &RuleOverrides,
 ) -> Result<(), ConfigError> {
     let mut seen = BTreeMap::<String, RuleLevel>::new();
-    register_override(&mut seen, &overrides.allow, RuleLevel::Allow)?;
-    register_override(&mut seen, &overrides.warn, RuleLevel::Warn)?;
-    register_override(&mut seen, &overrides.deny, RuleLevel::Deny)?;
+    register_override(&mut seen, &overrides.allow, RuleLevel::Allow, "--allow")?;
+    register_override(&mut seen, &overrides.warn, RuleLevel::Warn, "--warn")?;
+    register_override(&mut seen, &overrides.deny, RuleLevel::Deny, "--deny")?;
 
     for (rule_id, level) in seen {
         levels.insert(rule_id, level);
@@ -309,9 +284,17 @@ fn register_override(
     seen: &mut BTreeMap<String, RuleLevel>,
     rules: &[String],
     requested: RuleLevel,
+    source: &str,
 ) -> Result<(), ConfigError> {
     for rule in rules {
         let normalized = normalize_rule_id(rule);
+        if find_lint(&normalized).is_none() {
+            return Err(ConfigError::UnknownRuleId {
+                rule_id: normalized,
+                source: source.to_string(),
+            });
+        }
+
         if let Some(existing) = seen.get(&normalized) {
             if *existing != requested {
                 return Err(ConfigError::ConflictingRuleOverride {
@@ -327,12 +310,19 @@ fn register_override(
     Ok(())
 }
 
-fn ruleset_defaults(ruleset: &str) -> Option<&'static [(&'static str, RuleLevel)]> {
-    match ruleset {
-        "noir_core" => Some(NOIR_CORE_RULES),
-        "aztec_pack" => Some(AZTEC_PACK_RULES),
-        _ => None,
+fn ruleset_defaults(ruleset: &str) -> Option<Vec<(&'static str, RuleLevel)>> {
+    let mut defaults = all_lints()
+        .iter()
+        .filter(|lint| lint.pack == ruleset && lint.lifecycle.is_active())
+        .map(|lint| (lint.id, lint.default_level))
+        .collect::<Vec<_>>();
+
+    if defaults.is_empty() {
+        return None;
     }
+
+    defaults.sort_unstable_by_key(|(rule_id, _)| *rule_id);
+    Some(defaults)
 }
 
 fn default_contract_attribute() -> String {
@@ -511,6 +501,28 @@ extends = ["a"]
         match err {
             ConfigError::ConflictingRuleOverride { rule_id, .. } => {
                 assert_eq!(rule_id, "AZTEC010");
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_cli_rule_overrides_are_rejected() {
+        let config = Config::default();
+        let overrides = RuleOverrides {
+            deny: vec!["does_not_exist".to_string()],
+            warn: Vec::new(),
+            allow: Vec::new(),
+        };
+
+        let err = config
+            .effective_rule_levels("aztec", &overrides)
+            .expect_err("unknown CLI override should fail");
+
+        match err {
+            ConfigError::UnknownRuleId { rule_id, source } => {
+                assert_eq!(rule_id, "DOES_NOT_EXIST");
+                assert_eq!(source, "--deny");
             }
             other => panic!("unexpected error: {other:?}"),
         }
