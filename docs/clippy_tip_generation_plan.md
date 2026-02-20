@@ -88,7 +88,7 @@ Target files:
 - `crates/aztec-lint-core/src/diagnostics/types.rs`
 - `crates/aztec-lint-core/src/diagnostics/mod.rs`
 
-### Phase 2: Rule authoring API (`clippy_utils::diagnostics` equivalent)
+### Phase 2: Rule authoring API (`clippy_utils::diagnostics` equivalent) **COMPLETE**
 1. Add builder helpers in `RuleContext` or a small `DiagnosticBuilder`:
    - `ctx.diagnostic(...)`
    - `.note(...)`
