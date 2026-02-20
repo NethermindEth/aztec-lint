@@ -64,10 +64,12 @@ impl RuleEngine {
                 continue;
             }
 
-            let start = diagnostics.len();
-            registration.rule.run(ctx, &mut diagnostics);
+            // Run each rule against an isolated output buffer so a rule cannot
+            // mutate diagnostics emitted by previously executed rules.
+            let mut rule_diagnostics = Vec::<Diagnostic>::new();
+            registration.rule.run(ctx, &mut rule_diagnostics);
 
-            for diagnostic in diagnostics.iter_mut().skip(start) {
+            for diagnostic in &mut rule_diagnostics {
                 diagnostic.rule_id = registration.metadata.id.to_string();
                 diagnostic.severity = level_to_severity(level);
                 diagnostic.confidence = registration.metadata.confidence;
@@ -80,6 +82,8 @@ impl RuleEngine {
                     diagnostic.suppression_reason = Some(reason.to_string());
                 }
             }
+
+            diagnostics.extend(rule_diagnostics);
         }
 
         sort_diagnostics(&mut diagnostics);
@@ -333,5 +337,80 @@ fn main() {
             ]);
         }));
         assert!(result.is_err());
+    }
+
+    struct MutatingRule {
+        id: &'static str,
+    }
+
+    impl Rule for MutatingRule {
+        fn id(&self) -> &'static str {
+            self.id
+        }
+
+        fn run(
+            &self,
+            ctx: &RuleContext<'_>,
+            out: &mut Vec<aztec_lint_core::diagnostics::Diagnostic>,
+        ) {
+            // This intentionally attempts to mutate prior diagnostics. The engine
+            // should isolate rule output so this has no effect outside this rule.
+            out.clear();
+            let file = &ctx.files()[0];
+            out.push(ctx.diagnostic(
+                self.id(),
+                aztec_lint_core::policy::CORRECTNESS,
+                "mutating rule diagnostic",
+                file.span_for_range(0, 1),
+            ));
+        }
+    }
+
+    #[test]
+    fn engine_isolates_rule_outputs_between_rules() {
+        let project = ProjectModel::default();
+        let context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), "fn main() {}\n".to_string())],
+        );
+
+        let registry = vec![
+            RuleRegistration {
+                metadata: RuleMetadata {
+                    id: "NOIR100",
+                    pack: "noir_core",
+                    policy: aztec_lint_core::policy::MAINTAINABILITY,
+                    default_level: RuleLevel::Warn,
+                    confidence: Confidence::Low,
+                },
+                rule: Box::new(TestRule),
+            },
+            RuleRegistration {
+                metadata: RuleMetadata {
+                    id: "NOIR101",
+                    pack: "noir_core",
+                    policy: aztec_lint_core::policy::CORRECTNESS,
+                    default_level: RuleLevel::Warn,
+                    confidence: Confidence::Medium,
+                },
+                rule: Box::new(MutatingRule { id: "NOIR101" }),
+            },
+        ];
+        let engine = RuleEngine::with_registry(registry);
+
+        let diagnostics = engine.run(
+            &context,
+            &BTreeMap::from([
+                ("NOIR100".to_string(), RuleLevel::Warn),
+                ("NOIR101".to_string(), RuleLevel::Warn),
+            ]),
+        );
+
+        let mut ids = diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.rule_id.as_str())
+            .collect::<Vec<_>>();
+        ids.sort_unstable();
+        assert_eq!(ids, vec!["NOIR100", "NOIR101"]);
     }
 }
