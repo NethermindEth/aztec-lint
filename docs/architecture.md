@@ -30,6 +30,7 @@ No Phase 1 work should proceed if any ADR above is not in `Accepted` state.
 
 - `docs/suppression.md`
 - `docs/rule-authoring.md`
+- `docs/plugin-api-v0.md`
 
 ## Phase 2 Core API Contract
 
