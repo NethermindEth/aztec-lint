@@ -125,12 +125,23 @@ jobs:
           - runner: ubuntu-latest
             os: linux
             arch: x86_64
-          - runner: macos-13
+            target: x86_64-unknown-linux-gnu
+            package_ext: tar.gz
+          - runner: macos-14
             os: macos
             arch: x86_64
+            target: x86_64-apple-darwin
+            package_ext: tar.gz
           - runner: macos-14
             os: macos
             arch: aarch64
+            target: aarch64-apple-darwin
+            package_ext: tar.gz
+          - runner: windows-latest
+            os: windows
+            arch: x86_64
+            target: x86_64-pc-windows-msvc
+            package_ext: zip
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
@@ -140,30 +151,43 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.93.1
+          targets: ${{ matrix.target }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
       - name: Build aztec-lint binary
-        run: cargo build --release -p aztec-lint-cli --bin aztec-lint --locked
+        shell: bash
+        run: cargo build --release -p aztec-lint-cli --bin aztec-lint --locked --target ${{ matrix.target }}
 
-      - name: Package binary
+      - name: Package binary (unix)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
 
           PACKAGE_NAME="aztec-lint-${{ matrix.os }}-${{ matrix.arch }}"
           mkdir -p dist/${PACKAGE_NAME}
-          cp target/release/aztec-lint dist/${PACKAGE_NAME}/aztec-lint
+          cp target/${{ matrix.target }}/release/aztec-lint dist/${PACKAGE_NAME}/aztec-lint
           tar -C dist -czf "dist/${PACKAGE_NAME}.tar.gz" "${PACKAGE_NAME}"
+
+      - name: Package binary (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $packageName = "aztec-lint-${{ matrix.os }}-${{ matrix.arch }}"
+          New-Item -ItemType Directory -Path "dist/$packageName" -Force | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/aztec-lint.exe" "dist/$packageName/aztec-lint.exe"
+          Compress-Archive -Path "dist/$packageName/*" -DestinationPath "dist/$packageName.zip" -Force
 
       - name: Upload packaged binary
         uses: actions/upload-artifact@v4
         with:
           name: aztec-lint-${{ matrix.os }}-${{ matrix.arch }}
-          path: dist/aztec-lint-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+          path: dist/aztec-lint-${{ matrix.os }}-${{ matrix.arch }}.${{ matrix.package_ext }}
 
   github-release:
+    if: ${{ always() && needs.validate.result == 'success' }}
     needs:
       - validate
       - build-binaries
@@ -187,15 +211,21 @@ jobs:
         run: |
           set -euo pipefail
           cd dist
-          sha256sum aztec-lint-*.tar.gz > checksums.txt
+          shopt -s nullglob
+          assets=(aztec-lint-*.tar.gz aztec-lint-*.zip)
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo "no release artifacts downloaded" >&2
+            exit 1
+          fi
+          sha256sum "${assets[@]}" > checksums.txt
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           body_path: dist/RELEASE_NOTES.md
+          fail_on_unmatched_files: false
           files: |
-            dist/aztec-lint-linux-x86_64.tar.gz
-            dist/aztec-lint-macos-x86_64.tar.gz
-            dist/aztec-lint-macos-aarch64.tar.gz
+            dist/aztec-lint-*.tar.gz
+            dist/aztec-lint-*.zip
             dist/checksums.txt
