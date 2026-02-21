@@ -74,6 +74,59 @@ pub struct CommonLintFlags {
     pub show_suppressed: bool,
 }
 
+#[derive(Clone, Debug, Args, Default)]
+pub struct TargetSelectionFlags {
+    #[arg(long, conflicts_with_all = ["lib", "bins", "examples", "benches", "tests"])]
+    pub all_targets: bool,
+    #[arg(long)]
+    pub lib: bool,
+    #[arg(long)]
+    pub bins: bool,
+    #[arg(long)]
+    pub examples: bool,
+    #[arg(long)]
+    pub benches: bool,
+    #[arg(long)]
+    pub tests: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ResolvedTargetSelection {
+    pub lib: bool,
+    pub bins: bool,
+    pub examples: bool,
+    pub benches: bool,
+    pub tests: bool,
+}
+
+impl ResolvedTargetSelection {
+    pub fn all_enabled() -> Self {
+        Self {
+            lib: true,
+            bins: true,
+            examples: true,
+            benches: true,
+            tests: true,
+        }
+    }
+}
+
+impl TargetSelectionFlags {
+    pub fn resolve(&self) -> ResolvedTargetSelection {
+        let explicit = self.lib || self.bins || self.examples || self.benches || self.tests;
+        if self.all_targets || !explicit {
+            return ResolvedTargetSelection::all_enabled();
+        }
+        ResolvedTargetSelection {
+            lib: self.lib,
+            bins: self.bins,
+            examples: self.examples,
+            benches: self.benches,
+            tests: self.tests,
+        }
+    }
+}
+
 impl CommonLintFlags {
     pub fn rule_overrides(&self) -> RuleOverrides {
         RuleOverrides {
@@ -104,6 +157,8 @@ struct DefaultCli {
     fix: bool,
     #[arg(long)]
     dry_run: bool,
+    #[command(flatten)]
+    targets: TargetSelectionFlags,
     #[command(flatten)]
     lint: CommonLintFlags,
 }
@@ -197,6 +252,7 @@ fn dispatch_default(cli: DefaultCli) -> Result<ExitCode, CliError> {
             profile: cli.profile,
             changed_only: cli.changed_only,
             dry_run: cli.dry_run,
+            targets: cli.targets,
             lint: cli.lint,
         })
     } else {
@@ -209,7 +265,41 @@ fn dispatch_default(cli: DefaultCli) -> Result<ExitCode, CliError> {
             path: cli.path,
             profile: cli.profile,
             changed_only: cli.changed_only,
+            targets: cli.targets,
             lint: cli.lint,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ResolvedTargetSelection, TargetSelectionFlags};
+
+    #[test]
+    fn target_selection_defaults_to_all_targets() {
+        let flags = TargetSelectionFlags::default();
+        assert_eq!(flags.resolve(), ResolvedTargetSelection::all_enabled());
+    }
+
+    #[test]
+    fn target_selection_uses_explicit_flags_when_present() {
+        let flags = TargetSelectionFlags {
+            all_targets: false,
+            lib: true,
+            bins: true,
+            examples: false,
+            benches: false,
+            tests: false,
+        };
+        assert_eq!(
+            flags.resolve(),
+            ResolvedTargetSelection {
+                lib: true,
+                bins: true,
+                examples: false,
+                benches: false,
+                tests: false,
+            }
+        );
     }
 }

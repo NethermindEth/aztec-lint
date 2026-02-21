@@ -105,6 +105,22 @@ Common lint flags (supported by `check`, `fix`, default mode, and `aztec scan`):
 - `--allow <RULE_ID>`
 - `--show-suppressed`
 
+Target selection flags (supported by `check`, `fix`, default mode, and `aztec scan`):
+
+- `--all-targets` (default behavior when no target flags are passed)
+- `--lib`
+- `--bins`
+- `--examples`
+- `--benches`
+- `--tests`
+
+By default, `aztec-lint` behaves like `cargo clippy --all-targets`, so test targets are linted.
+To skip tests in CI, select specific targets, for example:
+
+```bash
+aztec-lint check --lib --bins
+```
+
 ## Lints Enforced
 
 Active enforced lints are defined in the canonical catalog and executed by the rule engine.

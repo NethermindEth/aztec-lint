@@ -8,7 +8,7 @@ use aztec_lint_core::output::sarif as sarif_output;
 use aztec_lint_core::output::text::{CheckTextReport, render_check_report};
 use clap::Args;
 
-use crate::cli::{CliError, CommonLintFlags, OutputFormat};
+use crate::cli::{CliError, CommonLintFlags, OutputFormat, TargetSelectionFlags};
 use crate::commands::check::{
     collect_lint_run, has_blocking_diagnostics, passes_thresholds, suppression_visible,
 };
@@ -25,6 +25,8 @@ pub struct FixArgs {
     #[arg(long)]
     pub dry_run: bool,
     #[command(flatten)]
+    pub targets: TargetSelectionFlags,
+    #[command(flatten)]
     pub lint: CommonLintFlags,
 }
 
@@ -33,6 +35,7 @@ pub fn run(args: FixArgs) -> Result<ExitCode, CliError> {
         args.path.as_path(),
         &args.profile,
         args.changed_only,
+        args.targets.resolve(),
         args.lint.rule_overrides(),
     )?;
 
@@ -57,6 +60,7 @@ pub fn run(args: FixArgs) -> Result<ExitCode, CliError> {
             args.path.as_path(),
             &args.profile,
             args.changed_only,
+            args.targets.resolve(),
             args.lint.rule_overrides(),
         )?
     };

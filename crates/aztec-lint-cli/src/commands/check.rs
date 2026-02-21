@@ -18,7 +18,10 @@ use aztec_lint_rules::engine::context::RuleContext;
 use clap::Args;
 use toml::Value as TomlValue;
 
-use crate::cli::{CliError, CommonLintFlags, MinConfidence, OutputFormat, SeverityThreshold};
+use crate::cli::{
+    CliError, CommonLintFlags, MinConfidence, OutputFormat, ResolvedTargetSelection,
+    SeverityThreshold, TargetSelectionFlags,
+};
 use crate::exit_codes;
 
 #[derive(Clone, Debug, Args)]
@@ -30,6 +33,8 @@ pub struct CheckArgs {
     #[arg(long)]
     pub changed_only: bool,
     #[command(flatten)]
+    pub targets: TargetSelectionFlags,
+    #[command(flatten)]
     pub lint: CommonLintFlags,
 }
 
@@ -37,6 +42,15 @@ pub struct CheckArgs {
 struct NoirProject {
     root: PathBuf,
     entry: PathBuf,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NoirTargetKind {
+    Lib,
+    Bin,
+    Example,
+    Bench,
+    Test,
 }
 
 #[derive(Clone, Debug)]
@@ -51,6 +65,7 @@ pub fn run(args: CheckArgs) -> Result<ExitCode, CliError> {
         args.path.as_path(),
         &args.profile,
         args.changed_only,
+        args.targets.resolve(),
         args.lint.rule_overrides(),
     )?;
 
@@ -84,6 +99,7 @@ pub(crate) fn collect_lint_run(
     path: &Path,
     profile: &str,
     changed_only: bool,
+    targets: ResolvedTargetSelection,
     rule_overrides: RuleOverrides,
 ) -> Result<LintRun, CliError> {
     let loaded = load_from_dir(config_root_for_target(path))?;
@@ -91,17 +107,29 @@ pub(crate) fn collect_lint_run(
         .config
         .effective_rule_levels(profile, &rule_overrides)?;
 
-    let projects = discover_noir_projects(path).map_err(|source| {
+    let discovered_projects = discover_noir_projects(path).map_err(|source| {
         CliError::Runtime(format!(
             "failed to discover Noir projects under '{}': {source}",
             path.display()
         ))
     })?;
-
-    if projects.is_empty() {
+    if discovered_projects.is_empty() {
         return Err(CliError::Runtime(format!(
             "no Noir project found under '{}'",
             path.display()
+        )));
+    }
+
+    let selection_root = config_root_for_target(path)
+        .canonicalize()
+        .unwrap_or_else(|_| config_root_for_target(path).to_path_buf());
+    let projects =
+        filter_projects_by_target(discovered_projects, targets, selection_root.as_path());
+    if projects.is_empty() {
+        let selected = selected_target_labels(targets);
+        return Err(CliError::Runtime(format!(
+            "no Noir project target matched under '{}' for selected targets: {selected}",
+            path.display(),
         )));
     }
     let report_root = report_root_for_target(path, &projects);
@@ -110,6 +138,7 @@ pub(crate) fn collect_lint_run(
     let mut diagnostics = Vec::<Diagnostic>::new();
 
     for project in projects {
+        let project_kind = classify_target_kind(&project, selection_root.as_path());
         let bundle =
             build_project_semantic_bundle(&project.root, &project.entry).map_err(|source| {
                 CliError::Runtime(format!(
@@ -147,6 +176,7 @@ pub(crate) fn collect_lint_run(
             project.root.as_path(),
             report_root.as_path(),
         );
+        retain_diagnostics_for_selected_targets(&mut project_diagnostics, targets, project_kind);
         diagnostics.extend(project_diagnostics);
     }
 
@@ -230,6 +260,130 @@ fn report_root_for_target(path: &Path, projects: &[NoirProject]) -> PathBuf {
     config_root_for_target(path)
         .canonicalize()
         .unwrap_or_else(|_| config_root_for_target(path).to_path_buf())
+}
+
+fn filter_projects_by_target(
+    projects: Vec<NoirProject>,
+    selected: ResolvedTargetSelection,
+    selection_root: &Path,
+) -> Vec<NoirProject> {
+    projects
+        .into_iter()
+        .filter(|project| {
+            selected_target_matches(classify_target_kind(project, selection_root), selected)
+        })
+        .collect()
+}
+
+fn classify_target_kind(project: &NoirProject, selection_root: &Path) -> NoirTargetKind {
+    if path_contains_component_relative(&project.root, selection_root, "tests")
+        || path_contains_component_relative(&project.root, selection_root, "test")
+        || path_contains_component_relative(&project.entry, selection_root, "tests")
+        || path_contains_component_relative(&project.entry, selection_root, "test")
+    {
+        return NoirTargetKind::Test;
+    }
+    if path_contains_component_relative(&project.root, selection_root, "examples")
+        || path_contains_component_relative(&project.entry, selection_root, "examples")
+    {
+        return NoirTargetKind::Example;
+    }
+    if path_contains_component_relative(&project.root, selection_root, "benches")
+        || path_contains_component_relative(&project.entry, selection_root, "benches")
+    {
+        return NoirTargetKind::Bench;
+    }
+
+    let relative_entry = project
+        .entry
+        .strip_prefix(&project.root)
+        .unwrap_or(&project.entry);
+    if relative_entry == Path::new("src/lib.nr") {
+        return NoirTargetKind::Lib;
+    }
+
+    NoirTargetKind::Bin
+}
+
+fn retain_diagnostics_for_selected_targets(
+    diagnostics: &mut Vec<Diagnostic>,
+    selected: ResolvedTargetSelection,
+    default_kind: NoirTargetKind,
+) {
+    diagnostics.retain(|diagnostic| {
+        let kind = classify_diagnostic_target_kind(&diagnostic.primary_span.file, default_kind);
+        selected_target_matches(kind, selected)
+    });
+}
+
+fn classify_diagnostic_target_kind(file: &str, default_kind: NoirTargetKind) -> NoirTargetKind {
+    let path = Path::new(file);
+    if path_contains_component(path, "tests") || path_contains_component(path, "test") {
+        return NoirTargetKind::Test;
+    }
+    if path_contains_component(path, "examples") {
+        return NoirTargetKind::Example;
+    }
+    if path_contains_component(path, "benches") {
+        return NoirTargetKind::Bench;
+    }
+    if path.ends_with(Path::new("src/lib.nr")) {
+        return NoirTargetKind::Lib;
+    }
+    default_kind
+}
+
+fn path_contains_component(path: &Path, target_component: &str) -> bool {
+    path.components().any(|component| {
+        component
+            .as_os_str()
+            .to_str()
+            .is_some_and(|value| value == target_component)
+    })
+}
+
+fn path_contains_component_relative(path: &Path, base: &Path, target_component: &str) -> bool {
+    let relative = path.strip_prefix(base).unwrap_or(path);
+    relative.components().any(|component| {
+        component
+            .as_os_str()
+            .to_str()
+            .is_some_and(|value| value == target_component)
+    })
+}
+
+fn selected_target_matches(kind: NoirTargetKind, selected: ResolvedTargetSelection) -> bool {
+    match kind {
+        NoirTargetKind::Lib => selected.lib,
+        NoirTargetKind::Bin => selected.bins,
+        NoirTargetKind::Example => selected.examples,
+        NoirTargetKind::Bench => selected.benches,
+        NoirTargetKind::Test => selected.tests,
+    }
+}
+
+fn selected_target_labels(selected: ResolvedTargetSelection) -> String {
+    let mut labels = Vec::<&str>::new();
+    if selected.lib {
+        labels.push("lib");
+    }
+    if selected.bins {
+        labels.push("bins");
+    }
+    if selected.examples {
+        labels.push("examples");
+    }
+    if selected.benches {
+        labels.push("benches");
+    }
+    if selected.tests {
+        labels.push("tests");
+    }
+    if labels.is_empty() {
+        "none".to_string()
+    } else {
+        labels.join(",")
+    }
 }
 
 fn rebase_diagnostic_paths(
@@ -533,10 +687,18 @@ fn collect_noir_sources(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<(
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::{Path, PathBuf};
 
+    use aztec_lint_core::diagnostics::{Confidence, Diagnostic, Severity};
+    use aztec_lint_core::model::Span;
     use tempfile::tempdir;
 
-    use super::workspace_members;
+    use crate::cli::ResolvedTargetSelection;
+
+    use super::{
+        NoirProject, NoirTargetKind, filter_projects_by_target,
+        retain_diagnostics_for_selected_targets, workspace_members,
+    };
 
     #[test]
     fn reads_workspace_members_from_nargo_manifest() {
@@ -563,5 +725,120 @@ mod tests {
         assert_eq!(members.len(), 2);
         assert!(members.iter().any(|path| path.ends_with("a")));
         assert!(members.iter().any(|path| path.ends_with("b")));
+    }
+
+    #[test]
+    fn filters_out_tests_when_only_lib_and_bins_are_selected() {
+        let selection = ResolvedTargetSelection {
+            lib: true,
+            bins: true,
+            examples: false,
+            benches: false,
+            tests: false,
+        };
+        let selection_root = Path::new("/tmp/workspace");
+        let projects = vec![
+            noir_project(
+                "/tmp/workspace/lib_pkg",
+                "/tmp/workspace/lib_pkg/src/lib.nr",
+            ),
+            noir_project(
+                "/tmp/workspace/bin_pkg",
+                "/tmp/workspace/bin_pkg/src/main.nr",
+            ),
+            noir_project(
+                "/tmp/workspace/tests/integration_case",
+                "/tmp/workspace/tests/integration_case/src/main.nr",
+            ),
+        ];
+
+        let filtered = filter_projects_by_target(projects, selection, selection_root);
+        let roots = filtered
+            .iter()
+            .map(|project| project.root.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(roots.len(), 2);
+        assert!(roots.iter().any(|root| root.ends_with("lib_pkg")));
+        assert!(roots.iter().any(|root| root.ends_with("bin_pkg")));
+    }
+
+    #[test]
+    fn all_targets_selection_keeps_tests_examples_and_benches() {
+        let selection = ResolvedTargetSelection::all_enabled();
+        let selection_root = Path::new("/tmp/workspace");
+        let projects = vec![
+            noir_project(
+                "/tmp/workspace/lib_pkg",
+                "/tmp/workspace/lib_pkg/src/lib.nr",
+            ),
+            noir_project(
+                "/tmp/workspace/bin_pkg",
+                "/tmp/workspace/bin_pkg/src/main.nr",
+            ),
+            noir_project(
+                "/tmp/workspace/examples/demo",
+                "/tmp/workspace/examples/demo/src/main.nr",
+            ),
+            noir_project(
+                "/tmp/workspace/benches/smoke",
+                "/tmp/workspace/benches/smoke/src/main.nr",
+            ),
+            noir_project(
+                "/tmp/workspace/tests/integration_case",
+                "/tmp/workspace/tests/integration_case/src/main.nr",
+            ),
+        ];
+
+        let filtered = filter_projects_by_target(projects, selection, selection_root);
+        assert_eq!(filtered.len(), 5);
+    }
+
+    #[test]
+    fn excludes_test_path_diagnostics_when_tests_target_is_disabled() {
+        let selection = ResolvedTargetSelection {
+            lib: true,
+            bins: true,
+            examples: false,
+            benches: false,
+            tests: false,
+        };
+        let mut diagnostics = vec![
+            diagnostic("aave_wrapper/src/test/withdraw_tests.nr"),
+            diagnostic("aave_wrapper/src/types/position_receipt.nr"),
+        ];
+
+        retain_diagnostics_for_selected_targets(&mut diagnostics, selection, NoirTargetKind::Bin);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].primary_span.file,
+            "aave_wrapper/src/types/position_receipt.nr"
+        );
+    }
+
+    fn noir_project(root: &str, entry: &str) -> NoirProject {
+        NoirProject {
+            root: PathBuf::from(root),
+            entry: PathBuf::from(entry),
+        }
+    }
+
+    fn diagnostic(file: &str) -> Diagnostic {
+        Diagnostic {
+            rule_id: "NOIR100".to_string(),
+            severity: Severity::Warning,
+            confidence: Confidence::Low,
+            policy: "maintainability".to_string(),
+            message: "magic number".to_string(),
+            primary_span: Span::new(file, 0, 1, 1, 1),
+            secondary_spans: Vec::new(),
+            suggestions: Vec::new(),
+            notes: Vec::new(),
+            helps: Vec::new(),
+            structured_suggestions: Vec::new(),
+            fixes: Vec::new(),
+            suppressed: false,
+            suppression_reason: None,
+        }
     }
 }
