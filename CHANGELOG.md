@@ -7,6 +7,15 @@ Entries are grouped by released version.
 
 ## [Unreleased]
 
+## [0.2.0]
+
+### 2026-02-21
+
+- Added `aztec-lint update` command to self-update from GitHub releases (`latest`, `vX.Y.Z`, or `X.Y.Z`).
+- Added SHA-256 checksum verification and archive extraction/replacement flow for release binaries, with platform-specific Linux/macOS (`tar.gz`) and Windows (`zip`) support.
+- Changed `aztec-lint update` to resolve the target release first and skip downloads when the installed version is already up to date.
+- Changed `aztec-lint update` messaging to report explicit upgrade transitions (`from vA.B.C to vX.Y.Z`).
+
 ## [0.1.0]
 
 ### 2026-02-21
