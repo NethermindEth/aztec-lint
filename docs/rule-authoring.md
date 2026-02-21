@@ -68,3 +68,11 @@ If rule emits fixes, add:
 - `--changed-only` filtering is applied after diagnostics are produced.
 - Rule behavior must not depend on filesystem traversal order.
 - Prefer stable sort keys and explicit spans.
+
+## 7. Semantic-First Policy (Correctness/Soundness)
+
+- Correctness and soundness rules must use typed semantic facts (`ctx.semantic_model()` / `ctx.query()`) as the primary signal.
+- Text heuristics are allowed only as explicit fallback when required semantic facts are unavailable.
+- Keep fallback paths isolated and named as fallback (for example `text_fallback_*` or `fallback_*`) so reviewers can identify them quickly.
+- Do not gate final decisions on raw line text when semantic equivalents exist.
+- If fallback is used, add/keep tests that cover both semantic and fallback paths.

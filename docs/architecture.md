@@ -45,3 +45,11 @@ The following public APIs are treated as stable contracts:
 
 `ProjectModel.semantic` carries deterministic semantic facts for typed function inventory,
 expression/statement nodes, CFG/DFG edges, call sites, and guard nodes.
+
+## Semantic-First Enforcement
+
+Correctness and soundness checks are semantic-first:
+
+- typed semantic model/query facts are the default signal source
+- text matching is fallback-only and must be isolated behind explicitly named helpers
+- fallback execution must be gated on missing/incomplete semantic facts
