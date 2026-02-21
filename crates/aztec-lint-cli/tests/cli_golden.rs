@@ -115,9 +115,34 @@ fn explain_command_matches_golden_output() {
     let expected = "\
 Rule: AZTEC001\n\
 Pack: aztec_pack\n\
+Category: privacy\n\
 Policy: privacy\n\
+Default Level: deny\n\
 Confidence: medium\n\
-Summary: Private data reaches a public sink.\n";
+Introduced In: 0.1.0\n\
+Lifecycle: active\n\
+\n\
+Summary:\n\
+Private data reaches a public sink.\n\
+\n\
+What It Does:\n\
+Flags flows where secret or note-derived values are emitted through public channels.\n\
+\n\
+Why This Matters:\n\
+Leaking private values through public outputs can permanently expose sensitive state.\n\
+\n\
+Known Limitations:\n\
+Flow analysis is conservative and may miss leaks routed through unsupported abstractions.\n\
+\n\
+How To Fix:\n\
+Keep private values in constrained private paths and sanitize or avoid public emission points.\n\
+\n\
+Examples:\n\
+- Avoid emitting note-derived values from public entrypoints.\n\
+\n\
+References:\n\
+- docs/suppression.md\n\
+- docs/rule-authoring.md\n";
 
     let mut cmd = cli_bin();
     cmd.args(["explain", "AZTEC001"]);
@@ -225,9 +250,34 @@ fn explain_supports_rules_from_canonical_catalog() {
     let expected = "\
 Rule: AZTEC022\n\
 Pack: aztec_pack\n\
+Category: soundness\n\
 Policy: soundness\n\
+Default Level: deny\n\
 Confidence: medium\n\
-Summary: Suspicious Merkle witness usage.\n";
+Introduced In: 0.1.0\n\
+Lifecycle: active\n\
+\n\
+Summary:\n\
+Suspicious Merkle witness usage.\n\
+\n\
+What It Does:\n\
+Finds witness handling patterns that likely violate expected Merkle proof semantics.\n\
+\n\
+Why This Matters:\n\
+Incorrect witness usage can invalidate inclusion guarantees.\n\
+\n\
+Known Limitations:\n\
+Complex custom witness manipulation may produce conservative warnings.\n\
+\n\
+How To Fix:\n\
+Verify witness ordering and path semantics against the target Merkle API contract.\n\
+\n\
+Examples:\n\
+- Ensure witness paths and leaf values are paired using the expected order.\n\
+\n\
+References:\n\
+- docs/rule-authoring.md\n\
+- docs/decisions/0003-confidence-model.md\n";
 
     let mut cmd = cli_bin();
     cmd.args(["explain", "aztec022"]);
