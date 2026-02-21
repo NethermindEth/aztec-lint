@@ -8,7 +8,7 @@ use aztec_lint_core::config::{RuleOverrides, load_from_dir};
 use aztec_lint_core::diagnostics::{
     Confidence, Diagnostic, Severity, normalize_file_path, sort_diagnostics,
 };
-use aztec_lint_core::noir::build_project_model;
+use aztec_lint_core::noir::build_project_semantic_bundle;
 use aztec_lint_core::output::json as json_output;
 use aztec_lint_core::output::sarif as sarif_output;
 use aztec_lint_core::output::text::{CheckTextReport, render_check_report};
@@ -110,15 +110,16 @@ pub(crate) fn collect_lint_run(
     let mut diagnostics = Vec::<Diagnostic>::new();
 
     for project in projects {
-        let model = build_project_model(&project.root, &project.entry).map_err(|source| {
-            CliError::Runtime(format!(
-                "failed to build Noir model for '{}' (entry '{}'): {source}",
-                project.root.display(),
-                project.entry.display()
-            ))
-        })?;
-        let mut context =
-            RuleContext::from_project_root(&project.root, &model).map_err(|source| {
+        let bundle =
+            build_project_semantic_bundle(&project.root, &project.entry).map_err(|source| {
+                CliError::Runtime(format!(
+                    "failed to build Noir model for '{}' (entry '{}'): {source}",
+                    project.root.display(),
+                    project.entry.display()
+                ))
+            })?;
+        let mut context = RuleContext::from_project_root(&project.root, bundle.project_model())
+            .map_err(|source| {
                 CliError::Runtime(format!(
                     "failed to read Noir sources for '{}': {source}",
                     project.root.display()
