@@ -1,5 +1,5 @@
 use aztec_lint_aztec::SourceUnit;
-use aztec_lint_aztec::taint::{TaintSinkKind, build_def_use_graph};
+use aztec_lint_aztec::taint::{TaintSinkKind, build_def_use_graph_with_semantic};
 use aztec_lint_core::diagnostics::Diagnostic;
 use aztec_lint_core::policy::PRIVACY;
 
@@ -24,7 +24,8 @@ impl Rule for Aztec003PrivateDebugLogRule {
             .iter()
             .map(|file| SourceUnit::new(file.path().to_string(), file.text().to_string()))
             .collect::<Vec<_>>();
-        let graph = build_def_use_graph(&sources, model, &config);
+        let graph =
+            build_def_use_graph_with_semantic(&sources, model, Some(ctx.semantic_model()), &config);
 
         for function in &graph.functions {
             if !function.is_private_entrypoint {

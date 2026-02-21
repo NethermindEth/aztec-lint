@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use aztec_lint_aztec::SourceUnit;
 use aztec_lint_aztec::taint::{
-    TaintSinkKind, TaintSourceKind, analyze_intra_procedural, build_def_use_graph,
+    TaintSinkKind, TaintSourceKind, analyze_intra_procedural, build_def_use_graph_with_semantic,
 };
 use aztec_lint_core::diagnostics::Diagnostic;
 use aztec_lint_core::policy::PRIVACY;
@@ -28,7 +28,8 @@ impl Rule for Aztec002SecretBranchingRule {
             .iter()
             .map(|file| SourceUnit::new(file.path().to_string(), file.text().to_string()))
             .collect::<Vec<_>>();
-        let graph = build_def_use_graph(&sources, model, &config);
+        let graph =
+            build_def_use_graph_with_semantic(&sources, model, Some(ctx.semantic_model()), &config);
         let analysis = analyze_intra_procedural(&graph);
 
         let effectful_functions = graph
