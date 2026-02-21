@@ -1,7 +1,7 @@
 # Plugin API v0
 
 Date: 2026-02-20
-Status: Draft (Phase 10 skeleton)
+Status: Draft (initial skeleton)
 
 ## Scope
 
@@ -16,7 +16,7 @@ v0 goals:
 v0 non-goals:
 
 - Shipping a production WASM runtime.
-- Untrusted plugin execution in this phase.
+- Untrusted plugin execution in the current release.
 
 ## Crates
 

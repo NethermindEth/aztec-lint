@@ -1,11 +1,11 @@
-# Architecture Baseline
+# Architecture
 
 Date: 2026-02-19
 Status: Active
 
 ## Purpose
 
-This document records the baseline architecture for `aztec-lint` and links the Phase 0 decisions that must be treated as contracts before implementation work in Phase 1+.
+This document summarizes the active architecture for `aztec-lint` and links the design decisions that contributors should treat as implementation contracts.
 
 Core pipeline:
 
@@ -13,29 +13,29 @@ Core pipeline:
 2. Generic project model
 3. Aztec semantic augmentation
 4. Deterministic rule engine
-5. Deterministic formatters (text/json/sarif)
+5. Deterministic formatters (`text`/`json`/`sarif`)
 
-## Phase 0 Decision Contracts
+## Decision Records
 
-The following ADRs are mandatory inputs to implementation:
+The following ADRs define core behavior constraints:
 
 - `docs/decisions/0001-aztec010-scope.md`
 - `docs/decisions/0002-suppression-semantics.md`
 - `docs/decisions/0003-confidence-model.md`
 - `docs/decisions/0004-fix-safety-policy.md`
 
-No Phase 1 work should proceed if any ADR above is not in `Accepted` state.
+Contributors should keep implementation aligned with accepted ADR decisions.
 
 ## Operator and Author Docs
 
 - `docs/suppression.md`
 - `docs/rule-authoring.md`
 - `docs/plugin-api-v0.md`
+- `docs/lints-reference.md`
 
-## Phase 2 Core API Contract
+## Stable Core APIs
 
-The following public APIs are frozen at Phase 2 exit and should be treated as stable
-contracts for later phases:
+The following public APIs are treated as stable contracts:
 
 - `aztec_lint_core::model::{Span, ProjectModel, AztecModel}`
 - `aztec_lint_core::diagnostics::{Diagnostic, Severity, Confidence}`
