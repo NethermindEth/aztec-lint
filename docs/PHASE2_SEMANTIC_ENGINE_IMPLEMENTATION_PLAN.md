@@ -197,7 +197,7 @@ Failure modes:
 
 ---
 
-### Step 6: Migrate `noir_core` Correctness Rules (Batch 1)
+### Step 6: Migrate `noir_core` Correctness Rules (Batch 1) **COMPLETED**
 
 Files:
 - `crates/aztec-lint-rules/src/noir_core/noir001_unused.rs`
