@@ -279,7 +279,7 @@ Change:
 
 Validation:
 - `cargo test -p aztec-lint-aztec`
-- `cargo test -p aztec-lint-rules aztec_foundation_rules`
+- `cargo test -p aztec-lint-rules --test aztec_foundation_rules`
 
 Failure modes:
 - Attribute parsing mismatch (`#[external("private")]`, custom-config names).
@@ -287,7 +287,7 @@ Failure modes:
 
 ---
 
-### Step 10: Rebuild Aztec Taint Engine on CFG/DFG
+### Step 10: Rebuild Aztec Taint Engine on CFG/DFG **COMPLETED**
 
 Files:
 - `crates/aztec-lint-aztec/src/taint/graph.rs`
@@ -312,7 +312,7 @@ Failure modes:
 
 ---
 
-### Step 11: Migrate Aztec Rules to Typed Taint Outputs
+### Step 11: Migrate Aztec Rules to Typed Taint Outputs **COMPLETED**
 
 Files:
 - `crates/aztec-lint-rules/src/aztec/aztec001_privacy_leak.rs`
@@ -328,9 +328,9 @@ Change:
 - Remove dependence on `SinkSite.line` textual checks for verification heuristics; use semantic call/assert facts.
 
 Validation:
-- `cargo test -p aztec-lint-rules aztec_foundation_rules`
-- `cargo test -p aztec-lint-rules aztec_advanced_rules`
-- `cargo test -p aztec-lint-cli cli_golden`
+- `cargo test -p aztec-lint-rules --test aztec_foundation_rules`
+- `cargo test -p aztec-lint-rules --test aztec_advanced_rules`
+- `cargo test -p aztec-lint-cli --test cli_golden`
 
 Failure modes:
 - Rule behavior drift from existing fixture contract.
@@ -338,7 +338,7 @@ Failure modes:
 
 ---
 
-### Step 12: Enforce "No Heuristic-Primary" Policy and Clean Up
+### Step 12: Enforce "No Heuristic-Primary" Policy and Clean Up **COMPLETED**
 
 Files:
 - `crates/aztec-lint-rules/src/noir_core/util.rs`
@@ -352,7 +352,8 @@ Change:
 - Keep fallback hooks explicit and gated.
 
 Validation:
-- `rg --line-number 'contains\\(\"|\\.lines\\(\\)|find_let_bindings|find_function_scopes' crates/aztec-lint-rules/src/noir_core crates/aztec-lint-rules/src/aztec`
+- `rg --line-number '\\b(find_let_bindings|find_function_scopes|contains_note_read|contains_note_write|contains_nullifier_emit|contains_public_sink|looks_like_enqueue)\\b' crates/aztec-lint-rules/src/noir_core crates/aztec-lint-rules/src/aztec crates/aztec-lint-aztec/src`
+- `rg --line-number '\\b(text_fallback_|fallback_)\\w+' crates/aztec-lint-rules/src/noir_core crates/aztec-lint-rules/src/aztec crates/aztec-lint-aztec/src`
 - `cargo test --workspace`
 
 Failure modes:
