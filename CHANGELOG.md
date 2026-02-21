@@ -21,6 +21,7 @@ Entries are grouped by released version.
 - Added typed semantic query APIs in `aztec-lint-rules` via `RuleContext::query()` (`functions`, `locals_in_function`, `index_accesses`, `assertions`, `cfg`, `dfg`).
 - Changed `RuleContext` to support semantic model overrides through `set_semantic_model(...)` while keeping file-based accessors for fallback rules.
 - Added engine context tests for query availability, override behavior, and deterministic query ordering.
+- Changed CLI `check` pipeline to build `ProjectSemanticBundle` and inject semantic data into `RuleContext` before rule execution, while preserving diagnostic path rebasing behavior.
 
 ## [0.2.0]
 
