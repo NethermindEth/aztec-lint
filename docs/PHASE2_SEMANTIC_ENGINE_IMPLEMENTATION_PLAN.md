@@ -125,7 +125,7 @@ Failure modes:
 
 ---
 
-### Step 3: Build Semantic Extractor From Noir Compiler Output
+### Step 3: Build Semantic Extractor From Noir Compiler Output **COMPLETED**
 
 Files:
 - `crates/aztec-lint-core/src/noir/project_builder.rs`
