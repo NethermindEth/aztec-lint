@@ -189,28 +189,7 @@ fn build_from_checked(checked: &NoirCheckedProject) -> Result<ProjectModel, Noir
         &model.symbols,
     );
 
-    model.ast_ids.sort();
-    model.ast_ids.dedup();
-    model.symbols.sort_by_key(|symbol| {
-        (
-            symbol.span.file.clone(),
-            symbol.span.start,
-            symbol.span.end,
-            symbol.name.clone(),
-            symbol.symbol_id.clone(),
-        )
-    });
-    model
-        .symbols
-        .dedup_by(|left, right| left.symbol_id == right.symbol_id);
-    model
-        .type_refs
-        .sort_by_key(|type_ref| (type_ref.symbol_id.clone(), type_ref.type_repr.clone()));
-    model.type_refs.dedup();
-    model
-        .module_graph
-        .sort_by_key(|edge| (edge.from_module.clone(), edge.to_module.clone()));
-    model.module_graph.dedup();
+    model.normalize();
 
     Ok(model)
 }

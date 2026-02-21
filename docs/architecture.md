@@ -37,8 +37,11 @@ Contributors should keep implementation aligned with accepted ADR decisions.
 
 The following public APIs are treated as stable contracts:
 
-- `aztec_lint_core::model::{Span, ProjectModel, AztecModel}`
+- `aztec_lint_core::model::{Span, ProjectModel, SemanticModel, AztecModel}`
 - `aztec_lint_core::diagnostics::{Diagnostic, Severity, Confidence}`
 - `aztec_lint_core::diagnostics::{sort_diagnostics, diagnostic_sort_key}`
 - `aztec_lint_core::diagnostics::{diagnostic_fingerprint, span_fingerprint}`
 - `aztec_lint_core::policy::*`
+
+`ProjectModel.semantic` carries deterministic semantic facts for typed function inventory,
+expression/statement nodes, CFG/DFG edges, call sites, and guard nodes.
