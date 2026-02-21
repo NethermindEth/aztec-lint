@@ -7,7 +7,11 @@ use std::process::Command;
 use tempfile::tempdir;
 
 fn cli_bin() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_aztec-lint-cli"))
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_aztec-lint-cli"));
+    cmd.env("CARGO_TERM_COLOR", "never");
+    cmd.env("CLICOLOR", "0");
+    cmd.env("CLICOLOR_FORCE", "0");
+    cmd
 }
 
 fn fixture_dir(path: &str) -> std::path::PathBuf {
