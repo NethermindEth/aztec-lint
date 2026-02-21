@@ -13,7 +13,7 @@ pub mod policy;
 pub mod vcs;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CORE_API_STABILITY: &str = "phase-2-stable";
+pub const CORE_API_STABILITY: &str = "v2-stable";
 
 pub fn crate_name() -> &'static str {
     "aztec-lint-core"

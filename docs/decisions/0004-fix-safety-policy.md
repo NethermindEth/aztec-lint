@@ -31,7 +31,7 @@ Disallowed in v0:
 
 Fix execution behavior:
 
-1. Lint phase computes candidate fixes.
+1. Lint pass computes candidate fixes.
 2. Fixer validates span boundaries against current file snapshot.
 3. Non-overlapping fixes are applied in reverse span order.
 4. Any failed precondition drops that fix; process continues deterministically.
@@ -78,5 +78,4 @@ Negative:
 
 Sign-off:
 
-- 2026-02-19: Accepted for Phase 0 gate.
-
+- 2026-02-19: Accepted for initial gate.

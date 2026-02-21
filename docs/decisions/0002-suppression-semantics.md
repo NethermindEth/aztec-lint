@@ -79,5 +79,4 @@ Negative:
 
 Sign-off:
 
-- 2026-02-19: Accepted for Phase 0 gate.
-
+- 2026-02-19: Accepted for initial gate.

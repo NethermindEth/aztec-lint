@@ -527,7 +527,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_diagnostic_json_deserializes_with_phase1_defaults() {
+    fn legacy_diagnostic_json_deserializes_with_defaults() {
         let legacy = json!({
             "rule_id": "NOIR100",
             "severity": "warning",
