@@ -222,7 +222,7 @@ Plugin API exists as draft skeleton but is not executed in `check/fix` pipeline.
 - Add lint metadata model: category, introduced version, lifecycle state, docs content.
 - Expand `explain` to full lint docs.
 
-## Phase 2: Semantic engine upgrade (medium-term)
+## Phase 2: Semantic engine upgrade (medium-term) **COMPLETED**
 - Add typed query API in `RuleContext` backed by Noir semantic model.
 - Migrate current `noir_core` rules away from line-based heuristics.
 - Rebuild Aztec taint/soundness on AST/HIR + CFG/DFG dataflow instead of substring sink detection.

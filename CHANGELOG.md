@@ -23,13 +23,28 @@ Entries are grouped by released version.
 - Added engine context tests for query availability, override behavior, and deterministic query ordering.
 - Changed CLI `check` pipeline to build `ProjectSemanticBundle` and inject semantic data into `RuleContext` before rule execution, while preserving diagnostic path rebasing behavior.
 - Changed `NOIR001` to compute unused locals/imports from semantic statements and DFG/identifier facts, with text heuristics retained only as a fallback path.
+- Fixed `NOIR001` import-usage detection to treat attribute macro references as usage (for example `#[aztec]` and aliased forms like `#[az]`), preventing false positives on macro imports.
+- Fixed `NOIR001` grouped-import binding tracking so nested/grouped `use` clauses are evaluated per imported binding when determining unused imports.
+- Fixed `NOIR001` to ignore `pub use` re-exports in file-local unused-import analysis.
+- Fixed `NOIR001` to treat type-position identifiers (for example struct fields, function signatures, and type aliases) as import usage.
+- Added Clippy-style target selection flags to lint commands (`--all-targets`, `--lib`, `--bins`, `--examples`, `--benches`, `--tests`), with default behavior equivalent to `--all-targets`.
+- Fixed target filtering to apply at diagnostic-file level so test-path files are excluded when `--tests` is not selected (including `tests/` and `test/` path components such as `src/test/...`).
 - Changed `NOIR002` to detect shadowing from semantic lexical scopes (function + block spans) and semantic `let` declarations, with legacy brace-depth parsing retained as fallback only.
 - Added semantic-path unit coverage for `NOIR001` and `NOIR002`, plus shared statement-level `let` binding extraction utilities.
 - Changed `NOIR010` to derive bool bindings from semantic types/DFG and validate assertion consumption from semantic guard/use-def links, with text heuristics retained only as fallback.
 - Changed `NOIR020` to detect index accesses and guard coverage from semantic expression/guard facts, with text heuristics retained only as fallback.
+- Changed `NOIR020` to use local bounds proofs from loop ranges, affine index forms, and array-length facts, suppressing false positives for safe copy/packing loops and reporting a distinct message when an index is provably out of bounds versus not provable.
+- Fixed `NOIR020` function-body bounds analysis for narrow semantic function spans so loop-header proofs (for example `for i in 0..32`) are applied consistently to both source and destination index expressions in byte-copy assignments.
 - Changed `NOIR030` to propagate unconstrained call influence through semantic DFG into assert/constrain sinks, with text heuristics retained only as fallback.
 - Added shared semantic parsing helpers in `noir_core::util` (`source_slice`, `extract_index_identifier`) and semantic-path unit coverage for `NOIR010`, `NOIR020`, and `NOIR030`.
 - Changed `NOIR100` to detect magic numbers from semantic literal nodes while excluding constant declaration contexts, with text heuristics retained only as fallback.
+- Fixed `NOIR100` to ignore literals in named constant definitions, including `const`, `global`, `pub const`, `pub global`, and uppercase domain-constant assignments (SCREAMING_SNAKE_CASE).
+- Fixed `NOIR100` to suppress byte-packing/encoding literals (for example `[u8; 32]`, `0..32`, and index offset math such as `32 + i` in packing loops).
+- Changed `NOIR100` default behavior to skip test-path files (`**/test/**`, `*_test.nr`, `*_tests.nr`), with opt-in override via `AZTEC_LINT_NOIR100_INCLUDE_TEST_PATHS=1`.
+- Fixed `NOIR100` to suppress literals used in fixture-style assertion and constructor contexts in tests and mock data setup.
+- Fixed `NOIR100` to suppress known hash-domain tag literals in `poseidon2_hash([K, ...])` patterns.
+- Changed `NOIR100` confidence to high and tightened detection so only high-confidence magic-number findings are reported by default.
+- Added regression coverage for `NOIR100` named constants, global constants, and byte-packing suppression paths.
 - Changed `NOIR110` to compute complexity from semantic CFG decision blocks, with text heuristics retained only as fallback.
 - Changed `NOIR120` to compute nesting from semantic block-span containment, with brace-depth parsing retained only as fallback.
 - Added semantic-path unit coverage for `NOIR100`, `NOIR110`, and `NOIR120`.
