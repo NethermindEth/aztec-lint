@@ -29,6 +29,10 @@ Entries are grouped by released version.
 - Changed `NOIR020` to detect index accesses and guard coverage from semantic expression/guard facts, with text heuristics retained only as fallback.
 - Changed `NOIR030` to propagate unconstrained call influence through semantic DFG into assert/constrain sinks, with text heuristics retained only as fallback.
 - Added shared semantic parsing helpers in `noir_core::util` (`source_slice`, `extract_index_identifier`) and semantic-path unit coverage for `NOIR010`, `NOIR020`, and `NOIR030`.
+- Changed `NOIR100` to detect magic numbers from semantic literal nodes while excluding constant declaration contexts, with text heuristics retained only as fallback.
+- Changed `NOIR110` to compute complexity from semantic CFG decision blocks, with text heuristics retained only as fallback.
+- Changed `NOIR120` to compute nesting from semantic block-span containment, with brace-depth parsing retained only as fallback.
+- Added semantic-path unit coverage for `NOIR100`, `NOIR110`, and `NOIR120`.
 
 ## [0.2.0]
 
