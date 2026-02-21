@@ -9,8 +9,8 @@ pub use loader::{
     CONFIG_FILE_FALLBACK, CONFIG_FILE_PRIMARY, ConfigSource, LoadedConfig, load_from_dir,
 };
 pub use types::{
-    AztecConfig, Config, DomainSeparationConfig, Profile, RawConfig, ResolvedProfile, RuleLevel,
-    RuleOverrides,
+    AztecConfig, Config, DeprecatedPathConfig, DomainSeparationConfig, Profile, RawConfig,
+    ResolvedProfile, RuleLevel, RuleOverrides,
 };
 
 #[derive(Debug)]

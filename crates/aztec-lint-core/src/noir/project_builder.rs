@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use crate::config::DeprecatedPathConfig;
 use crate::model::{ProjectModel, SemanticModel};
 use crate::noir::NoirFrontendError;
 
@@ -10,7 +11,9 @@ use crate::model::{ModuleEdge, SymbolKind, SymbolRef, TypeRef};
 #[cfg(feature = "noir-compiler")]
 use crate::noir::call_graph::call_edges_from_semantic;
 #[cfg(feature = "noir-compiler")]
-use crate::noir::driver::{NoirCheckedProject, load_and_check_project};
+use crate::noir::driver::{
+    NoirCheckedProject, load_and_check_project, load_and_check_project_with_options,
+};
 #[cfg(feature = "noir-compiler")]
 use crate::noir::semantic_builder::extract_semantic_model;
 #[cfg(feature = "noir-compiler")]
@@ -53,6 +56,16 @@ pub fn build_project_semantic_bundle(
     build_bundle_from_checked(&checked)
 }
 
+#[cfg(feature = "noir-compiler")]
+pub fn build_project_semantic_bundle_with_options(
+    root: &Path,
+    entry: &Path,
+    deprecated_path: DeprecatedPathConfig,
+) -> Result<ProjectSemanticBundle, NoirFrontendError> {
+    let checked = load_and_check_project_with_options(root, entry, deprecated_path)?;
+    build_bundle_from_checked(&checked)
+}
+
 #[cfg(not(feature = "noir-compiler"))]
 pub fn build_project_model(_root: &Path, _entry: &Path) -> Result<ProjectModel, NoirFrontendError> {
     Err(NoirFrontendError::CompilerFeatureDisabled)
@@ -62,6 +75,15 @@ pub fn build_project_model(_root: &Path, _entry: &Path) -> Result<ProjectModel, 
 pub fn build_project_semantic_bundle(
     _root: &Path,
     _entry: &Path,
+) -> Result<ProjectSemanticBundle, NoirFrontendError> {
+    Err(NoirFrontendError::CompilerFeatureDisabled)
+}
+
+#[cfg(not(feature = "noir-compiler"))]
+pub fn build_project_semantic_bundle_with_options(
+    _root: &Path,
+    _entry: &Path,
+    _deprecated_path: DeprecatedPathConfig,
 ) -> Result<ProjectSemanticBundle, NoirFrontendError> {
     Err(NoirFrontendError::CompilerFeatureDisabled)
 }

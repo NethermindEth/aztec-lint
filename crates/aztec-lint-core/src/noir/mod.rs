@@ -11,6 +11,7 @@ pub mod span_mapper;
 pub use driver::NoirCheckedProject;
 pub use project_builder::{
     ProjectSemanticBundle, build_project_model, build_project_semantic_bundle,
+    build_project_semantic_bundle_with_options,
 };
 
 #[derive(Debug)]

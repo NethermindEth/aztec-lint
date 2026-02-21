@@ -12,12 +12,15 @@ pub struct RawConfig {
     pub profile: BTreeMap<String, Profile>,
     #[serde(default)]
     pub aztec: AztecConfig,
+    #[serde(default)]
+    pub deprecated_path: DeprecatedPathConfig,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Config {
     pub profile: BTreeMap<String, Profile>,
     pub aztec: AztecConfig,
+    pub deprecated_path: DeprecatedPathConfig,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -93,6 +96,16 @@ pub struct AztecConfig {
     pub domain_separation: DomainSeparationConfig,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DeprecatedPathConfig {
+    #[serde(default = "default_deprecated_path_warn_on_blocked")]
+    pub warn_on_blocked: bool,
+    #[serde(default = "default_deprecated_path_try_absolute_root")]
+    pub try_absolute_root: bool,
+    #[serde(default = "default_deprecated_path_verbose_blocked_notes")]
+    pub verbose_blocked_notes: bool,
+}
+
 impl Default for AztecConfig {
     fn default() -> Self {
         Self {
@@ -108,6 +121,16 @@ impl Default for AztecConfig {
             enqueue_fn: default_enqueue_fn(),
             contract_at_fn: default_contract_at_fn(),
             domain_separation: DomainSeparationConfig::default(),
+        }
+    }
+}
+
+impl Default for DeprecatedPathConfig {
+    fn default() -> Self {
+        Self {
+            warn_on_blocked: default_deprecated_path_warn_on_blocked(),
+            try_absolute_root: default_deprecated_path_try_absolute_root(),
+            verbose_blocked_notes: default_deprecated_path_verbose_blocked_notes(),
         }
     }
 }
@@ -134,6 +157,7 @@ impl Default for Config {
         Self {
             profile: builtin_profiles(),
             aztec: AztecConfig::default(),
+            deprecated_path: DeprecatedPathConfig::default(),
         }
     }
 }
@@ -147,6 +171,7 @@ impl Config {
         Self {
             profile,
             aztec: raw.aztec,
+            deprecated_path: raw.deprecated_path,
         }
     }
 
@@ -499,6 +524,18 @@ fn default_commitment_requires() -> Vec<String> {
     vec!["contract_address".to_string(), "note_type".to_string()]
 }
 
+fn default_deprecated_path_warn_on_blocked() -> bool {
+    false
+}
+
+fn default_deprecated_path_try_absolute_root() -> bool {
+    true
+}
+
+fn default_deprecated_path_verbose_blocked_notes() -> bool {
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Config, RawConfig, RuleLevel, RuleOverrides};
@@ -533,6 +570,11 @@ contract_at_fn = "at"
 [aztec.domain_separation]
 nullifier_requires = ["contract_address", "nonce"]
 commitment_requires = ["contract_address", "note_type"]
+
+[deprecated_path]
+warn_on_blocked = false
+try_absolute_root = true
+verbose_blocked_notes = false
 "#;
 
     #[test]
@@ -559,6 +601,9 @@ commitment_requires = ["contract_address", "note_type"]
         assert_eq!(config.aztec.contract_attribute, "aztec");
         assert_eq!(config.aztec.external_attribute, "external");
         assert_eq!(config.aztec.imports_prefixes, vec!["aztec", "::aztec"]);
+        assert!(!config.deprecated_path.warn_on_blocked);
+        assert!(config.deprecated_path.try_absolute_root);
+        assert!(!config.deprecated_path.verbose_blocked_notes);
         assert_eq!(
             config.aztec.domain_separation.nullifier_requires,
             vec!["contract_address", "nonce"]

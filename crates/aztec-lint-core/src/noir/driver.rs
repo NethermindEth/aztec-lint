@@ -1,11 +1,12 @@
 use std::path::Path;
 
+use crate::config::DeprecatedPathConfig;
 use crate::noir::NoirFrontendError;
 #[cfg(feature = "noir-compiler")]
 use crate::output::ansi::{Colorizer, Stream};
 
 #[cfg(feature = "noir-compiler")]
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 #[cfg(feature = "noir-compiler")]
 use std::fmt::Write as _;
 #[cfg(feature = "noir-compiler")]
@@ -62,6 +63,15 @@ impl NoirCheckedProject {
 pub fn load_and_check_project(
     root: &Path,
     entry: &Path,
+) -> Result<NoirCheckedProject, NoirFrontendError> {
+    load_and_check_project_with_options(root, entry, DeprecatedPathConfig::default())
+}
+
+#[cfg(feature = "noir-compiler")]
+pub fn load_and_check_project_with_options(
+    root: &Path,
+    entry: &Path,
+    deprecated_path: DeprecatedPathConfig,
 ) -> Result<NoirCheckedProject, NoirFrontendError> {
     let project_root = canonicalize_best_effort(root);
     let requested_entry = if entry.is_absolute() {
@@ -134,6 +144,8 @@ pub fn load_and_check_project(
         })
         .cloned()
         .collect::<Vec<_>>();
+    let compiler_warnings =
+        filter_deprecated_path_warnings(&context.file_manager, compiler_warnings, deprecated_path);
     if !compiler_warnings.is_empty() {
         emit_diagnostics(&context.file_manager, &compiler_warnings);
     }
@@ -150,6 +162,15 @@ pub fn load_and_check_project(
 pub fn load_and_check_project(
     _root: &Path,
     _entry: &Path,
+) -> Result<NoirCheckedProject, NoirFrontendError> {
+    Err(NoirFrontendError::CompilerFeatureDisabled)
+}
+
+#[cfg(not(feature = "noir-compiler"))]
+pub fn load_and_check_project_with_options(
+    _root: &Path,
+    _entry: &Path,
+    _deprecated_path: DeprecatedPathConfig,
 ) -> Result<NoirCheckedProject, NoirFrontendError> {
     Err(NoirFrontendError::CompilerFeatureDisabled)
 }
@@ -284,7 +305,7 @@ fn emit_diagnostics(file_manager: &FileManager, diagnostics: &[CustomDiagnostic]
     let mut normalized = diagnostics.to_vec();
     let colors = Colorizer::for_stream(Stream::Stderr);
     for diagnostic in &mut normalized {
-        normalize_diagnostic_messages(diagnostic);
+        normalize_diagnostic_messages(file_manager, diagnostic);
     }
     let mut rendered = String::new();
     for diagnostic in &normalized {
@@ -424,53 +445,402 @@ fn diagnostic_kind_label(diagnostic: &CustomDiagnostic) -> &'static str {
 }
 
 #[cfg(feature = "noir-compiler")]
-fn normalize_diagnostic_messages(diagnostic: &mut CustomDiagnostic) {
-    diagnostic.message = normalize_message(&diagnostic.message);
-    for secondary in &mut diagnostic.secondaries {
-        secondary.message = normalize_message(&secondary.message);
+fn normalize_diagnostic_messages(_file_manager: &FileManager, _diagnostic: &mut CustomDiagnostic) {}
+
+#[cfg(feature = "noir-compiler")]
+fn filter_deprecated_path_warnings(
+    file_manager: &FileManager,
+    warnings: Vec<CustomDiagnostic>,
+    config: DeprecatedPathConfig,
+) -> Vec<CustomDiagnostic> {
+    let mut filtered = Vec::with_capacity(warnings.len());
+    let mut dedup = HashSet::<DeprecatedPathDedupKey>::new();
+
+    for mut warning in warnings {
+        let Some(context) = deprecated_path_context(file_manager, &warning) else {
+            filtered.push(warning);
+            continue;
+        };
+
+        let has_safe_absolute_rewrite =
+            config.try_absolute_root && warning_has_absolute_replacement_hint(&warning);
+        if has_safe_absolute_rewrite && !context.blocked_by_local_binding {
+            filtered.push(warning);
+            continue;
+        }
+
+        if context.blocked_by_local_binding {
+            let key = DeprecatedPathDedupKey::new(
+                &context,
+                DeprecatedPathSuppressionReason::BlockedByLocalBinding,
+            );
+            if !dedup.insert(key) {
+                continue;
+            }
+
+            if config.warn_on_blocked {
+                annotate_blocked_deprecated_path(&mut warning);
+                filtered.push(warning);
+            } else if config.verbose_blocked_notes {
+                downgrade_to_info(&mut warning);
+                annotate_blocked_deprecated_path(&mut warning);
+                filtered.push(warning);
+            }
+            continue;
+        }
+
+        let key = DeprecatedPathDedupKey::new(
+            &context,
+            DeprecatedPathSuppressionReason::NoVerifiedReplacement,
+        );
+        if !dedup.insert(key) {
+            continue;
+        }
+
+        if config.verbose_blocked_notes {
+            downgrade_to_info(&mut warning);
+            annotate_unfixable_deprecated_path(&mut warning);
+            filtered.push(warning);
+        }
     }
-    for note in &mut diagnostic.notes {
-        *note = normalize_message(note);
+
+    filtered
+}
+
+#[cfg(feature = "noir-compiler")]
+fn warning_has_absolute_replacement_hint(warning: &CustomDiagnostic) -> bool {
+    warning
+        .secondaries
+        .iter()
+        .any(|secondary| secondary.message.contains("Please use `::aztec` instead"))
+}
+
+#[cfg(feature = "noir-compiler")]
+fn deprecated_path_context(
+    file_manager: &FileManager,
+    warning: &CustomDiagnostic,
+) -> Option<DeprecatedPathContext> {
+    let secondary = warning
+        .secondaries
+        .iter()
+        .find(|secondary| secondary.message.contains("Please use `::aztec` instead"))?;
+    let location = secondary.location;
+
+    let source = file_manager.fetch_file(location.file)?;
+    let offset = usize::try_from(location.span.start()).unwrap_or(source.len());
+    if !statement_contains_dep_aztec_path(source, offset) {
+        return None;
+    }
+
+    Some(DeprecatedPathContext {
+        file_id: location.file,
+        statement_start: statement_start(source, offset),
+        statement_end: statement_end(source, offset),
+        blocked_by_local_binding: scope_binds_aztec(source, offset),
+    })
+}
+
+#[cfg(feature = "noir-compiler")]
+fn statement_contains_dep_aztec_path(source: &str, offset: usize) -> bool {
+    let start = statement_start(source, offset);
+    let end = statement_end(source, offset);
+    source
+        .get(start..end)
+        .is_some_and(|statement| statement.contains("dep::aztec::"))
+}
+
+#[cfg(feature = "noir-compiler")]
+fn downgrade_to_info(warning: &mut CustomDiagnostic) {
+    use noirc_errors::DiagnosticKind;
+
+    warning.kind = DiagnosticKind::Info;
+}
+
+#[cfg(feature = "noir-compiler")]
+fn annotate_blocked_deprecated_path(warning: &mut CustomDiagnostic) {
+    if !warning
+        .notes
+        .iter()
+        .any(|note| note.contains("blocked by local binding `aztec`"))
+    {
+        warning.notes.push(
+            "deprecated path migration blocked by local binding `aztec`; rename/alias the local binding or keep `dep::aztec::...`".to_string(),
+        );
     }
 }
 
 #[cfg(feature = "noir-compiler")]
-fn normalize_message(message: &str) -> String {
-    message.replace(
-        "Please use `::aztec` instead",
-        "Please use `aztec::` instead",
-    )
+fn annotate_unfixable_deprecated_path(warning: &mut CustomDiagnostic) {
+    if !warning
+        .notes
+        .iter()
+        .any(|note| note.contains("no verified safe replacement"))
+    {
+        warning.notes.push(
+            "deprecated path migration skipped: no verified safe replacement candidate".to_string(),
+        );
+    }
+}
+
+#[cfg(feature = "noir-compiler")]
+#[derive(Clone, Copy, Debug)]
+struct DeprecatedPathContext {
+    file_id: FileId,
+    statement_start: usize,
+    statement_end: usize,
+    blocked_by_local_binding: bool,
+}
+
+#[cfg(feature = "noir-compiler")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+enum DeprecatedPathSuppressionReason {
+    BlockedByLocalBinding,
+    NoVerifiedReplacement,
+}
+
+#[cfg(feature = "noir-compiler")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+struct DeprecatedPathDedupKey {
+    file_id: usize,
+    statement_start: usize,
+    statement_end: usize,
+    reason: DeprecatedPathSuppressionReason,
+}
+
+#[cfg(feature = "noir-compiler")]
+impl DeprecatedPathDedupKey {
+    fn new(context: &DeprecatedPathContext, reason: DeprecatedPathSuppressionReason) -> Self {
+        Self {
+            file_id: context.file_id.as_usize(),
+            statement_start: context.statement_start,
+            statement_end: context.statement_end,
+            reason,
+        }
+    }
+}
+
+#[cfg(feature = "noir-compiler")]
+fn scope_binds_aztec(source: &str, offset: usize) -> bool {
+    if offset > source.len() {
+        return false;
+    }
+    let prefix = &source[..offset];
+    for line in prefix.lines() {
+        let code = strip_line_comment(line).trim();
+        if code.is_empty() {
+            continue;
+        }
+        if binds_aztec_in_use_statement(code)
+            || code.starts_with("let aztec")
+            || code.starts_with("let mut aztec")
+            || code.starts_with("mod aztec")
+            || code.starts_with("pub mod aztec")
+            || code.starts_with("struct aztec")
+            || code.starts_with("enum aztec")
+            || code.starts_with("trait aztec")
+            || code.starts_with("type aztec")
+            || code.contains("(aztec:")
+            || code.contains(", aztec:")
+        {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(feature = "noir-compiler")]
+fn binds_aztec_in_use_statement(statement: &str) -> bool {
+    let compact = statement.trim();
+    if !compact.starts_with("use ") && !compact.starts_with("pub use ") {
+        return false;
+    }
+    let use_tail = compact.split_once("use ").map_or(compact, |(_, tail)| tail);
+    let use_tail = use_tail.trim_end_matches(';').trim();
+    if use_tail.contains(" as aztec") {
+        return true;
+    }
+    let trimmed_tail = use_tail.trim_end();
+    if trimmed_tail.ends_with("::aztec") {
+        return true;
+    }
+    if let Some(open) = trimmed_tail.find('{') {
+        let Some(close_rel) = trimmed_tail[open + 1..].find('}') else {
+            return false;
+        };
+        let close = open + 1 + close_rel;
+        let grouped = &trimmed_tail[open + 1..close];
+        return grouped
+            .split(',')
+            .any(|leaf| leaf.trim() == "aztec" || leaf.trim_end().ends_with(" as aztec"));
+    }
+    false
+}
+
+#[cfg(feature = "noir-compiler")]
+fn strip_line_comment(line: &str) -> &str {
+    line.split_once("//").map_or(line, |(code, _)| code)
+}
+
+#[cfg(feature = "noir-compiler")]
+fn statement_start(source: &str, offset: usize) -> usize {
+    source[..offset.min(source.len())]
+        .rfind([';', '{', '}'])
+        .map_or(0, |idx| idx + 1)
+}
+
+#[cfg(feature = "noir-compiler")]
+fn statement_end(source: &str, offset: usize) -> usize {
+    let bytes = source.as_bytes();
+    let mut cursor = offset.min(source.len());
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut brace_depth = 0usize;
+
+    while cursor < bytes.len() {
+        match bytes[cursor] {
+            b'(' => paren_depth += 1,
+            b')' => paren_depth = paren_depth.saturating_sub(1),
+            b'[' => bracket_depth += 1,
+            b']' => bracket_depth = bracket_depth.saturating_sub(1),
+            b'{' => brace_depth += 1,
+            b'}' => brace_depth = brace_depth.saturating_sub(1),
+            b';' if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => {
+                return cursor + 1;
+            }
+            b'\n' if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => {
+                return cursor;
+            }
+            _ => {}
+        }
+        cursor += 1;
+    }
+    source.len()
 }
 
 #[cfg(test)]
 #[cfg(feature = "noir-compiler")]
 mod tests {
-    use noirc_errors::{CustomDiagnostic, Location, Span};
+    use std::path::Path;
 
-    use super::normalize_diagnostic_messages;
+    use fm::FileManager;
+    use noirc_errors::{CustomDiagnostic, DiagnosticKind, Location, Span};
+
+    use super::filter_deprecated_path_warnings;
+    use crate::config::DeprecatedPathConfig;
 
     #[test]
-    fn normalizes_aztec_deprecation_hint_message() {
-        let mut diagnostic = CustomDiagnostic::from_message("primary", fm::FileId::dummy());
-        let location = Location::new(Span::single_char(0), fm::FileId::dummy());
-        diagnostic.add_secondary("Please use `::aztec` instead".to_string(), location);
-        diagnostic
-            .notes
-            .push("note: Please use `::aztec` instead".to_string());
+    fn keeps_actionable_deprecated_path_warning_with_absolute_rewrite_hint() {
+        let mut files = FileManager::new(Path::new("."));
+        let source = "use dep::aztec::protocol_types::A;\n";
+        let file_id = files
+            .add_file_with_source(Path::new("src/main.nr"), source.to_string())
+            .expect("file should be added");
+        let warning = deprecated_path_warning(file_id, source, "dep::aztec::");
 
-        normalize_diagnostic_messages(&mut diagnostic);
+        let filtered =
+            filter_deprecated_path_warnings(&files, vec![warning], DeprecatedPathConfig::default());
 
+        assert_eq!(filtered.len(), 1);
         assert!(
-            diagnostic
+            filtered[0]
                 .secondaries
                 .iter()
-                .any(|secondary| secondary.message == "Please use `aztec::` instead")
+                .any(|secondary| secondary.message.contains("Please use `::aztec` instead"))
         );
         assert!(
-            diagnostic
+            !filtered[0]
+                .secondaries
+                .iter()
+                .any(|secondary| secondary.message.contains("Please use `aztec::` instead"))
+        );
+    }
+
+    #[test]
+    fn suppresses_blocked_deprecated_path_warning_by_default() {
+        let mut files = FileManager::new(Path::new("."));
+        let source = "use aztec::macros::aztec;\nuse dep::aztec::protocol_types::A;\n";
+        let file_id = files
+            .add_file_with_source(Path::new("src/main.nr"), source.to_string())
+            .expect("file should be added");
+        let warning = deprecated_path_warning(file_id, source, "dep::aztec::");
+
+        let filtered =
+            filter_deprecated_path_warnings(&files, vec![warning], DeprecatedPathConfig::default());
+
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn emits_single_info_for_blocked_deprecated_path_in_verbose_mode() {
+        let mut files = FileManager::new(Path::new("."));
+        let source =
+            "use aztec::macros::aztec;\nuse dep::aztec::{protocol_types::A, protocol_types::B};\n";
+        let file_id = files
+            .add_file_with_source(Path::new("src/main.nr"), source.to_string())
+            .expect("file should be added");
+        let warning_a = deprecated_path_warning(file_id, source, "dep::aztec::{");
+        let warning_b = deprecated_path_warning(file_id, source, "protocol_types::B");
+        let config = DeprecatedPathConfig {
+            warn_on_blocked: false,
+            try_absolute_root: true,
+            verbose_blocked_notes: true,
+        };
+
+        let filtered = filter_deprecated_path_warnings(&files, vec![warning_a, warning_b], config);
+
+        assert_eq!(filtered.len(), 1);
+        assert!(filtered[0].is_info());
+        assert!(
+            filtered[0]
                 .notes
                 .iter()
-                .any(|note| note.contains("Please use `aztec::` instead"))
+                .any(|note| note.contains("blocked by local binding `aztec`"))
         );
+    }
+
+    #[test]
+    fn suppresses_warning_when_absolute_rewrite_attempt_is_disabled() {
+        let mut files = FileManager::new(Path::new("."));
+        let source = "use dep::aztec::protocol_types::A;\n";
+        let file_id = files
+            .add_file_with_source(Path::new("src/main.nr"), source.to_string())
+            .expect("file should be added");
+        let warning = deprecated_path_warning(file_id, source, "dep::aztec::");
+        let config = DeprecatedPathConfig {
+            warn_on_blocked: false,
+            try_absolute_root: false,
+            verbose_blocked_notes: false,
+        };
+
+        let filtered = filter_deprecated_path_warnings(&files, vec![warning], config);
+
+        assert!(filtered.is_empty());
+    }
+
+    fn deprecated_path_warning(
+        file_id: fm::FileId,
+        source: &str,
+        marker: &str,
+    ) -> CustomDiagnostic {
+        let marker_offset = source.find(marker).expect("marker should exist");
+        let dep_offset = source[marker_offset..]
+            .find("dep::aztec::")
+            .map(|relative| marker_offset + relative)
+            .or_else(|| source.find("dep::aztec::"))
+            .expect("dep::aztec path should exist");
+        let location = Location::new(
+            Span::from(
+                u32::try_from(dep_offset).expect("fits")
+                    ..u32::try_from(dep_offset + "dep::aztec::".len()).expect("fits"),
+            ),
+            file_id,
+        );
+        let mut diagnostic = CustomDiagnostic::simple_warning(
+            "`dep::aztec` path is deprecated".to_string(),
+            "Please use `::aztec` instead".to_string(),
+            location,
+        );
+        diagnostic.kind = DiagnosticKind::Warning;
+        diagnostic
     }
 }
