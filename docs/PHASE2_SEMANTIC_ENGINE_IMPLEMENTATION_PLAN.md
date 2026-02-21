@@ -265,7 +265,7 @@ Failure modes:
 
 ---
 
-### Step 9: Replace Aztec Semantic Site Extraction With Typed Analysis
+### Step 9: Replace Aztec Semantic Site Extraction With Typed Analysis **COMPLETED**
 
 Files:
 - `crates/aztec-lint-aztec/src/model_builder.rs`
