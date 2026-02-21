@@ -37,6 +37,10 @@ Entries are grouped by released version.
 - Changed Aztec semantic site extraction (`note_read_sites`, `note_write_sites`, `nullifier_emit_sites`, `public_sinks`, `enqueue_sites`) to derive primarily from semantic call-site and statement facts, with source text heuristics retained only as fallback.
 - Changed CLI `check` Aztec model wiring to pass the project semantic model into Aztec model construction.
 - Added `AztecModel::normalize()` in core to centralize deterministic ordering/dedup behavior.
+- Added semantic-aware Aztec taint graph construction via `build_def_use_graph_with_semantic(...)`, while keeping `build_def_use_graph(...)` as the compatibility path.
+- Changed Aztec taint source/sink detection to derive from semantic DFG/CFG/call-site facts (typed node IDs) for note reads, private params, unconstrained returns, public outputs, storage writes, nullifier/commitment, hash/serialize, branch condition, and merkle-witness sinks.
+- Changed hash/serialize guard sanitization in taint propagation to use CFG dominance over semantic guard coverage instead of line-offset ordering.
+- Added `SemanticModel::statement_block_map(...)` and `SemanticModel::cfg_dominators(...)` in core, plus semantic-path taint tests and a CFG-dominance guard test.
 
 ## [0.2.0]
 
