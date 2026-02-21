@@ -3,9 +3,13 @@ pub mod query;
 pub mod registry;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 
 use aztec_lint_core::config::RuleLevel;
-use aztec_lint_core::diagnostics::{Diagnostic, Severity, sort_diagnostics};
+use aztec_lint_core::diagnostics::{
+    Diagnostic, DiagnosticViolation, Severity, sort_diagnostics, validate_diagnostics,
+};
 use aztec_lint_core::lints::{all_lints, find_lint};
 
 use self::context::RuleContext;
@@ -24,6 +28,34 @@ pub struct RuleRunSettings {
 pub struct RuleEngine {
     registry: Vec<RuleRegistration>,
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RuleEngineError {
+    InvalidDiagnostics {
+        violations: Vec<DiagnosticViolation>,
+    },
+}
+
+impl Display for RuleEngineError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidDiagnostics { violations } => {
+                if let Some(first) = violations.first() {
+                    write!(
+                        f,
+                        "diagnostic validation failed with {} violation(s); first violation: {}",
+                        violations.len(),
+                        first
+                    )
+                } else {
+                    write!(f, "diagnostic validation failed with zero violations")
+                }
+            }
+        }
+    }
+}
+
+impl Error for RuleEngineError {}
 
 impl Default for RuleEngine {
     fn default() -> Self {
@@ -48,7 +80,7 @@ impl RuleEngine {
         &self,
         ctx: &RuleContext<'_>,
         settings: &RuleRunSettings,
-    ) -> Vec<Diagnostic> {
+    ) -> Result<Vec<Diagnostic>, RuleEngineError> {
         self.run(ctx, &settings.effective_levels)
     }
 
@@ -56,7 +88,7 @@ impl RuleEngine {
         &self,
         ctx: &RuleContext<'_>,
         effective_levels: &BTreeMap<String, RuleLevel>,
-    ) -> Vec<Diagnostic> {
+    ) -> Result<Vec<Diagnostic>, RuleEngineError> {
         let mut diagnostics = Vec::<Diagnostic>::new();
 
         for registration in &self.registry {
@@ -90,7 +122,13 @@ impl RuleEngine {
         }
 
         sort_diagnostics(&mut diagnostics);
-        diagnostics
+
+        let violations = validate_diagnostics(&diagnostics);
+        if !violations.is_empty() {
+            return Err(RuleEngineError::InvalidDiagnostics { violations });
+        }
+
+        Ok(diagnostics)
     }
 }
 
@@ -197,15 +235,16 @@ mod tests {
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
     use aztec_lint_core::config::RuleLevel;
-    use aztec_lint_core::diagnostics::Confidence;
+    use aztec_lint_core::diagnostics::{Confidence, Diagnostic, DiagnosticViolationKind, Severity};
     use aztec_lint_core::lints::{LintCategory, LintDocs, LintLifecycleState, LintSpec, find_lint};
     use aztec_lint_core::model::ProjectModel;
+    use aztec_lint_core::model::Span;
 
     use crate::Rule;
     use crate::engine::context::RuleContext;
     use crate::engine::registry::{RuleRegistration, full_registry};
 
-    use super::{RuleEngine, validate_registry_integrity_with_catalog};
+    use super::{RuleEngine, RuleEngineError, validate_registry_integrity_with_catalog};
 
     struct TestRule;
 
@@ -252,10 +291,12 @@ fn main() {
             rule: Box::new(TestRule),
         }]);
 
-        let diagnostics = engine.run(
-            &context,
-            &BTreeMap::from([("NOIR100".to_string(), RuleLevel::Warn)]),
-        );
+        let diagnostics = engine
+            .run(
+                &context,
+                &BTreeMap::from([("NOIR100".to_string(), RuleLevel::Warn)]),
+            )
+            .expect("engine run should succeed");
         assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics[0].suppressed);
         assert_eq!(
@@ -421,13 +462,15 @@ fn main() {
         ];
         let engine = RuleEngine::with_registry(registry);
 
-        let diagnostics = engine.run(
-            &context,
-            &BTreeMap::from([
-                ("NOIR100".to_string(), RuleLevel::Warn),
-                ("NOIR101".to_string(), RuleLevel::Warn),
-            ]),
-        );
+        let diagnostics = engine
+            .run(
+                &context,
+                &BTreeMap::from([
+                    ("NOIR100".to_string(), RuleLevel::Warn),
+                    ("NOIR101".to_string(), RuleLevel::Warn),
+                ]),
+            )
+            .expect("engine run should succeed");
 
         let mut ids = diagnostics
             .iter()
@@ -435,6 +478,74 @@ fn main() {
             .collect::<Vec<_>>();
         ids.sort_unstable();
         assert_eq!(ids, vec!["NOIR100", "NOIR101"]);
+    }
+
+    struct InvalidDiagnosticRule;
+
+    impl Rule for InvalidDiagnosticRule {
+        fn id(&self) -> &'static str {
+            "NOIR100"
+        }
+
+        fn run(
+            &self,
+            _ctx: &RuleContext<'_>,
+            out: &mut Vec<aztec_lint_core::diagnostics::Diagnostic>,
+        ) {
+            out.push(Diagnostic {
+                rule_id: String::new(),
+                severity: Severity::Warning,
+                confidence: Confidence::Low,
+                policy: String::new(),
+                message: String::new(),
+                primary_span: Span::new("src/main.nr", 10, 2, 1, 1),
+                secondary_spans: Vec::new(),
+                suggestions: Vec::new(),
+                notes: Vec::new(),
+                helps: Vec::new(),
+                structured_suggestions: Vec::new(),
+                suggestion_groups: Vec::new(),
+                fixes: Vec::new(),
+                suppressed: true,
+                suppression_reason: None,
+            });
+        }
+    }
+
+    #[test]
+    fn engine_returns_validation_error_for_invalid_diagnostics() {
+        let project = ProjectModel::default();
+        let context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), "fn main() {}\n".to_string())],
+        );
+        let lint = find_lint("NOIR100").expect("NOIR100 should be in canonical catalog");
+        let engine = RuleEngine::with_registry(vec![RuleRegistration {
+            lint,
+            rule: Box::new(InvalidDiagnosticRule),
+        }]);
+
+        let error = engine
+            .run(
+                &context,
+                &BTreeMap::from([("NOIR100".to_string(), RuleLevel::Warn)]),
+            )
+            .expect_err("invalid diagnostic should fail validation");
+
+        let violations = match error {
+            RuleEngineError::InvalidDiagnostics { violations } => violations,
+        };
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.kind == DiagnosticViolationKind::EmptyMessage)
+        );
+        assert!(violations.iter().any(|violation| {
+            violation.kind == DiagnosticViolationKind::InvalidPrimarySpan { start: 10, end: 2 }
+        }));
+        assert!(violations.iter().any(|violation| {
+            violation.kind == DiagnosticViolationKind::MissingSuppressionReason
+        }));
     }
 
     const fn test_docs() -> LintDocs {

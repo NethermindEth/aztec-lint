@@ -63,6 +63,7 @@ pub fn render_diagnostics(
 }
 
 fn normalize_for_sarif(mut diagnostic: Diagnostic) -> Diagnostic {
+    diagnostic.merge_legacy_fields_from_suggestion_groups();
     diagnostic.suggestions.sort();
     diagnostic.notes.sort_by_key(|note| {
         if let Some(span) = &note.span {
@@ -118,6 +119,25 @@ fn normalize_for_sarif(mut diagnostic: Diagnostic) -> Diagnostic {
             suggestion.message.clone(),
             suggestion.replacement.clone(),
             suggestion.applicability.as_str().to_string(),
+        )
+    });
+    for group in &mut diagnostic.suggestion_groups {
+        group.edits.sort_by_key(|edit| {
+            (
+                normalize_file_path(&edit.span.file),
+                edit.span.start,
+                edit.span.end,
+                edit.replacement.clone(),
+            )
+        });
+    }
+    diagnostic.suggestion_groups.sort_by_key(|group| {
+        (
+            group.id.clone(),
+            group.message.clone(),
+            group.applicability.as_str().to_string(),
+            group.provenance.clone().unwrap_or_default(),
+            group.edits.len(),
         )
     });
     diagnostic.fixes.sort_by_key(|fix| {
@@ -229,34 +249,147 @@ fn sarif_fixes(
         }));
     }
 
-    let mut structured_suggestions = diagnostic.structured_suggestions.clone();
-    structured_suggestions.sort_by_key(|suggestion| {
-        (
-            normalize_file_path(&suggestion.span.file),
-            suggestion.span.start,
-            suggestion.span.end,
-            suggestion.message.clone(),
-            suggestion.replacement.clone(),
-            suggestion.applicability.as_str().to_string(),
-        )
-    });
+    if !diagnostic.suggestion_groups.is_empty() {
+        let mut grouped_suggestion_keys =
+            BTreeSet::<(String, u32, u32, String, String, String)>::new();
+        let mut groups = diagnostic.suggestion_groups.clone();
+        groups.sort_by_key(|group| {
+            (
+                group.id.clone(),
+                group.message.clone(),
+                group.applicability.as_str().to_string(),
+                group.provenance.clone().unwrap_or_default(),
+                group.edits.len(),
+            )
+        });
 
-    for suggestion in structured_suggestions {
-        let uri = repository_relative_uri(repo_root, &suggestion.span.file);
-        fixes.push(json!({
-            "description": { "text": suggestion.message },
-            "artifactChanges": [{
-                "artifactLocation": artifact_location_value(&uri, artifact_indices),
-                "replacements": [{
-                    "deletedRegion": region_for_span(&suggestion.span),
-                    "insertedContent": { "text": suggestion.replacement },
-                }]
-            }],
-            "properties": {
-                "source": "structured_suggestion",
-                "applicability": suggestion.applicability,
+        for group in groups {
+            for edit in &group.edits {
+                grouped_suggestion_keys.insert((
+                    normalize_file_path(&edit.span.file),
+                    edit.span.start,
+                    edit.span.end,
+                    group.message.clone(),
+                    edit.replacement.clone(),
+                    group.applicability.as_str().to_string(),
+                ));
             }
-        }));
+
+            let mut edits_by_uri = BTreeMap::<String, Vec<_>>::new();
+            for edit in group.edits {
+                let uri = repository_relative_uri(repo_root, &edit.span.file);
+                edits_by_uri.entry(uri).or_default().push(edit);
+            }
+
+            let artifact_changes = edits_by_uri
+                .into_iter()
+                .map(|(uri, mut edits)| {
+                    edits.sort_by_key(|edit| {
+                        (
+                            normalize_file_path(&edit.span.file),
+                            edit.span.start,
+                            edit.span.end,
+                            edit.replacement.clone(),
+                        )
+                    });
+                    json!({
+                        "artifactLocation": artifact_location_value(&uri, artifact_indices),
+                        "replacements": edits
+                            .iter()
+                            .map(|edit| {
+                                json!({
+                                    "deletedRegion": region_for_span(&edit.span),
+                                    "insertedContent": { "text": edit.replacement },
+                                })
+                            })
+                            .collect::<Vec<_>>(),
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            fixes.push(json!({
+                "description": { "text": group.message },
+                "artifactChanges": artifact_changes,
+                "properties": {
+                    "source": "suggestion_group",
+                    "groupId": group.id,
+                    "applicability": group.applicability,
+                    "provenance": group.provenance,
+                }
+            }));
+        }
+
+        let mut structured_suggestions = diagnostic.structured_suggestions.clone();
+        structured_suggestions.sort_by_key(|suggestion| {
+            (
+                normalize_file_path(&suggestion.span.file),
+                suggestion.span.start,
+                suggestion.span.end,
+                suggestion.message.clone(),
+                suggestion.replacement.clone(),
+                suggestion.applicability.as_str().to_string(),
+            )
+        });
+
+        for suggestion in structured_suggestions {
+            let key = (
+                normalize_file_path(&suggestion.span.file),
+                suggestion.span.start,
+                suggestion.span.end,
+                suggestion.message.clone(),
+                suggestion.replacement.clone(),
+                suggestion.applicability.as_str().to_string(),
+            );
+            if grouped_suggestion_keys.contains(&key) {
+                continue;
+            }
+
+            let uri = repository_relative_uri(repo_root, &suggestion.span.file);
+            fixes.push(json!({
+                "description": { "text": suggestion.message },
+                "artifactChanges": [{
+                    "artifactLocation": artifact_location_value(&uri, artifact_indices),
+                    "replacements": [{
+                        "deletedRegion": region_for_span(&suggestion.span),
+                        "insertedContent": { "text": suggestion.replacement },
+                    }]
+                }],
+                "properties": {
+                    "source": "structured_suggestion",
+                    "applicability": suggestion.applicability,
+                }
+            }));
+        }
+    } else {
+        let mut structured_suggestions = diagnostic.structured_suggestions.clone();
+        structured_suggestions.sort_by_key(|suggestion| {
+            (
+                normalize_file_path(&suggestion.span.file),
+                suggestion.span.start,
+                suggestion.span.end,
+                suggestion.message.clone(),
+                suggestion.replacement.clone(),
+                suggestion.applicability.as_str().to_string(),
+            )
+        });
+
+        for suggestion in structured_suggestions {
+            let uri = repository_relative_uri(repo_root, &suggestion.span.file);
+            fixes.push(json!({
+                "description": { "text": suggestion.message },
+                "artifactChanges": [{
+                    "artifactLocation": artifact_location_value(&uri, artifact_indices),
+                    "replacements": [{
+                        "deletedRegion": region_for_span(&suggestion.span),
+                        "insertedContent": { "text": suggestion.replacement },
+                    }]
+                }],
+                "properties": {
+                    "source": "structured_suggestion",
+                    "applicability": suggestion.applicability,
+                }
+            }));
+        }
     }
 
     fixes
@@ -287,6 +420,11 @@ fn build_artifact_catalog(
         }
         for suggestion in &diagnostic.structured_suggestions {
             uris.insert(repository_relative_uri(repo_root, &suggestion.span.file));
+        }
+        for group in &diagnostic.suggestion_groups {
+            for edit in &group.edits {
+                uris.insert(repository_relative_uri(repo_root, &edit.span.file));
+            }
         }
         for fix in &diagnostic.fixes {
             uris.insert(repository_relative_uri(repo_root, &fix.span.file));
@@ -376,6 +514,7 @@ mod tests {
     use super::{PARTIAL_FINGERPRINT_KEY, render_diagnostics};
     use crate::diagnostics::{
         Applicability, Confidence, Diagnostic, Fix, FixSafety, Severity, StructuredSuggestion,
+        SuggestionGroup, TextEdit,
     };
     use crate::model::Span;
 
@@ -392,6 +531,7 @@ mod tests {
             notes: Vec::new(),
             helps: Vec::new(),
             structured_suggestions: Vec::new(),
+            suggestion_groups: Vec::new(),
             fixes: Vec::new(),
             suppressed: false,
             suppression_reason: None,
@@ -447,6 +587,16 @@ mod tests {
             replacement: "NAMED".to_string(),
             applicability: Applicability::MachineApplicable,
         }];
+        issue.suggestion_groups = vec![SuggestionGroup {
+            id: "sg0001".to_string(),
+            message: "structured fix".to_string(),
+            applicability: Applicability::MachineApplicable,
+            edits: vec![TextEdit {
+                span: Span::new("src/main.nr", 10, 11, 2, 2),
+                replacement: "NAMED".to_string(),
+            }],
+            provenance: None,
+        }];
 
         let rendered = render_diagnostics(root, &[&issue]).expect("sarif render should succeed");
         let value: Value = serde_json::from_str(&rendered).expect("sarif should parse");
@@ -461,7 +611,7 @@ mod tests {
         );
         assert_eq!(
             fixes[1]["properties"]["source"].as_str(),
-            Some("structured_suggestion")
+            Some("suggestion_group")
         );
         assert_eq!(
             fixes[1]["properties"]["applicability"].as_str(),
@@ -471,6 +621,49 @@ mod tests {
             value["runs"][0]["artifacts"][0]["location"]["uri"].as_str(),
             Some("src/main.nr")
         );
+    }
+
+    #[test]
+    fn sarif_output_preserves_legacy_structured_suggestions_when_groups_exist() {
+        let root = Path::new("/repo");
+        let mut issue = diagnostic("NOIR100", "src/main.nr", 10, 2, "message");
+        issue.structured_suggestions = vec![
+            StructuredSuggestion {
+                message: "group fix".to_string(),
+                span: Span::new("src/main.nr", 10, 11, 2, 2),
+                replacement: "NAMED".to_string(),
+                applicability: Applicability::MachineApplicable,
+            },
+            StructuredSuggestion {
+                message: "legacy-only fix".to_string(),
+                span: Span::new("src/main.nr", 20, 22, 4, 4),
+                replacement: "RENAMED".to_string(),
+                applicability: Applicability::MaybeIncorrect,
+            },
+        ];
+        issue.suggestion_groups = vec![SuggestionGroup {
+            id: "sg0001".to_string(),
+            message: "group fix".to_string(),
+            applicability: Applicability::MachineApplicable,
+            edits: vec![TextEdit {
+                span: Span::new("src/main.nr", 10, 11, 2, 2),
+                replacement: "NAMED".to_string(),
+            }],
+            provenance: None,
+        }];
+
+        let rendered = render_diagnostics(root, &[&issue]).expect("sarif render should succeed");
+        let value: Value = serde_json::from_str(&rendered).expect("sarif should parse");
+        let fixes = value["runs"][0]["results"][0]["fixes"]
+            .as_array()
+            .expect("fixes should be present");
+
+        assert_eq!(fixes.len(), 2);
+        let sources = fixes
+            .iter()
+            .map(|fix| fix["properties"]["source"].as_str().unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert_eq!(sources, vec!["suggestion_group", "structured_suggestion"]);
     }
 
     #[test]

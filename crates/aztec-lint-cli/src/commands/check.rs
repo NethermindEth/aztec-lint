@@ -174,7 +174,12 @@ pub(crate) fn collect_lint_run(
             context.set_aztec_model(aztec_model);
         }
 
-        let mut project_diagnostics = engine.run(&context, &effective_rules);
+        let mut project_diagnostics = engine.run(&context, &effective_rules).map_err(|source| {
+            CliError::Runtime(format!(
+                "diagnostic validation failed while linting '{}': {source}",
+                project.root.display()
+            ))
+        })?;
         rebase_diagnostic_paths(
             &mut project_diagnostics,
             project.root.as_path(),
@@ -840,6 +845,7 @@ mod tests {
             notes: Vec::new(),
             helps: Vec::new(),
             structured_suggestions: Vec::new(),
+            suggestion_groups: Vec::new(),
             fixes: Vec::new(),
             suppressed: false,
             suppression_reason: None,

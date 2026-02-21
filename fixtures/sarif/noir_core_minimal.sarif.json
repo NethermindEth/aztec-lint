@@ -39,7 +39,9 @@
               },
               "properties": {
                 "applicability": "maybe_incorrect",
-                "source": "structured_suggestion"
+                "groupId": "sg0001",
+                "provenance": null,
+                "source": "suggestion_group"
               }
             }
           ],

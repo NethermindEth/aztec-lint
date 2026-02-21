@@ -209,6 +209,7 @@ impl<'a> RuleContext<'a> {
             notes: Vec::new(),
             helps: Vec::new(),
             structured_suggestions: Vec::new(),
+            suggestion_groups: Vec::new(),
             fixes: Vec::new(),
             suppressed: false,
             suppression_reason: None,

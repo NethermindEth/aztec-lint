@@ -58,7 +58,7 @@ Validation:
 Failure modes to watch:
 - Implementing grouped edits or broader scoping while docs/ADRs still declare them invalid.
 
-## Step 1: Add strict diagnostic and fix invariant validation layer
+## Step 1: Add strict diagnostic and fix invariant validation layer **COMPLETED**
 
 Files:
 - New: `crates/aztec-lint-core/src/diagnostics/validate.rs`
@@ -86,7 +86,7 @@ Failure modes to watch:
 - Overly strict validation blocks existing legitimate diagnostics.
 - Nondeterministic violation ordering causes flaky tests.
 
-## Step 2: Introduce suggestion model v2 with grouped edits
+## Step 2: Introduce suggestion model v2 with grouped edits **COMPLETED**
 
 Files:
 - `crates/aztec-lint-core/src/diagnostics/types.rs`

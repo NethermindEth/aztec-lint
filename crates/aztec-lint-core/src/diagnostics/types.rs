@@ -94,12 +94,95 @@ impl StructuredSuggestion {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TextEdit {
+    pub span: Span,
+    pub replacement: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SuggestionGroup {
+    pub id: String,
+    pub message: String,
+    pub applicability: Applicability,
+    pub edits: Vec<TextEdit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<String>,
+}
+
+impl SuggestionGroup {
+    pub fn to_structured_suggestions(&self) -> Vec<StructuredSuggestion> {
+        self.edits
+            .iter()
+            .map(|edit| StructuredSuggestion {
+                message: self.message.clone(),
+                span: edit.span.clone(),
+                replacement: edit.replacement.clone(),
+                applicability: self.applicability,
+            })
+            .collect()
+    }
+
+    pub fn to_fixes(&self) -> Vec<Fix> {
+        self.to_structured_suggestions()
+            .into_iter()
+            .map(|suggestion| suggestion.to_fix())
+            .collect()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct MultipartSuggestionPart {
     pub span: Span,
     pub replacement: String,
 }
 
 impl Diagnostic {
+    fn next_suggestion_group_id(&self) -> String {
+        let mut ordinal = self.suggestion_groups.len() + 1;
+        loop {
+            let candidate = format!("sg{ordinal:04}");
+            if !self
+                .suggestion_groups
+                .iter()
+                .any(|group| group.id == candidate)
+            {
+                return candidate;
+            }
+            ordinal += 1;
+        }
+    }
+
+    pub fn structured_suggestions_from_suggestion_groups(&self) -> Vec<StructuredSuggestion> {
+        self.suggestion_groups
+            .iter()
+            .flat_map(SuggestionGroup::to_structured_suggestions)
+            .collect()
+    }
+
+    pub fn fixes_from_suggestion_groups(&self) -> Vec<Fix> {
+        self.suggestion_groups
+            .iter()
+            .flat_map(SuggestionGroup::to_fixes)
+            .collect()
+    }
+
+    pub fn merge_legacy_fields_from_suggestion_groups(&mut self) {
+        if self.suggestion_groups.is_empty() {
+            return;
+        }
+
+        for suggestion in self.structured_suggestions_from_suggestion_groups() {
+            if !self.structured_suggestions.contains(&suggestion) {
+                self.structured_suggestions.push(suggestion);
+            }
+        }
+    }
+
+    pub fn with_legacy_fields_from_suggestion_groups(mut self) -> Self {
+        self.merge_legacy_fields_from_suggestion_groups();
+        self
+    }
+
     pub fn note(mut self, message: impl Into<String>) -> Self {
         self.notes.push(StructuredMessage {
             message: message.into(),
@@ -139,10 +222,22 @@ impl Diagnostic {
         replacement: impl Into<String>,
         applicability: Applicability,
     ) -> Self {
+        let message = message.into();
+        let replacement = replacement.into();
+        self.suggestion_groups.push(SuggestionGroup {
+            id: self.next_suggestion_group_id(),
+            message: message.clone(),
+            applicability,
+            edits: vec![TextEdit {
+                span: span.clone(),
+                replacement: replacement.clone(),
+            }],
+            provenance: None,
+        });
         self.structured_suggestions.push(StructuredSuggestion {
-            message: message.into(),
+            message,
             span,
-            replacement: replacement.into(),
+            replacement,
             applicability,
         });
         self
@@ -155,12 +250,26 @@ impl Diagnostic {
         applicability: Applicability,
     ) -> Self {
         let message = message.into();
+        let mut edits = Vec::<TextEdit>::new();
         for part in parts {
+            edits.push(TextEdit {
+                span: part.span.clone(),
+                replacement: part.replacement.clone(),
+            });
             self.structured_suggestions.push(StructuredSuggestion {
                 message: message.clone(),
                 span: part.span,
                 replacement: part.replacement,
                 applicability,
+            });
+        }
+        if !edits.is_empty() {
+            self.suggestion_groups.push(SuggestionGroup {
+                id: self.next_suggestion_group_id(),
+                message,
+                applicability,
+                edits,
+                provenance: None,
             });
         }
         self
@@ -190,6 +299,8 @@ pub struct Diagnostic {
     pub helps: Vec<StructuredMessage>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub structured_suggestions: Vec<StructuredSuggestion>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub suggestion_groups: Vec<SuggestionGroup>,
     pub fixes: Vec<Fix>,
     pub suppressed: bool,
     pub suppression_reason: Option<String>,
@@ -201,7 +312,7 @@ mod tests {
 
     use super::{
         Applicability, Confidence, Diagnostic, Fix, FixSafety, MultipartSuggestionPart, Severity,
-        StructuredMessage, StructuredSuggestion,
+        StructuredMessage, StructuredSuggestion, SuggestionGroup, TextEdit,
     };
     use crate::model::Span;
 
@@ -229,6 +340,16 @@ mod tests {
                 span: Span::new("src/contract.nr", 20, 30, 3, 5),
                 replacement: "self.safe_sink(value);".to_string(),
                 applicability: Applicability::MaybeIncorrect,
+            }],
+            suggestion_groups: vec![SuggestionGroup {
+                id: "sg0001".to_string(),
+                message: "replace with constrained sink".to_string(),
+                applicability: Applicability::MaybeIncorrect,
+                edits: vec![TextEdit {
+                    span: Span::new("src/contract.nr", 20, 30, 3, 5),
+                    replacement: "self.safe_sink(value);".to_string(),
+                }],
+                provenance: Some("rule:NOIR999".to_string()),
             }],
             fixes: vec![Fix {
                 description: "replace with constrained sink".to_string(),
@@ -296,6 +417,26 @@ mod tests {
                     "applicability": "maybe_incorrect"
                 }
             ],
+            "suggestion_groups": [
+                {
+                    "id": "sg0001",
+                    "message": "replace with constrained sink",
+                    "applicability": "maybe_incorrect",
+                    "edits": [
+                        {
+                            "span": {
+                                "file": "src/contract.nr",
+                                "start": 20,
+                                "end": 30,
+                                "line": 3,
+                                "col": 5
+                            },
+                            "replacement": "self.safe_sink(value);"
+                        }
+                    ],
+                    "provenance": "rule:NOIR999"
+                }
+            ],
             "fixes": [
                 {
                     "description": "replace with constrained sink",
@@ -331,6 +472,7 @@ mod tests {
             notes: Vec::new(),
             helps: Vec::new(),
             structured_suggestions: Vec::new(),
+            suggestion_groups: Vec::new(),
             fixes: Vec::new(),
             suppressed: true,
             suppression_reason: Some("allow(noir_core::NOIR100)".to_string()),
@@ -431,6 +573,7 @@ mod tests {
             notes: Vec::new(),
             helps: Vec::new(),
             structured_suggestions: Vec::new(),
+            suggestion_groups: Vec::new(),
             fixes: Vec::new(),
             suppressed: false,
             suppression_reason: None,
@@ -473,6 +616,9 @@ mod tests {
         assert!(diagnostic.helps[1].span.is_some());
 
         assert_eq!(diagnostic.structured_suggestions.len(), 3);
+        assert_eq!(diagnostic.suggestion_groups.len(), 2);
+        assert_eq!(diagnostic.suggestion_groups[0].edits.len(), 1);
+        assert_eq!(diagnostic.suggestion_groups[1].edits.len(), 2);
         assert_eq!(
             diagnostic.structured_suggestions[0].message,
             "replace expression"
@@ -514,6 +660,7 @@ mod tests {
                 replacement: "42".to_string(),
                 applicability: Applicability::MachineApplicable,
             }],
+            suggestion_groups: Vec::new(),
             fixes: Vec::new(),
             suppressed: false,
             suppression_reason: None,
@@ -524,6 +671,42 @@ mod tests {
         assert_eq!(derived[0].description, "replace value");
         assert_eq!(derived[0].replacement, "42");
         assert_eq!(derived[0].safety, FixSafety::Safe);
+    }
+
+    #[test]
+    fn compatibility_merge_derives_legacy_fields_from_suggestion_groups() {
+        let mut diagnostic = Diagnostic {
+            rule_id: "NOIR999".to_string(),
+            severity: Severity::Warning,
+            confidence: Confidence::Medium,
+            policy: "maintainability".to_string(),
+            message: "message".to_string(),
+            primary_span: Span::new("src/main.nr", 1, 2, 1, 1),
+            secondary_spans: Vec::new(),
+            suggestions: Vec::new(),
+            notes: Vec::new(),
+            helps: Vec::new(),
+            structured_suggestions: Vec::new(),
+            suggestion_groups: vec![SuggestionGroup {
+                id: "sg0001".to_string(),
+                message: "replace value".to_string(),
+                applicability: Applicability::MachineApplicable,
+                edits: vec![TextEdit {
+                    span: Span::new("src/main.nr", 10, 12, 2, 3),
+                    replacement: "42".to_string(),
+                }],
+                provenance: None,
+            }],
+            fixes: Vec::new(),
+            suppressed: false,
+            suppression_reason: None,
+        };
+
+        diagnostic.merge_legacy_fields_from_suggestion_groups();
+        assert!(diagnostic.suggestions.is_empty());
+        assert_eq!(diagnostic.structured_suggestions.len(), 1);
+        assert!(diagnostic.fixes.is_empty());
+        assert_eq!(diagnostic.fixes_from_suggestion_groups().len(), 1);
     }
 
     #[test]
@@ -554,5 +737,6 @@ mod tests {
         assert!(diagnostic.notes.is_empty());
         assert!(diagnostic.helps.is_empty());
         assert!(diagnostic.structured_suggestions.is_empty());
+        assert!(diagnostic.suggestion_groups.is_empty());
     }
 }

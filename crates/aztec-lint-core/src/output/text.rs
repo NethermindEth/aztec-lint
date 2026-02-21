@@ -74,6 +74,9 @@ fn render_diagnostic(
     source_cache: &mut HashMap<String, Option<Vec<String>>>,
     colors: Colorizer,
 ) {
+    let diagnostic = diagnostic
+        .clone()
+        .with_legacy_fields_from_suggestion_groups();
     let severity = severity_label(diagnostic.severity);
     let severity = match diagnostic.severity {
         Severity::Warning => colors.warning(severity),
@@ -115,7 +118,7 @@ fn render_diagnostic(
         let _ = writeln!(output, " {line_no:>gutter_width$} {accent_bar} {line_text}");
         let _ = writeln!(output, " {:>gutter_width$} {accent_bar} {}", "", marker);
 
-        for suggestion in primary_span_suggestions(diagnostic) {
+        for suggestion in primary_span_suggestions(&diagnostic) {
             let marker = colors.help(&marker_line(&line_text, suggestion.span.col));
             let help_label = colors.help("help");
             let _ = writeln!(
@@ -181,7 +184,7 @@ fn render_diagnostic(
         let _ = writeln!(output, "   = {help_label}: {suggestion}");
     }
 
-    for suggestion in non_primary_span_suggestions(diagnostic) {
+    for suggestion in non_primary_span_suggestions(&diagnostic) {
         render_span_annotation(
             output,
             source_root,
@@ -197,7 +200,7 @@ fn render_diagnostic(
     }
 
     if primary_line_text.is_none() {
-        for suggestion in primary_span_suggestions(diagnostic) {
+        for suggestion in primary_span_suggestions(&diagnostic) {
             let _ = writeln!(
                 output,
                 "   = {help_label}: {}; replace with `{}`",
@@ -408,6 +411,7 @@ mod tests {
     use super::{CheckTextReport, render_check_report};
     use crate::diagnostics::{
         Applicability, Confidence, Diagnostic, Severity, StructuredMessage, StructuredSuggestion,
+        SuggestionGroup, TextEdit,
     };
     use crate::model::Span;
 
@@ -452,6 +456,7 @@ mod tests {
             notes: Vec::new(),
             helps: Vec::new(),
             structured_suggestions: Vec::new(),
+            suggestion_groups: Vec::new(),
             fixes: Vec::new(),
             suppressed: false,
             suppression_reason: None,
@@ -600,5 +605,39 @@ mod tests {
             .find("= help: z legacy help")
             .expect("z legacy help must exist");
         assert!(a_legacy_index < z_legacy_index);
+    }
+
+    #[test]
+    fn check_text_output_renders_grouped_suggestions_via_legacy_compatibility() {
+        let temp = tempdir().expect("temp dir should be created");
+        let root = temp.path();
+        fs::create_dir_all(root.join("src")).expect("source directory should be created");
+        fs::write(root.join("src/main.nr"), "fn main() { let x = 7; }\n")
+            .expect("source file should be written");
+
+        let mut issue = diagnostic("src/main.nr", 1, 17, "NOIR100", "message");
+        issue.suggestion_groups = vec![SuggestionGroup {
+            id: "sg0001".to_string(),
+            message: "replace literal".to_string(),
+            applicability: Applicability::MachineApplicable,
+            edits: vec![TextEdit {
+                span: Span::new("src/main.nr", 20, 21, 1, 21),
+                replacement: "NAMED_CONST".to_string(),
+            }],
+            provenance: None,
+        }];
+
+        let report = CheckTextReport {
+            path: root,
+            source_root: root,
+            show_run_header: false,
+            profile: "default",
+            changed_only: false,
+            active_rules: 1,
+            diagnostics: &[&issue],
+        };
+
+        let output = strip_ansi(&render_check_report(report));
+        assert!(output.contains("help: replace literal; replace with `NAMED_CONST`"));
     }
 }

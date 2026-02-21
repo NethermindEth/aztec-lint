@@ -48,10 +48,12 @@ fn run_rule_with_engine(rule_id: &str, source: &str) -> Vec<Diagnostic> {
         vec![("src/main.nr".to_string(), source.to_string())],
     );
     let engine = RuleEngine::new();
-    engine.run(
-        &context,
-        &BTreeMap::from([(rule_id.to_string(), RuleLevel::Deny)]),
-    )
+    engine
+        .run(
+            &context,
+            &BTreeMap::from([(rule_id.to_string(), RuleLevel::Deny)]),
+        )
+        .expect("engine run should succeed")
 }
 
 #[test]

@@ -130,6 +130,9 @@ impl FixCandidate {
 }
 
 fn pending_fixes(diagnostic: &Diagnostic) -> Vec<PendingFix> {
+    let diagnostic = diagnostic
+        .clone()
+        .with_legacy_fields_from_suggestion_groups();
     let mut pending = diagnostic
         .fixes
         .iter()
@@ -420,6 +423,7 @@ mod tests {
             notes: Vec::new(),
             helps: Vec::new(),
             structured_suggestions: Vec::new(),
+            suggestion_groups: Vec::new(),
             fixes: vec![Fix {
                 description: "replace span".to_string(),
                 span: Span::new(file, start, end, 1, 1),
@@ -457,6 +461,7 @@ mod tests {
                 replacement: replacement.to_string(),
                 applicability,
             }],
+            suggestion_groups: Vec::new(),
             fixes: Vec::new(),
             suppressed: false,
             suppression_reason: None,

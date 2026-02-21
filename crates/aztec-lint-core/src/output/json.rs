@@ -10,6 +10,10 @@ pub fn render_diagnostics(diagnostics: &[&Diagnostic]) -> Result<String, serde_j
 }
 
 fn normalize_for_json(mut diagnostic: Diagnostic) -> Diagnostic {
+    diagnostic.merge_legacy_fields_from_suggestion_groups();
+    if diagnostic.fixes.is_empty() {
+        diagnostic.fixes = diagnostic.fixes_from_suggestion_groups();
+    }
     diagnostic.suggestions.sort();
     diagnostic.notes.sort_by_key(|note| {
         if let Some(span) = &note.span {
@@ -69,6 +73,27 @@ fn normalize_for_json(mut diagnostic: Diagnostic) -> Diagnostic {
             suggestion.applicability.as_str().to_string(),
         )
     });
+    for group in &mut diagnostic.suggestion_groups {
+        group.edits.sort_by_key(|edit| {
+            (
+                edit.span.file.clone(),
+                edit.span.line,
+                edit.span.col,
+                edit.span.start,
+                edit.span.end,
+                edit.replacement.clone(),
+            )
+        });
+    }
+    diagnostic.suggestion_groups.sort_by_key(|group| {
+        (
+            group.id.clone(),
+            group.message.clone(),
+            group.applicability.as_str().to_string(),
+            group.provenance.clone().unwrap_or_default(),
+            group.edits.len(),
+        )
+    });
     diagnostic.fixes.sort_by_key(|fix| {
         (
             fix.span.file.clone(),
@@ -90,7 +115,8 @@ mod tests {
 
     use super::render_diagnostics;
     use crate::diagnostics::{
-        Applicability, Confidence, Diagnostic, Severity, StructuredMessage, StructuredSuggestion,
+        Applicability, Confidence, Diagnostic, Severity, StructuredMessage, SuggestionGroup,
+        TextEdit,
     };
     use crate::model::Span;
 
@@ -107,6 +133,7 @@ mod tests {
             notes: Vec::new(),
             helps: Vec::new(),
             structured_suggestions: Vec::new(),
+            suggestion_groups: Vec::new(),
             fixes: Vec::new(),
             suppressed: false,
             suppression_reason: None,
@@ -136,11 +163,15 @@ mod tests {
             message: "extra note".to_string(),
             span: Some(Span::new("src/main.nr", 2, 3, 2, 1)),
         }];
-        item.structured_suggestions = vec![StructuredSuggestion {
+        item.suggestion_groups = vec![SuggestionGroup {
+            id: "sg0001".to_string(),
             message: "replace literal".to_string(),
-            span: Span::new("src/main.nr", 2, 3, 2, 1),
-            replacement: "NAMED_CONST".to_string(),
             applicability: Applicability::MachineApplicable,
+            edits: vec![TextEdit {
+                span: Span::new("src/main.nr", 2, 3, 2, 1),
+                replacement: "NAMED_CONST".to_string(),
+            }],
+            provenance: None,
         }];
 
         let rendered = render_diagnostics(&[&item]).expect("json rendering should pass");
@@ -153,6 +184,10 @@ mod tests {
         assert_eq!(
             value[0]["structured_suggestions"][0]["replacement"].as_str(),
             Some("NAMED_CONST")
+        );
+        assert_eq!(
+            value[0]["suggestion_groups"][0]["id"].as_str(),
+            Some("sg0001")
         );
         assert_eq!(
             value[0]["suggestions"][0].as_str(),

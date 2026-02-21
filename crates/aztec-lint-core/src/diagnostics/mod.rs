@@ -1,12 +1,16 @@
 pub mod fingerprint;
 pub mod types;
+pub mod validate;
 
 pub use fingerprint::{
     diagnostic_fingerprint, message_hash, normalize_file_path, span_fingerprint,
 };
 pub use types::{
     Applicability, Confidence, Diagnostic, Fix, FixSafety, MultipartSuggestionPart, Severity,
-    StructuredMessage, StructuredSuggestion,
+    StructuredMessage, StructuredSuggestion, SuggestionGroup, TextEdit,
+};
+pub use validate::{
+    DiagnosticViolation, DiagnosticViolationKind, validate_diagnostic, validate_diagnostics,
 };
 
 pub fn diagnostic_sort_key(diagnostic: &Diagnostic) -> (String, u32, u32, String, String) {
@@ -42,6 +46,7 @@ mod tests {
             notes: Vec::new(),
             helps: Vec::new(),
             structured_suggestions: Vec::new(),
+            suggestion_groups: Vec::new(),
             fixes: Vec::new(),
             suppressed: false,
             suppression_reason: None,

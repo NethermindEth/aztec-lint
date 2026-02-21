@@ -4,7 +4,7 @@ pub mod aztec;
 pub mod engine;
 pub mod noir_core;
 
-pub use engine::{Rule, RuleEngine, RuleRunSettings};
+pub use engine::{Rule, RuleEngine, RuleEngineError, RuleRunSettings};
 
 pub fn pack_name() -> &'static str {
     "noir_core"

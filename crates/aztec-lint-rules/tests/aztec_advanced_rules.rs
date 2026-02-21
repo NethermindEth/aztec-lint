@@ -32,10 +32,12 @@ fn run_rule(rule_id: &str, source: &str) -> Vec<Diagnostic> {
     context.set_aztec_model(model);
 
     let engine = RuleEngine::new();
-    engine.run(
-        &context,
-        &BTreeMap::from([(rule_id.to_string(), RuleLevel::Deny)]),
-    )
+    engine
+        .run(
+            &context,
+            &BTreeMap::from([(rule_id.to_string(), RuleLevel::Deny)]),
+        )
+        .expect("engine run should succeed")
 }
 
 fn assert_single_suppressed_with_reason(diagnostics: &[Diagnostic], expected_rule: &str) {

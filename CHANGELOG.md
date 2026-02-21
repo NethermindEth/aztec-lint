@@ -7,6 +7,21 @@ Entries are grouped by released version.
 
 ## [Unreleased]
 
+### 2026-02-21
+
+- Added a diagnostic invariant validation layer in `aztec-lint-core` (`validate_diagnostic` / `validate_diagnostics`) with deterministic violation types for empty metadata, invalid spans, missing suppression reasons, and overlapping implicit multipart suggestions.
+- Changed rule engine execution to validate diagnostics at the engine boundary and return structured `RuleEngineError::InvalidDiagnostics` failures instead of emitting invalid diagnostics.
+- Changed CLI check flow to surface diagnostic contract violations as runtime internal errors (exit code `2`) with actionable context including rule and span from the first violation.
+- Added validation-focused tests in `aztec-lint-core` and `aztec-lint-rules` and updated engine call sites/tests to the new `Result<Vec<Diagnostic>, RuleEngineError>` contract.
+- Fixed diagnostic-validation determinism by sorting diagnostics before validation (stabilizing the reported first violation) and resolved `clippy::items_after_test_module` in `diagnostics::validate` tests.
+- Added suggestion model v2 in `aztec-lint-core` with first-class `TextEdit` and `SuggestionGroup` types plus `Diagnostic.suggestion_groups`.
+- Changed `span_suggestion(...)` and `multipart_suggestion(...)` helpers to emit grouped suggestions (`1 edit` and `N edits` respectively) while keeping legacy fields available during migration.
+- Added compatibility merge helpers so grouped suggestions can be rendered/applied through legacy structured suggestion paths without breaking existing consumers.
+- Changed JSON output to serialize deterministic `suggestion_groups` and keep compatibility fields (`structured_suggestions`, `fixes`) populated from grouped data when needed.
+- Changed SARIF output to emit grouped fixes (one SARIF fix per suggestion group, with multiple replacements when applicable) and updated SARIF golden fixtures accordingly.
+- Fixed SARIF mixed-mode compatibility so diagnostics that contain both `suggestion_groups` and additional legacy `structured_suggestions` preserve non-duplicated legacy structured fixes instead of dropping them.
+- Changed text rendering and fix candidate extraction to support diagnostics that provide grouped suggestions without explicit legacy fields.
+
 ## [0.3.0]
 
 ### 2026-02-21
