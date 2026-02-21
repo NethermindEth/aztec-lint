@@ -219,7 +219,7 @@ Failure modes:
 
 ---
 
-### Step 7: Migrate `noir_core` Correctness Rules (Batch 2)
+### Step 7: Migrate `noir_core` Correctness Rules (Batch 2) **COMPLETED**
 
 Files:
 - `crates/aztec-lint-rules/src/noir_core/noir010_bool_not_asserted.rs`
