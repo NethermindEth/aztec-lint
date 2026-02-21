@@ -5,7 +5,7 @@ use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::diagnostics::{Applicability, Confidence, Diagnostic, FixSafety, normalize_file_path};
+use crate::diagnostics::{Confidence, Diagnostic, FixSafety, normalize_file_path};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FixApplicationMode {
@@ -23,27 +23,34 @@ pub enum FixSource {
 pub struct FixApplicationResult {
     pub rule_id: String,
     pub source: FixSource,
+    pub group_id: String,
+    pub provenance: Option<String>,
     pub file: String,
     pub start: u32,
     pub end: u32,
+    pub edit_count: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SkippedFixReason {
     SuppressedDiagnostic,
     UnsafeFix,
-    OverlappingFix,
-    InvalidSpan,
-    Noop,
+    MixedFileGroup,
+    GroupOverlap,
+    InvalidGroupSpan,
+    GroupNoop,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SkippedFix {
     pub rule_id: String,
     pub source: FixSource,
+    pub group_id: String,
+    pub provenance: Option<String>,
     pub file: String,
     pub start: u32,
     pub end: u32,
+    pub edit_count: usize,
     pub reason: SkippedFixReason,
 }
 
@@ -87,77 +94,272 @@ impl Error for FixError {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct FixCandidate {
-    ordinal: usize,
-    rule_id: String,
-    source: FixSource,
-    confidence: Confidence,
+struct GroupEdit {
     file: String,
     start: usize,
     end: usize,
     replacement: String,
 }
 
-#[derive(Clone, Debug)]
-struct PendingFix {
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct FixGroupCandidate {
+    ordinal: usize,
+    rule_id: String,
     source: FixSource,
+    confidence: Confidence,
+    group_id: String,
+    provenance: Option<String>,
+    file: String,
+    edits: Vec<GroupEdit>,
+}
+
+#[derive(Clone, Debug)]
+struct PendingGroupEdit {
     span: crate::model::Span,
     replacement: String,
+}
+
+#[derive(Clone, Debug)]
+struct PendingFixGroup {
+    source: FixSource,
+    group_id: String,
+    provenance: Option<String>,
+    edits: Vec<PendingGroupEdit>,
     safety: FixSafety,
 }
 
-impl FixCandidate {
+#[derive(Clone, Debug)]
+struct PendingGroupSummary {
+    rule_id: String,
+    source: FixSource,
+    group_id: String,
+    provenance: Option<String>,
+    file: String,
+    start: u32,
+    end: u32,
+    edit_count: usize,
+}
+
+impl PendingGroupSummary {
     fn to_skipped(&self, reason: SkippedFixReason) -> SkippedFix {
         SkippedFix {
             rule_id: self.rule_id.clone(),
             source: self.source,
+            group_id: self.group_id.clone(),
+            provenance: self.provenance.clone(),
             file: self.file.clone(),
-            start: u32::try_from(self.start).unwrap_or(u32::MAX),
-            end: u32::try_from(self.end).unwrap_or(u32::MAX),
+            start: self.start,
+            end: self.end,
+            edit_count: self.edit_count,
+            reason,
+        }
+    }
+}
+
+impl FixGroupCandidate {
+    fn bounds(&self) -> (usize, usize) {
+        let start = self.edits.iter().map(|edit| edit.start).min().unwrap_or(0);
+        let end = self.edits.iter().map(|edit| edit.end).max().unwrap_or(0);
+        (start, end)
+    }
+
+    fn to_skipped(&self, reason: SkippedFixReason) -> SkippedFix {
+        let (start, end) = self.bounds();
+        SkippedFix {
+            rule_id: self.rule_id.clone(),
+            source: self.source,
+            group_id: self.group_id.clone(),
+            provenance: self.provenance.clone(),
+            file: self.file.clone(),
+            start: u32::try_from(start).unwrap_or(u32::MAX),
+            end: u32::try_from(end).unwrap_or(u32::MAX),
+            edit_count: self.edits.len(),
             reason,
         }
     }
 
     fn to_selected(&self) -> FixApplicationResult {
+        let (start, end) = self.bounds();
         FixApplicationResult {
             rule_id: self.rule_id.clone(),
             source: self.source,
+            group_id: self.group_id.clone(),
+            provenance: self.provenance.clone(),
             file: self.file.clone(),
-            start: u32::try_from(self.start).unwrap_or(u32::MAX),
-            end: u32::try_from(self.end).unwrap_or(u32::MAX),
+            start: u32::try_from(start).unwrap_or(u32::MAX),
+            end: u32::try_from(end).unwrap_or(u32::MAX),
+            edit_count: self.edits.len(),
         }
     }
 }
 
-fn pending_fixes(diagnostic: &Diagnostic) -> Vec<PendingFix> {
-    let diagnostic = diagnostic
-        .clone()
-        .with_legacy_fields_from_suggestion_groups();
+fn suggestion_covered_by_groups(
+    suggestion: &crate::diagnostics::StructuredSuggestion,
+    groups: &[crate::diagnostics::SuggestionGroup],
+) -> bool {
+    groups.iter().any(|group| {
+        group.message == suggestion.message
+            && group.applicability == suggestion.applicability
+            && group.edits.iter().any(|edit| {
+                edit.span == suggestion.span && edit.replacement == suggestion.replacement
+            })
+    })
+}
+
+fn pending_fix_groups(diagnostic: &Diagnostic) -> Vec<PendingFixGroup> {
     let mut pending = diagnostic
         .fixes
         .iter()
-        .map(|fix| PendingFix {
+        .enumerate()
+        .map(|(index, fix)| PendingFixGroup {
             source: FixSource::ExplicitFix,
-            span: fix.span.clone(),
-            replacement: fix.replacement.clone(),
+            group_id: format!("legacy_fix_{:04}", index + 1),
+            provenance: None,
+            edits: vec![PendingGroupEdit {
+                span: fix.span.clone(),
+                replacement: fix.replacement.clone(),
+            }],
             safety: fix.safety,
         })
         .collect::<Vec<_>>();
 
-    pending.extend(
-        diagnostic
-            .structured_suggestions
-            .iter()
-            .filter(|suggestion| suggestion.applicability == Applicability::MachineApplicable)
-            .map(|suggestion| PendingFix {
-                source: FixSource::StructuredSuggestion,
-                span: suggestion.span.clone(),
-                replacement: suggestion.replacement.clone(),
-                safety: suggestion.applicability.to_fix_safety(),
-            }),
-    );
+    if !diagnostic.suggestion_groups.is_empty() {
+        pending.extend(
+            diagnostic
+                .suggestion_groups
+                .iter()
+                .map(|group| PendingFixGroup {
+                    source: FixSource::StructuredSuggestion,
+                    group_id: group.id.clone(),
+                    provenance: group.provenance.clone(),
+                    edits: group
+                        .edits
+                        .iter()
+                        .map(|edit| PendingGroupEdit {
+                            span: edit.span.clone(),
+                            replacement: edit.replacement.clone(),
+                        })
+                        .collect(),
+                    safety: group.applicability.to_fix_safety(),
+                }),
+        );
+
+        pending.extend(
+            diagnostic
+                .structured_suggestions
+                .iter()
+                .enumerate()
+                .filter(|(_, suggestion)| {
+                    !suggestion_covered_by_groups(suggestion, &diagnostic.suggestion_groups)
+                })
+                .map(|(index, suggestion)| PendingFixGroup {
+                    source: FixSource::StructuredSuggestion,
+                    group_id: format!("legacy_structured_{:04}", index + 1),
+                    provenance: None,
+                    edits: vec![PendingGroupEdit {
+                        span: suggestion.span.clone(),
+                        replacement: suggestion.replacement.clone(),
+                    }],
+                    safety: suggestion.applicability.to_fix_safety(),
+                }),
+        );
+    } else {
+        pending.extend(
+            diagnostic
+                .structured_suggestions
+                .iter()
+                .enumerate()
+                .map(|(index, suggestion)| PendingFixGroup {
+                    source: FixSource::StructuredSuggestion,
+                    group_id: format!("legacy_structured_{:04}", index + 1),
+                    provenance: None,
+                    edits: vec![PendingGroupEdit {
+                        span: suggestion.span.clone(),
+                        replacement: suggestion.replacement.clone(),
+                    }],
+                    safety: suggestion.applicability.to_fix_safety(),
+                }),
+        );
+    }
 
     pending
+}
+
+fn pending_group_summary(rule_id: &str, group: &PendingFixGroup) -> PendingGroupSummary {
+    let file = group
+        .edits
+        .first()
+        .map(|edit| normalize_file_path(&edit.span.file))
+        .unwrap_or_default();
+    let start = group
+        .edits
+        .iter()
+        .map(|edit| edit.span.start)
+        .min()
+        .unwrap_or(0);
+    let end = group
+        .edits
+        .iter()
+        .map(|edit| edit.span.end)
+        .max()
+        .unwrap_or(0);
+
+    PendingGroupSummary {
+        rule_id: rule_id.to_string(),
+        source: group.source,
+        group_id: group.group_id.clone(),
+        provenance: group.provenance.clone(),
+        file,
+        start,
+        end,
+        edit_count: group.edits.len(),
+    }
+}
+
+fn normalize_group_candidate(
+    rule_id: &str,
+    confidence: Confidence,
+    ordinal: usize,
+    group: PendingFixGroup,
+) -> Result<FixGroupCandidate, SkippedFixReason> {
+    if group.edits.is_empty() {
+        return Err(SkippedFixReason::GroupNoop);
+    }
+
+    let file = normalize_file_path(&group.edits[0].span.file);
+    let edits = group
+        .edits
+        .into_iter()
+        .map(|edit| GroupEdit {
+            file: normalize_file_path(&edit.span.file),
+            start: usize::try_from(edit.span.start).unwrap_or(usize::MAX),
+            end: usize::try_from(edit.span.end).unwrap_or(usize::MAX),
+            replacement: edit.replacement,
+        })
+        .collect::<Vec<_>>();
+
+    if edits.iter().any(|edit| edit.file != file) {
+        return Err(SkippedFixReason::MixedFileGroup);
+    }
+
+    for i in 0..edits.len() {
+        for j in (i + 1)..edits.len() {
+            if ranges_overlap(edits[i].start, edits[i].end, edits[j].start, edits[j].end) {
+                return Err(SkippedFixReason::GroupOverlap);
+            }
+        }
+    }
+
+    Ok(FixGroupCandidate {
+        ordinal,
+        rule_id: rule_id.to_string(),
+        source: group.source,
+        confidence,
+        group_id: group.group_id,
+        provenance: group.provenance,
+        file,
+        edits,
+    })
 }
 
 pub fn apply_fixes(
@@ -173,56 +375,51 @@ pub fn apply_fixes(
         files_changed: 0,
     };
 
-    let mut candidates_by_file = BTreeMap::<String, Vec<FixCandidate>>::new();
+    let mut candidates_by_file = BTreeMap::<String, Vec<FixGroupCandidate>>::new();
     let mut ordinal = 0usize;
 
     for diagnostic in diagnostics {
-        for pending_fix in pending_fixes(diagnostic) {
+        for pending_group in pending_fix_groups(diagnostic) {
             report.total_candidates += 1;
             ordinal += 1;
 
+            let summary = pending_group_summary(&diagnostic.rule_id, &pending_group);
+
             if diagnostic.suppressed {
-                report.skipped.push(SkippedFix {
-                    rule_id: diagnostic.rule_id.clone(),
-                    source: pending_fix.source,
-                    file: normalize_file_path(&pending_fix.span.file),
-                    start: pending_fix.span.start,
-                    end: pending_fix.span.end,
-                    reason: SkippedFixReason::SuppressedDiagnostic,
-                });
+                report
+                    .skipped
+                    .push(summary.to_skipped(SkippedFixReason::SuppressedDiagnostic));
                 continue;
             }
 
-            if pending_fix.safety != FixSafety::Safe {
-                report.skipped.push(SkippedFix {
-                    rule_id: diagnostic.rule_id.clone(),
-                    source: pending_fix.source,
-                    file: normalize_file_path(&pending_fix.span.file),
-                    start: pending_fix.span.start,
-                    end: pending_fix.span.end,
-                    reason: SkippedFixReason::UnsafeFix,
-                });
+            if pending_group.safety != FixSafety::Safe {
+                report
+                    .skipped
+                    .push(summary.to_skipped(SkippedFixReason::UnsafeFix));
                 continue;
             }
 
-            candidates_by_file
-                .entry(normalize_file_path(&pending_fix.span.file))
-                .or_default()
-                .push(FixCandidate {
-                    ordinal,
-                    rule_id: diagnostic.rule_id.clone(),
-                    source: pending_fix.source,
-                    confidence: diagnostic.confidence,
-                    file: normalize_file_path(&pending_fix.span.file),
-                    start: usize::try_from(pending_fix.span.start).unwrap_or(usize::MAX),
-                    end: usize::try_from(pending_fix.span.end).unwrap_or(usize::MAX),
-                    replacement: pending_fix.replacement,
-                });
+            match normalize_group_candidate(
+                &diagnostic.rule_id,
+                diagnostic.confidence,
+                ordinal,
+                pending_group,
+            ) {
+                Ok(candidate) => {
+                    candidates_by_file
+                        .entry(candidate.file.clone())
+                        .or_default()
+                        .push(candidate);
+                }
+                Err(reason) => {
+                    report.skipped.push(summary.to_skipped(reason));
+                }
+            }
         }
     }
 
     for (file, mut candidates) in candidates_by_file {
-        let winners = resolve_overlaps(&mut candidates, &mut report.skipped);
+        let winners = resolve_group_overlaps(&mut candidates, &mut report.skipped);
         if winners.is_empty() {
             continue;
         }
@@ -234,24 +431,72 @@ pub fn apply_fixes(
         })?;
         let mut changed = false;
 
-        for candidate in winners {
-            if !valid_span(&content, candidate.start, candidate.end) {
-                report
-                    .skipped
-                    .push(candidate.to_skipped(SkippedFixReason::InvalidSpan));
+        let mut edit_order = winners
+            .iter()
+            .enumerate()
+            .flat_map(|(group_index, candidate)| {
+                candidate
+                    .edits
+                    .iter()
+                    .enumerate()
+                    .map(move |(edit_index, edit)| {
+                        (
+                            group_index,
+                            edit_index,
+                            edit.start,
+                            edit.end,
+                            candidate.ordinal,
+                        )
+                    })
+            })
+            .collect::<Vec<_>>();
+
+        edit_order.sort_by_key(|(_, _, start, end, ordinal)| {
+            (std::cmp::Reverse(*start), std::cmp::Reverse(*end), *ordinal)
+        });
+
+        let mut group_state = vec![GroupApplyState::Unknown; winners.len()];
+
+        for (group_index, edit_index, _, _, _) in edit_order {
+            match group_state[group_index] {
+                GroupApplyState::Rejected => continue,
+                GroupApplyState::Unknown => {
+                    let candidate = &winners[group_index];
+                    if !group_spans_valid_for_content(candidate, &content) {
+                        report
+                            .skipped
+                            .push(candidate.to_skipped(SkippedFixReason::InvalidGroupSpan));
+                        group_state[group_index] = GroupApplyState::Rejected;
+                        continue;
+                    }
+
+                    let all_noop = candidate
+                        .edits
+                        .iter()
+                        .all(|edit| content[edit.start..edit.end] == edit.replacement);
+                    if all_noop {
+                        report
+                            .skipped
+                            .push(candidate.to_skipped(SkippedFixReason::GroupNoop));
+                        group_state[group_index] = GroupApplyState::Rejected;
+                        continue;
+                    }
+
+                    report.selected.push(candidate.to_selected());
+                    group_state[group_index] = GroupApplyState::Accepted;
+                }
+                GroupApplyState::Accepted => {}
+            }
+
+            if group_state[group_index] != GroupApplyState::Accepted {
                 continue;
             }
 
-            if content[candidate.start..candidate.end] == candidate.replacement {
-                report
-                    .skipped
-                    .push(candidate.to_skipped(SkippedFixReason::Noop));
-                continue;
+            let edit = &winners[group_index].edits[edit_index];
+            if content[edit.start..edit.end] != edit.replacement {
+                content.replace_range(edit.start..edit.end, &edit.replacement);
+                changed = true;
             }
-
-            content.replace_range(candidate.start..candidate.end, &candidate.replacement);
-            report.selected.push(candidate.to_selected());
-            changed = true;
         }
 
         if changed {
@@ -268,37 +513,41 @@ pub fn apply_fixes(
     Ok(report)
 }
 
-fn resolve_overlaps(
-    candidates: &mut [FixCandidate],
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum GroupApplyState {
+    Unknown,
+    Accepted,
+    Rejected,
+}
+
+fn resolve_group_overlaps(
+    candidates: &mut [FixGroupCandidate],
     skipped: &mut Vec<SkippedFix>,
-) -> Vec<FixCandidate> {
+) -> Vec<FixGroupCandidate> {
     candidates.sort_by(|left, right| {
         (
-            left.start,
-            left.end,
+            left.bounds(),
             left.rule_id.as_str(),
             left.source,
             left.ordinal,
-            left.replacement.as_str(),
+            left.group_id.as_str(),
         )
             .cmp(&(
-                right.start,
-                right.end,
+                right.bounds(),
                 right.rule_id.as_str(),
                 right.source,
                 right.ordinal,
-                right.replacement.as_str(),
+                right.group_id.as_str(),
             ))
     });
 
-    let mut winners = Vec::<FixCandidate>::new();
+    let mut winners = Vec::<FixGroupCandidate>::new();
     for candidate in candidates.iter().cloned() {
         let overlapping = winners
             .iter()
             .enumerate()
             .filter_map(|(idx, existing)| {
-                ranges_overlap(candidate.start, candidate.end, existing.start, existing.end)
-                    .then_some(idx)
+                group_candidates_overlap(&candidate, existing).then_some(idx)
             })
             .collect::<Vec<_>>();
 
@@ -309,22 +558,38 @@ fn resolve_overlaps(
 
         let candidate_wins = overlapping
             .iter()
-            .all(|idx| outranks(&candidate, &winners[*idx]));
+            .all(|idx| outranks_group(&candidate, &winners[*idx]));
 
         if !candidate_wins {
-            skipped.push(candidate.to_skipped(SkippedFixReason::OverlappingFix));
+            skipped.push(candidate.to_skipped(SkippedFixReason::GroupOverlap));
             continue;
         }
 
         for idx in overlapping.into_iter().rev() {
             let loser = winners.remove(idx);
-            skipped.push(loser.to_skipped(SkippedFixReason::OverlappingFix));
+            skipped.push(loser.to_skipped(SkippedFixReason::GroupOverlap));
         }
+
         winners.push(candidate);
     }
 
-    winners.sort_by_key(|candidate| std::cmp::Reverse(candidate.start));
     winners
+}
+
+fn group_candidates_overlap(left: &FixGroupCandidate, right: &FixGroupCandidate) -> bool {
+    left.edits.iter().any(|l| {
+        right
+            .edits
+            .iter()
+            .any(|r| ranges_overlap(l.start, l.end, r.start, r.end))
+    })
+}
+
+fn group_spans_valid_for_content(candidate: &FixGroupCandidate, content: &str) -> bool {
+    candidate
+        .edits
+        .iter()
+        .all(|edit| valid_span(content, edit.start, edit.end))
 }
 
 fn valid_span(content: &str, start: usize, end: usize) -> bool {
@@ -356,7 +621,7 @@ fn ranges_overlap(a_start: usize, a_end: usize, b_start: usize, b_end: usize) ->
     }
 }
 
-fn outranks(candidate: &FixCandidate, incumbent: &FixCandidate) -> bool {
+fn outranks_group(candidate: &FixGroupCandidate, incumbent: &FixGroupCandidate) -> bool {
     match confidence_rank(candidate.confidence).cmp(&confidence_rank(incumbent.confidence)) {
         Ordering::Greater => return true,
         Ordering::Less => return false,
@@ -400,6 +665,7 @@ mod tests {
     use super::{FixApplicationMode, FixSource, SkippedFixReason, apply_fixes};
     use crate::diagnostics::{
         Applicability, Confidence, Diagnostic, Fix, FixSafety, Severity, StructuredSuggestion,
+        SuggestionGroup, TextEdit,
     };
     use crate::model::Span;
 
@@ -468,6 +734,44 @@ mod tests {
         }
     }
 
+    fn diagnostic_with_grouped_suggestion(
+        rule_id: &str,
+        confidence: Confidence,
+        file: &str,
+        edits: Vec<(u32, u32, &str)>,
+        applicability: Applicability,
+    ) -> Diagnostic {
+        Diagnostic {
+            rule_id: rule_id.to_string(),
+            severity: Severity::Warning,
+            confidence,
+            policy: "maintainability".to_string(),
+            message: "message".to_string(),
+            primary_span: Span::new(file, 0, 1, 1, 1),
+            secondary_spans: Vec::new(),
+            suggestions: Vec::new(),
+            notes: Vec::new(),
+            helps: Vec::new(),
+            structured_suggestions: Vec::new(),
+            suggestion_groups: vec![SuggestionGroup {
+                id: "sg0001".to_string(),
+                message: "grouped".to_string(),
+                applicability,
+                edits: edits
+                    .into_iter()
+                    .map(|(start, end, replacement)| TextEdit {
+                        span: Span::new(file, start, end, 1, 1),
+                        replacement: replacement.to_string(),
+                    })
+                    .collect(),
+                provenance: Some("rule-emitter".to_string()),
+            }],
+            fixes: Vec::new(),
+            suppressed: false,
+            suppression_reason: None,
+        }
+    }
+
     #[test]
     fn dry_run_reports_fix_without_writing_file() {
         let dir = tempdir().expect("tempdir should be created");
@@ -488,6 +792,7 @@ mod tests {
             .expect("dry run should succeed");
 
         assert_eq!(report.selected.len(), 1);
+        assert_eq!(report.selected[0].edit_count, 1);
         assert_eq!(report.files_changed, 1);
         let after = fs::read_to_string(&source_path).expect("file should still exist");
         assert_eq!(after, "let x = 1;\n");
@@ -525,7 +830,7 @@ mod tests {
             second
                 .skipped
                 .iter()
-                .any(|skip| skip.reason == SkippedFixReason::Noop)
+                .any(|skip| skip.reason == SkippedFixReason::GroupNoop)
         );
         assert_eq!(
             fs::read_to_string(&source_path).expect("file should be readable"),
@@ -548,7 +853,7 @@ mod tests {
 
         assert_eq!(report.selected.len(), 1);
         assert!(report.skipped.iter().any(|skip| {
-            skip.rule_id == "NOIR200" && skip.reason == SkippedFixReason::OverlappingFix
+            skip.rule_id == "NOIR200" && skip.reason == SkippedFixReason::GroupOverlap
         }));
         assert_eq!(
             fs::read_to_string(&source_path).expect("file should be readable"),
@@ -571,7 +876,7 @@ mod tests {
 
         assert_eq!(report.selected.len(), 1);
         assert!(report.skipped.iter().any(|skip| {
-            skip.rule_id == "NOIR200" && skip.reason == SkippedFixReason::OverlappingFix
+            skip.rule_id == "NOIR200" && skip.reason == SkippedFixReason::GroupOverlap
         }));
         assert_eq!(
             fs::read_to_string(&source_path).expect("file should be readable"),
@@ -603,7 +908,7 @@ mod tests {
             report
                 .skipped
                 .iter()
-                .any(|skip| skip.reason == SkippedFixReason::InvalidSpan)
+                .any(|skip| skip.reason == SkippedFixReason::InvalidGroupSpan)
         );
         assert_eq!(
             fs::read_to_string(&source_path).expect("file should be readable"),
@@ -632,7 +937,7 @@ mod tests {
 
         assert_eq!(report.selected.len(), 1);
         assert!(report.skipped.iter().any(|skip| {
-            skip.rule_id == "NOIR200" && skip.reason == SkippedFixReason::OverlappingFix
+            skip.rule_id == "NOIR200" && skip.reason == SkippedFixReason::GroupOverlap
         }));
         assert_eq!(
             fs::read_to_string(&source_path).expect("file should be readable"),
@@ -670,7 +975,7 @@ mod tests {
     }
 
     #[test]
-    fn non_machine_structured_suggestion_is_not_considered_candidate() {
+    fn non_machine_structured_suggestion_is_reported_as_unsafe() {
         let dir = tempdir().expect("tempdir should be created");
         let source_path = dir.path().join("src/main.nr");
         fs::create_dir_all(source_path.parent().expect("source parent should exist"))
@@ -689,12 +994,46 @@ mod tests {
 
         let report = apply_fixes(dir.path(), &diagnostics, FixApplicationMode::Apply)
             .expect("apply should succeed");
-        assert_eq!(report.total_candidates, 0);
+        assert_eq!(report.total_candidates, 1);
         assert!(report.selected.is_empty());
-        assert!(report.skipped.is_empty());
+        assert_eq!(report.skipped.len(), 1);
+        assert_eq!(report.skipped[0].source, FixSource::StructuredSuggestion);
+        assert_eq!(report.skipped[0].reason, SkippedFixReason::UnsafeFix);
+        assert_eq!(report.skipped[0].edit_count, 1);
         assert_eq!(
             fs::read_to_string(&source_path).expect("file should be readable"),
             "let x = 1;\n"
+        );
+    }
+
+    #[test]
+    fn non_machine_grouped_suggestion_is_reported_as_unsafe() {
+        let dir = tempdir().expect("tempdir should be created");
+        let source_path = dir.path().join("src/main.nr");
+        fs::create_dir_all(source_path.parent().expect("source parent should exist"))
+            .expect("source directory should exist");
+        fs::write(&source_path, "abcXYZ\n").expect("fixture should be written");
+
+        let diagnostics = vec![diagnostic_with_grouped_suggestion(
+            "NOIR500",
+            Confidence::High,
+            "src/main.nr",
+            vec![(0, 1, "A"), (3, 6, "123")],
+            Applicability::MaybeIncorrect,
+        )];
+
+        let report = apply_fixes(dir.path(), &diagnostics, FixApplicationMode::Apply)
+            .expect("apply should succeed");
+
+        assert_eq!(report.total_candidates, 1);
+        assert!(report.selected.is_empty());
+        assert_eq!(report.skipped.len(), 1);
+        assert_eq!(report.skipped[0].reason, SkippedFixReason::UnsafeFix);
+        assert_eq!(report.skipped[0].edit_count, 2);
+        assert_eq!(report.skipped[0].group_id, "sg0001");
+        assert_eq!(
+            fs::read_to_string(&source_path).expect("file should be readable"),
+            "abcXYZ\n"
         );
     }
 
@@ -729,11 +1068,232 @@ mod tests {
         assert_eq!(report.selected[0].source, FixSource::ExplicitFix);
         assert!(report.skipped.iter().any(|skip| {
             skip.source == FixSource::StructuredSuggestion
-                && skip.reason == SkippedFixReason::OverlappingFix
+                && skip.reason == SkippedFixReason::GroupOverlap
         }));
         assert_eq!(
             fs::read_to_string(&source_path).expect("file should be readable"),
             "let x = 2;\n"
+        );
+    }
+
+    #[test]
+    fn grouped_fix_is_applied_atomically() {
+        let dir = tempdir().expect("tempdir should be created");
+        let source_path = dir.path().join("src/main.nr");
+        fs::create_dir_all(source_path.parent().expect("source parent should exist"))
+            .expect("source directory should exist");
+        fs::write(&source_path, "abcXYZ\n").expect("fixture should be written");
+
+        let diagnostics = vec![diagnostic_with_grouped_suggestion(
+            "NOIR500",
+            Confidence::High,
+            "src/main.nr",
+            vec![(0, 1, "A"), (3, 6, "123")],
+            Applicability::MachineApplicable,
+        )];
+
+        let report = apply_fixes(dir.path(), &diagnostics, FixApplicationMode::Apply)
+            .expect("apply should succeed");
+
+        assert_eq!(report.total_candidates, 1);
+        assert_eq!(report.selected.len(), 1);
+        assert_eq!(report.selected[0].edit_count, 2);
+        assert_eq!(
+            fs::read_to_string(&source_path).expect("file should be readable"),
+            "Abc123\n"
+        );
+    }
+
+    #[test]
+    fn grouped_fix_atomic_rollback_when_one_edit_is_invalid() {
+        let dir = tempdir().expect("tempdir should be created");
+        let source_path = dir.path().join("src/main.nr");
+        fs::create_dir_all(source_path.parent().expect("source parent should exist"))
+            .expect("source directory should exist");
+        fs::write(&source_path, "abcdef\n").expect("fixture should be written");
+
+        let diagnostics = vec![diagnostic_with_grouped_suggestion(
+            "NOIR500",
+            Confidence::High,
+            "src/main.nr",
+            vec![(1, 2, "X"), (99, 100, "Y")],
+            Applicability::MachineApplicable,
+        )];
+
+        let report = apply_fixes(dir.path(), &diagnostics, FixApplicationMode::Apply)
+            .expect("apply should succeed");
+
+        assert!(report.selected.is_empty());
+        assert!(
+            report
+                .skipped
+                .iter()
+                .any(|skip| skip.reason == SkippedFixReason::InvalidGroupSpan)
+        );
+        assert_eq!(
+            fs::read_to_string(&source_path).expect("file should be readable"),
+            "abcdef\n"
+        );
+    }
+
+    #[test]
+    fn same_group_overlap_is_rejected() {
+        let dir = tempdir().expect("tempdir should be created");
+        let source_path = dir.path().join("src/main.nr");
+        fs::create_dir_all(source_path.parent().expect("source parent should exist"))
+            .expect("source directory should exist");
+        fs::write(&source_path, "abcdef\n").expect("fixture should be written");
+
+        let diagnostics = vec![diagnostic_with_grouped_suggestion(
+            "NOIR500",
+            Confidence::High,
+            "src/main.nr",
+            vec![(1, 4, "X"), (3, 5, "Y")],
+            Applicability::MachineApplicable,
+        )];
+
+        let report = apply_fixes(dir.path(), &diagnostics, FixApplicationMode::Apply)
+            .expect("apply should succeed");
+
+        assert!(report.selected.is_empty());
+        assert!(
+            report
+                .skipped
+                .iter()
+                .any(|skip| skip.reason == SkippedFixReason::GroupOverlap)
+        );
+        assert_eq!(
+            fs::read_to_string(&source_path).expect("file should be readable"),
+            "abcdef\n"
+        );
+    }
+
+    #[test]
+    fn overlapping_groups_choose_deterministic_winner() {
+        let dir = tempdir().expect("tempdir should be created");
+        let source_path = dir.path().join("src/main.nr");
+        fs::create_dir_all(source_path.parent().expect("source parent should exist"))
+            .expect("source directory should exist");
+        fs::write(&source_path, "abcdef\n").expect("fixture should be written");
+
+        let high = diagnostic_with_grouped_suggestion(
+            "NOIR100",
+            Confidence::High,
+            "src/main.nr",
+            vec![(1, 3, "AA")],
+            Applicability::MachineApplicable,
+        );
+        let low = diagnostic_with_grouped_suggestion(
+            "NOIR200",
+            Confidence::Low,
+            "src/main.nr",
+            vec![(2, 4, "BB")],
+            Applicability::MachineApplicable,
+        );
+
+        let report = apply_fixes(dir.path(), &[low, high], FixApplicationMode::Apply)
+            .expect("apply should succeed");
+
+        assert_eq!(report.selected.len(), 1);
+        assert_eq!(report.selected[0].rule_id, "NOIR100");
+        assert!(
+            report
+                .skipped
+                .iter()
+                .any(|skip| skip.rule_id == "NOIR200"
+                    && skip.reason == SkippedFixReason::GroupOverlap)
+        );
+        assert_eq!(
+            fs::read_to_string(&source_path).expect("file should be readable"),
+            "aAAdef\n"
+        );
+    }
+
+    #[test]
+    fn grouped_fix_is_idempotent_across_runs() {
+        let dir = tempdir().expect("tempdir should be created");
+        let source_path = dir.path().join("src/main.nr");
+        fs::create_dir_all(source_path.parent().expect("source parent should exist"))
+            .expect("source directory should exist");
+        fs::write(&source_path, "abcXYZ\n").expect("fixture should be written");
+
+        let diagnostics = vec![diagnostic_with_grouped_suggestion(
+            "NOIR500",
+            Confidence::High,
+            "src/main.nr",
+            vec![(0, 1, "A"), (3, 6, "123")],
+            Applicability::MachineApplicable,
+        )];
+
+        let first = apply_fixes(dir.path(), &diagnostics, FixApplicationMode::Apply)
+            .expect("first apply should succeed");
+        assert_eq!(first.selected.len(), 1);
+
+        let second = apply_fixes(dir.path(), &diagnostics, FixApplicationMode::Apply)
+            .expect("second apply should succeed");
+        assert!(second.selected.is_empty());
+        assert!(
+            second
+                .skipped
+                .iter()
+                .any(|skip| skip.reason == SkippedFixReason::GroupNoop)
+        );
+        assert_eq!(
+            fs::read_to_string(&source_path).expect("file should be readable"),
+            "Abc123\n"
+        );
+    }
+
+    #[test]
+    fn grouped_fix_rejects_mixed_file_edits() {
+        let dir = tempdir().expect("tempdir should be created");
+        let source_path = dir.path().join("src/main.nr");
+        fs::create_dir_all(source_path.parent().expect("source parent should exist"))
+            .expect("source directory should exist");
+        fs::write(&source_path, "abc\n").expect("fixture should be written");
+
+        let diagnostic = Diagnostic {
+            rule_id: "NOIR500".to_string(),
+            severity: Severity::Warning,
+            confidence: Confidence::High,
+            policy: "maintainability".to_string(),
+            message: "message".to_string(),
+            primary_span: Span::new("src/main.nr", 0, 1, 1, 1),
+            secondary_spans: Vec::new(),
+            suggestions: Vec::new(),
+            notes: Vec::new(),
+            helps: Vec::new(),
+            structured_suggestions: Vec::new(),
+            suggestion_groups: vec![SuggestionGroup {
+                id: "sg0001".to_string(),
+                message: "grouped".to_string(),
+                applicability: Applicability::MachineApplicable,
+                edits: vec![
+                    TextEdit {
+                        span: Span::new("src/main.nr", 0, 1, 1, 1),
+                        replacement: "A".to_string(),
+                    },
+                    TextEdit {
+                        span: Span::new("src/other.nr", 0, 1, 1, 1),
+                        replacement: "B".to_string(),
+                    },
+                ],
+                provenance: None,
+            }],
+            fixes: Vec::new(),
+            suppressed: false,
+            suppression_reason: None,
+        };
+
+        let report = apply_fixes(dir.path(), &[diagnostic], FixApplicationMode::Apply)
+            .expect("apply should succeed");
+
+        assert!(report.selected.is_empty());
+        assert!(
+            report
+                .skipped
+                .iter()
+                .any(|skip| skip.reason == SkippedFixReason::MixedFileGroup)
         );
     }
 }

@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use aztec_lint_core::config::RuleLevel;
 use aztec_lint_core::diagnostics::Diagnostic;
-use aztec_lint_core::fix::{FixApplicationMode, apply_fixes};
+use aztec_lint_core::fix::{FixApplicationMode, SkippedFixReason, apply_fixes};
 use aztec_lint_core::model::ProjectModel;
 use aztec_lint_core::output::text::{CheckTextReport, render_check_report};
 use aztec_lint_rules::Rule;
@@ -205,8 +205,10 @@ fn noir100_maybe_incorrect_suggestions_are_rendered_but_not_auto_applied() {
 
     let report = apply_fixes(temp_root.as_path(), &diagnostics, FixApplicationMode::Apply)
         .expect("fix application should succeed");
-    assert_eq!(report.total_candidates, 0);
+    assert_eq!(report.total_candidates, 1);
     assert!(report.selected.is_empty());
+    assert_eq!(report.skipped.len(), 1);
+    assert_eq!(report.skipped[0].reason, SkippedFixReason::UnsafeFix);
     assert_eq!(
         fs::read_to_string(&source_path).expect("source should remain readable"),
         source
