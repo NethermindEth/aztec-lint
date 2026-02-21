@@ -148,7 +148,7 @@ Failure modes:
 
 ---
 
-### Step 4: Add Typed Query API to `RuleContext`
+### Step 4: Add Typed Query API to `RuleContext` **COMPLETED**
 
 Files:
 - `crates/aztec-lint-rules/src/engine/context.rs`
