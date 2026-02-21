@@ -4,6 +4,8 @@ use std::collections::HashSet;
 #[cfg(feature = "noir-compiler")]
 use crate::model::CallEdge;
 #[cfg(feature = "noir-compiler")]
+use crate::model::SemanticModel;
+#[cfg(feature = "noir-compiler")]
 use crate::noir::span_mapper::SpanMapper;
 
 #[cfg(feature = "noir-compiler")]
@@ -69,6 +71,30 @@ pub fn extract_best_effort_call_edges(
         }
     }
 
+    edges.sort_by_key(|edge| {
+        (
+            edge.caller_symbol_id.clone(),
+            edge.callee_symbol_id.clone(),
+            edge.span.file.clone(),
+            edge.span.start,
+            edge.span.end,
+        )
+    });
+    edges.dedup();
+    edges
+}
+
+#[cfg(feature = "noir-compiler")]
+pub fn call_edges_from_semantic(semantic: &SemanticModel) -> Vec<CallEdge> {
+    let mut edges = semantic
+        .call_sites
+        .iter()
+        .map(|call_site| CallEdge {
+            caller_symbol_id: call_site.function_symbol_id.clone(),
+            callee_symbol_id: call_site.callee_symbol_id.clone(),
+            span: call_site.span.clone(),
+        })
+        .collect::<Vec<_>>();
     edges.sort_by_key(|edge| {
         (
             edge.caller_symbol_id.clone(),
@@ -680,7 +706,7 @@ fn maybe_push_call_edge(
 }
 
 #[cfg(feature = "noir-compiler")]
-fn resolve_called_function(expr_id: ExprId, interner: &NodeInterner) -> Option<FuncId> {
+pub(crate) fn resolve_called_function(expr_id: ExprId, interner: &NodeInterner) -> Option<FuncId> {
     let mut current = expr_id;
     let mut visited = HashSet::new();
 

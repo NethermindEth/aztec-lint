@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::model::ProjectModel;
+use crate::model::{ProjectModel, SemanticModel};
 use crate::noir::NoirFrontendError;
 
 #[cfg(feature = "noir-compiler")]
@@ -8,9 +8,11 @@ use crate::model::CallEdge;
 #[cfg(feature = "noir-compiler")]
 use crate::model::{ModuleEdge, SymbolKind, SymbolRef, TypeRef};
 #[cfg(feature = "noir-compiler")]
-use crate::noir::call_graph::extract_best_effort_call_edges;
+use crate::noir::call_graph::call_edges_from_semantic;
 #[cfg(feature = "noir-compiler")]
 use crate::noir::driver::{NoirCheckedProject, load_and_check_project};
+#[cfg(feature = "noir-compiler")]
+use crate::noir::semantic_builder::extract_semantic_model;
 #[cfg(feature = "noir-compiler")]
 use crate::noir::span_mapper::SpanMapper;
 #[cfg(feature = "noir-compiler")]
@@ -18,10 +20,37 @@ use noirc_frontend::hir::def_map::LocalModuleId;
 #[cfg(feature = "noir-compiler")]
 use noirc_frontend::parser::ItemKind;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProjectSemanticBundle {
+    pub project: ProjectModel,
+}
+
+impl ProjectSemanticBundle {
+    pub fn project_model(&self) -> &ProjectModel {
+        &self.project
+    }
+
+    pub fn semantic_model(&self) -> &SemanticModel {
+        &self.project.semantic
+    }
+
+    pub fn into_project_model(self) -> ProjectModel {
+        self.project
+    }
+}
+
 #[cfg(feature = "noir-compiler")]
 pub fn build_project_model(root: &Path, entry: &Path) -> Result<ProjectModel, NoirFrontendError> {
+    Ok(build_project_semantic_bundle(root, entry)?.into_project_model())
+}
+
+#[cfg(feature = "noir-compiler")]
+pub fn build_project_semantic_bundle(
+    root: &Path,
+    entry: &Path,
+) -> Result<ProjectSemanticBundle, NoirFrontendError> {
     let checked = load_and_check_project(root, entry)?;
-    build_from_checked(&checked)
+    build_bundle_from_checked(&checked)
 }
 
 #[cfg(not(feature = "noir-compiler"))]
@@ -29,8 +58,18 @@ pub fn build_project_model(_root: &Path, _entry: &Path) -> Result<ProjectModel, 
     Err(NoirFrontendError::CompilerFeatureDisabled)
 }
 
+#[cfg(not(feature = "noir-compiler"))]
+pub fn build_project_semantic_bundle(
+    _root: &Path,
+    _entry: &Path,
+) -> Result<ProjectSemanticBundle, NoirFrontendError> {
+    Err(NoirFrontendError::CompilerFeatureDisabled)
+}
+
 #[cfg(feature = "noir-compiler")]
-fn build_from_checked(checked: &NoirCheckedProject) -> Result<ProjectModel, NoirFrontendError> {
+fn build_bundle_from_checked(
+    checked: &NoirCheckedProject,
+) -> Result<ProjectSemanticBundle, NoirFrontendError> {
     let context = checked.context();
     let Some(def_map) = context.def_map(&checked.crate_id()) else {
         return Err(NoirFrontendError::Internal(
@@ -184,14 +223,13 @@ fn build_from_checked(checked: &NoirCheckedProject) -> Result<ProjectModel, Noir
         }
     }
 
-    model.call_graph = filter_edges_to_user_symbols(
-        extract_best_effort_call_edges(context, checked.crate_id(), &span_mapper),
-        &model.symbols,
-    );
+    model.semantic = extract_semantic_model(context, checked.crate_id(), &span_mapper);
+    model.call_graph =
+        filter_edges_to_user_symbols(call_edges_from_semantic(&model.semantic), &model.symbols);
 
     model.normalize();
 
-    Ok(model)
+    Ok(ProjectSemanticBundle { project: model })
 }
 
 #[cfg(feature = "noir-compiler")]
@@ -231,7 +269,7 @@ mod tests {
 
     use serde_json::to_vec;
 
-    use super::build_project_model;
+    use super::{build_project_model, build_project_semantic_bundle};
 
     fn fixture_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -284,5 +322,40 @@ mod tests {
         let first_json = to_vec(&first).expect("serialization should succeed");
         let second_json = to_vec(&second).expect("serialization should succeed");
         assert_eq!(first_json, second_json);
+    }
+
+    #[test]
+    fn semantic_bundle_extracts_nodes_for_minimal_fixture() {
+        let root = fixture_root();
+        let bundle = run_with_large_stack(move || {
+            build_project_semantic_bundle(&root, &root.join("src/main.nr"))
+                .expect("fixture should build semantic bundle")
+        });
+
+        let semantic = bundle.semantic_model();
+        assert!(!semantic.functions.is_empty());
+        assert!(!semantic.expressions.is_empty());
+        assert!(!semantic.statements.is_empty());
+        assert!(!semantic.cfg_blocks.is_empty());
+        assert!(!semantic.cfg_edges.is_empty());
+        assert!(!semantic.dfg_edges.is_empty());
+        assert!(!semantic.call_sites.is_empty());
+    }
+
+    #[test]
+    fn semantic_bundle_captures_definition_to_identifier_use_edges() {
+        let root = fixture_root();
+        let bundle = run_with_large_stack(move || {
+            build_project_semantic_bundle(&root, &root.join("src/main.nr"))
+                .expect("fixture should build semantic bundle")
+        });
+
+        let semantic = bundle.semantic_model();
+        assert!(
+            semantic.dfg_edges.iter().any(|edge| {
+                edge.from_node_id.starts_with("def::") && edge.to_node_id.starts_with("expr::")
+            }),
+            "expected at least one def->expr use edge in semantic DFG"
+        );
     }
 }

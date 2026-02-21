@@ -5,10 +5,13 @@ use std::path::PathBuf;
 pub mod call_graph;
 pub mod driver;
 pub mod project_builder;
+pub mod semantic_builder;
 pub mod span_mapper;
 
 pub use driver::NoirCheckedProject;
-pub use project_builder::build_project_model;
+pub use project_builder::{
+    ProjectSemanticBundle, build_project_model, build_project_semantic_bundle,
+};
 
 #[derive(Debug)]
 pub enum NoirFrontendError {
