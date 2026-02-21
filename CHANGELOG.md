@@ -12,6 +12,9 @@ Entries are grouped by released version.
 - Added baseline-freeze fixture coverage for semantically impacted rules across `noir_core` and `aztec` test suites.
 - Added edge-case fixtures for alias imports, nested scopes, range-guard ordering, branch/public-effect coupling, and hash-with-guard ordering.
 - Added suppression fixtures and assertions for semantically impacted `noir_core` rules (`NOIR001/002/010/020/030/100/110/120`) and additional `aztec` advanced rules (`AZTEC002`, `AZTEC022`).
+- Added a first-class semantic model in `aztec-lint-core` with typed function, expression, statement, CFG, DFG, call-site, and guard-node structures.
+- Changed `ProjectModel` to include a deterministic `semantic` section with normalization helpers and backward-compatible deserialization defaults.
+- Added deterministic normalization/serialization tests for semantic structures and documented the semantic model contract in `docs/architecture.md`.
 
 ## [0.2.0]
 
