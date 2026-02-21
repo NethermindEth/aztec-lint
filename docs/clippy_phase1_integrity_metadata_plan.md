@@ -137,7 +137,7 @@ Exit criteria:
 
 ---
 
-### Phase 5: Full `explain` Output + Drift Guardrails
+### Phase 5: Full `explain` Output + Drift Guardrails **COMPLETE**
 Objective:
 - Upgrade `explain` to full docs output and enforce metadata/registry integrity in CI.
 
