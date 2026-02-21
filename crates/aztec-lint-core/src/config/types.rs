@@ -724,12 +724,18 @@ deny = ["NOIR404"]
                 pack: "noir_core",
                 policy: CORRECTNESS,
                 category: LintCategory::Correctness,
+                introduced_in: "0.1.0",
                 default_level: RuleLevel::Deny,
                 confidence: Confidence::High,
                 lifecycle: LintLifecycleState::Active,
                 docs: LintDocs {
                     summary: "active",
-                    details: "active",
+                    what_it_does: "active",
+                    why_this_matters: "active",
+                    known_limitations: "active",
+                    how_to_fix: "active",
+                    examples: &["active"],
+                    references: &["docs/active.md"],
                 },
             },
             LintSpec {
@@ -737,6 +743,7 @@ deny = ["NOIR404"]
                 pack: "noir_core",
                 policy: CORRECTNESS,
                 category: LintCategory::Correctness,
+                introduced_in: "0.1.0",
                 default_level: RuleLevel::Deny,
                 confidence: Confidence::High,
                 lifecycle: LintLifecycleState::Renamed {
@@ -745,7 +752,12 @@ deny = ["NOIR404"]
                 },
                 docs: LintDocs {
                     summary: "renamed",
-                    details: "renamed",
+                    what_it_does: "renamed",
+                    why_this_matters: "renamed",
+                    known_limitations: "renamed",
+                    how_to_fix: "renamed",
+                    examples: &["renamed"],
+                    references: &["docs/renamed.md"],
                 },
             },
         ];
