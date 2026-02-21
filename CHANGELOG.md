@@ -7,6 +7,12 @@ Entries are grouped by released version.
 
 ## [Unreleased]
 
+### 2026-02-21
+
+- Added baseline-freeze fixture coverage for semantically impacted rules across `noir_core` and `aztec` test suites.
+- Added edge-case fixtures for alias imports, nested scopes, range-guard ordering, branch/public-effect coupling, and hash-with-guard ordering.
+- Added suppression fixtures and assertions for semantically impacted `noir_core` rules (`NOIR001/002/010/020/030/100/110/120`) and additional `aztec` advanced rules (`AZTEC002`, `AZTEC022`).
+
 ## [0.2.0]
 
 ### 2026-02-21
