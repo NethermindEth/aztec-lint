@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use aztec_lint_aztec::{SourceUnit, build_aztec_model, should_activate_aztec};
+use aztec_lint_aztec::{SourceUnit, build_aztec_model_with_semantic, should_activate_aztec};
 use aztec_lint_core::config::{RuleOverrides, load_from_dir};
 use aztec_lint_core::diagnostics::{
     Confidence, Diagnostic, Severity, normalize_file_path, sort_diagnostics,
@@ -133,7 +133,11 @@ pub(crate) fn collect_lint_run(
             .map(|file| SourceUnit::new(file.path().to_string(), file.text().to_string()))
             .collect::<Vec<_>>();
         if should_activate_aztec(profile, &sources, &loaded.config.aztec) {
-            let aztec_model = build_aztec_model(&sources, &loaded.config.aztec);
+            let aztec_model = build_aztec_model_with_semantic(
+                &sources,
+                &loaded.config.aztec,
+                Some(context.semantic_model()),
+            );
             context.set_aztec_model(aztec_model);
         }
 

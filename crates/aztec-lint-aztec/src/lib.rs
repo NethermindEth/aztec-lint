@@ -6,7 +6,7 @@ pub mod patterns;
 pub mod taint;
 
 pub use detect::{SourceUnit, should_activate_aztec};
-pub use model_builder::build_aztec_model;
+pub use model_builder::{build_aztec_model, build_aztec_model_with_semantic};
 
 pub fn profile_name() -> &'static str {
     "aztec"
