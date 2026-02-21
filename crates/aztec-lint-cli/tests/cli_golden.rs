@@ -443,6 +443,10 @@ fn bare_invocation_fix_flag_runs_fix_mode() {
         stdout.contains("fix path="),
         "expected fix banner in stdout: {stdout}"
     );
+    assert!(
+        stdout.contains("fixes_skipped_suppressed="),
+        "expected skipped-reason summary in stdout: {stdout}"
+    );
 }
 
 #[test]

@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use aztec_lint_core::diagnostics::Diagnostic;
-use aztec_lint_core::fix::{FixApplicationMode, FixApplicationReport, FixSource, apply_fixes};
+use aztec_lint_core::fix::{
+    FixApplicationMode, FixApplicationReport, FixSource, SkippedFixReason, apply_fixes,
+};
 use aztec_lint_core::output::json as json_output;
 use aztec_lint_core::output::sarif as sarif_output;
 use aztec_lint_core::output::text::{CheckTextReport, render_check_report};
@@ -164,6 +166,52 @@ fn render_fix_result(context: FixRenderContext<'_>) -> Result<(), CliError> {
                 "fixes_selected_explicit={} fixes_selected_structured={} fixes_skipped_explicit={} fixes_skipped_structured={}",
                 selected_explicit, selected_structured, skipped_explicit, skipped_structured,
             );
+            let (
+                skipped_suppressed,
+                skipped_unsafe,
+                skipped_mixed_file,
+                skipped_overlap,
+                skipped_invalid_span,
+                skipped_noop,
+            ) = skipped_reason_breakdown(context.fix_report);
+            println!(
+                "fixes_skipped_suppressed={} fixes_skipped_unsafe={} fixes_skipped_mixed_file={} fixes_skipped_overlap={} fixes_skipped_invalid_span={} fixes_skipped_noop={}",
+                skipped_suppressed,
+                skipped_unsafe,
+                skipped_mixed_file,
+                skipped_overlap,
+                skipped_invalid_span,
+                skipped_noop,
+            );
+
+            for selected in &context.fix_report.selected {
+                println!(
+                    "fix_selected rule={} source={} group={} edits={} file={} span={}..{} provenance={}",
+                    selected.rule_id,
+                    source_label(selected.source),
+                    selected.group_id,
+                    selected.edit_count,
+                    selected.file,
+                    selected.start,
+                    selected.end,
+                    selected.provenance.as_deref().unwrap_or("-"),
+                );
+            }
+
+            for skipped in &context.fix_report.skipped {
+                println!(
+                    "fix_skipped rule={} source={} group={} edits={} file={} span={}..{} reason={} provenance={}",
+                    skipped.rule_id,
+                    source_label(skipped.source),
+                    skipped.group_id,
+                    skipped.edit_count,
+                    skipped.file,
+                    skipped.start,
+                    skipped.end,
+                    skipped_reason_label(skipped.reason),
+                    skipped.provenance.as_deref().unwrap_or("-"),
+                );
+            }
 
             let rendered = render_check_report(CheckTextReport {
                 path: context.path,
@@ -220,4 +268,53 @@ fn source_breakdown_skipped(report: &FixApplicationReport) -> (usize, usize) {
         .count();
     let structured = report.skipped.len().saturating_sub(explicit);
     (explicit, structured)
+}
+
+fn source_label(source: FixSource) -> &'static str {
+    match source {
+        FixSource::ExplicitFix => "explicit_fix",
+        FixSource::StructuredSuggestion => "structured_suggestion",
+    }
+}
+
+fn skipped_reason_label(reason: SkippedFixReason) -> &'static str {
+    match reason {
+        SkippedFixReason::SuppressedDiagnostic => "suppressed_diagnostic",
+        SkippedFixReason::UnsafeFix => "unsafe_fix",
+        SkippedFixReason::MixedFileGroup => "mixed_file_group",
+        SkippedFixReason::GroupOverlap => "group_overlap",
+        SkippedFixReason::InvalidGroupSpan => "invalid_group_span",
+        SkippedFixReason::GroupNoop => "group_noop",
+    }
+}
+
+fn skipped_reason_breakdown(
+    report: &FixApplicationReport,
+) -> (usize, usize, usize, usize, usize, usize) {
+    let mut suppressed = 0usize;
+    let mut unsafe_fix = 0usize;
+    let mut mixed_file = 0usize;
+    let mut overlap = 0usize;
+    let mut invalid_span = 0usize;
+    let mut noop = 0usize;
+
+    for skipped in &report.skipped {
+        match skipped.reason {
+            SkippedFixReason::SuppressedDiagnostic => suppressed += 1,
+            SkippedFixReason::UnsafeFix => unsafe_fix += 1,
+            SkippedFixReason::MixedFileGroup => mixed_file += 1,
+            SkippedFixReason::GroupOverlap => overlap += 1,
+            SkippedFixReason::InvalidGroupSpan => invalid_span += 1,
+            SkippedFixReason::GroupNoop => noop += 1,
+        }
+    }
+
+    (
+        suppressed,
+        unsafe_fix,
+        mixed_file,
+        overlap,
+        invalid_span,
+        noop,
+    )
 }
