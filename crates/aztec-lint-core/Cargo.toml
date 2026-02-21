@@ -26,12 +26,12 @@ serde_json.workspace = true
 blake3.workspace = true
 toml.workspace = true
 aztec-lint-sdk = { workspace = true, optional = true }
-fm = { git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "fm", optional = true }
-noirc_driver = { git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "noirc_driver", optional = true }
-noirc_frontend = { git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "noirc_frontend", optional = true }
-noirc_errors = { git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "noirc_errors", optional = true }
-nargo = { git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "nargo", optional = true }
-nargo_toml = { git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "nargo_toml", optional = true }
+fm = { version = "1.0.0-beta.19", git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "fm", optional = true }
+noirc_driver = { version = "1.0.0-beta.19", git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "noirc_driver", optional = true }
+noirc_frontend = { version = "1.0.0-beta.19", git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "noirc_frontend", optional = true }
+noirc_errors = { version = "1.0.0-beta.19", git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "noirc_errors", optional = true }
+nargo = { version = "1.0.0-beta.19", git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "nargo", optional = true }
+nargo_toml = { version = "1.0.0-beta.19", git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "nargo_toml", optional = true }
 
 [dev-dependencies]
 tempfile = "3.13"
