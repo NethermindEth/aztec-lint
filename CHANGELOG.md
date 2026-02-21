@@ -27,11 +27,19 @@ Entries are grouped by released version.
 - Fixed `NOIR001` grouped-import binding tracking so nested/grouped `use` clauses are evaluated per imported binding when determining unused imports.
 - Fixed `NOIR001` to ignore `pub use` re-exports in file-local unused-import analysis.
 - Fixed `NOIR001` to treat type-position identifiers (for example struct fields, function signatures, and type aliases) as import usage.
+- Fixed `NOIR001` trait-import usage detection to treat trait-method calls and trait contexts (for example `x.to_field()`, `impl Trait for ...`, and `<T as Trait>::...`) as valid import usage, including aliased trait imports.
+- Fixed `NOIR001` to treat value-path usages in function bodies as import usage (for example struct literals like `Type { ... }`, associated calls like `Type::from_field(...)`, and qualified value paths like `TypeOrModule::CONST`), including test-function bodies.
+- Fixed `NOIR001` trait-associated call handling to treat imports such as `FromField` as used when associated calls resolve through imported traits (for example `AztecAddress::from_field(...)`), with conservative fallback to avoid correctness-breaking removals when semantic detail is partial.
+- Added `NOIR001` regression coverage for used/unused trait imports and alias trait imports in method-call and trait-context paths.
+- Added `NOIR001` regression coverage for struct-literal and associated-call usage patterns (`PositionReceiptNote`, `AztecAddress::from_field`, `FromField`) and test-body usage paths.
 - Added Clippy-style target selection flags to lint commands (`--all-targets`, `--lib`, `--bins`, `--examples`, `--benches`, `--tests`), with default behavior equivalent to `--all-targets`.
 - Fixed target filtering to apply at diagnostic-file level so test-path files are excluded when `--tests` is not selected (including `tests/` and `test/` path components such as `src/test/...`).
 - Changed `NOIR002` to detect shadowing from semantic lexical scopes (function + block spans) and semantic `let` declarations, with legacy brace-depth parsing retained as fallback only.
 - Added semantic-path unit coverage for `NOIR001` and `NOIR002`, plus shared statement-level `let` binding extraction utilities.
 - Changed `NOIR010` to derive bool bindings from semantic types/DFG and validate assertion consumption from semantic guard/use-def links, with text heuristics retained only as fallback.
+- Fixed `NOIR010` assertion sink detection to recognize identifier assertions and boolean transforms in assertion contexts (for example `assert(flag)`, `assert(!flag)`, alias flows, and `assert(flag && other)` patterns) and assertion-like wrapper calls.
+- Fixed `NOIR010` reporting to emit only when a boolean has no assertion sink and no meaningful downstream use, preventing false positives in test/unconstrained function flows.
+- Added `NOIR010` regression coverage for negated assertions, alias assertions, conjunction assertions, assertion-like wrappers, and meaningful non-assert uses.
 - Changed `NOIR020` to detect index accesses and guard coverage from semantic expression/guard facts, with text heuristics retained only as fallback.
 - Changed `NOIR020` to use local bounds proofs from loop ranges, affine index forms, and array-length facts, suppressing false positives for safe copy/packing loops and reporting a distinct message when an index is provably out of bounds versus not provable.
 - Fixed `NOIR020` function-body bounds analysis for narrow semantic function spans so loop-header proofs (for example `for i in 0..32`) are applied consistently to both source and destination index expressions in byte-copy assignments.
