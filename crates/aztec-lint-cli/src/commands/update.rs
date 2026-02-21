@@ -17,6 +17,7 @@ use crate::exit_codes;
 
 const DEFAULT_REPO: &str = "NethermindEth/aztec-lint";
 const TOOL_NAME: &str = "aztec-lint";
+const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Args)]
 pub struct UpdateArgs {
@@ -38,15 +39,26 @@ struct TargetPlatform {
     binary_name: &'static str,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct SemverCore {
+    major: u64,
+    minor: u64,
+    patch: u64,
+}
+
 pub fn run(args: UpdateArgs) -> Result<ExitCode, CliError> {
     let selector = normalize_version_input(&args.version)?;
     let target = detect_target_platform()?;
     let repo = env::var("AZTEC_LINT_REPO").unwrap_or_else(|_| DEFAULT_REPO.to_string());
+    let current_tag = format!("v{CURRENT_VERSION}");
+    let target_tag = resolve_target_tag(&selector, &repo)?;
 
-    let base_url = match &selector {
-        ReleaseSelector::Latest => format!("https://github.com/{repo}/releases/latest/download"),
-        ReleaseSelector::Tag(tag) => format!("https://github.com/{repo}/releases/download/{tag}"),
-    };
+    if let Some(message) = skip_update_message(&current_tag, &target_tag, &selector) {
+        println!("{message}");
+        return Ok(exit_codes::success());
+    }
+
+    let base_url = format!("https://github.com/{repo}/releases/download/{target_tag}");
 
     let asset_name = format!(
         "{TOOL_NAME}-{}-{}.{}",
@@ -117,17 +129,92 @@ pub fn run(args: UpdateArgs) -> Result<ExitCode, CliError> {
         ))
     })?;
 
-    match selector {
-        ReleaseSelector::Latest => {
-            println!("Updated aztec-lint to the latest available release.");
-        }
-        ReleaseSelector::Tag(tag) => {
-            println!("Updated aztec-lint to {tag}.");
-        }
-    }
+    println!("Updated aztec-lint from {current_tag} to {target_tag}.");
     println!("Run `aztec-lint --version` to verify the installed version.");
 
     Ok(exit_codes::success())
+}
+
+fn resolve_target_tag(selector: &ReleaseSelector, repo: &str) -> Result<String, CliError> {
+    match selector {
+        ReleaseSelector::Latest => fetch_latest_release_tag(repo),
+        ReleaseSelector::Tag(tag) => Ok(tag.clone()),
+    }
+}
+
+fn fetch_latest_release_tag(repo: &str) -> Result<String, CliError> {
+    let latest_url = format!("https://github.com/{repo}/releases/latest");
+    let response = ureq::get(&latest_url)
+        .call()
+        .map_err(|source| match source {
+            UreqError::Status(code, response) => CliError::Runtime(format!(
+                "failed to resolve latest release with HTTP {code} for '{latest_url}' ({})",
+                response.status_text()
+            )),
+            UreqError::Transport(transport) => CliError::Runtime(format!(
+                "failed to resolve latest release for '{latest_url}': {transport}"
+            )),
+        })?;
+
+    let resolved_url = response.get_url();
+    parse_release_tag_from_url(resolved_url).ok_or_else(|| {
+        CliError::Runtime(format!(
+            "failed to parse latest release tag from redirect URL '{resolved_url}'"
+        ))
+    })
+}
+
+fn parse_release_tag_from_url(url: &str) -> Option<String> {
+    let (_, tag_and_suffix) = url.split_once("/releases/tag/")?;
+    let tag = tag_and_suffix.split(['#', '?']).next()?.trim();
+    if tag.is_empty() {
+        return None;
+    }
+    Some(tag.to_string())
+}
+
+fn skip_update_message(
+    current_tag: &str,
+    target_tag: &str,
+    selector: &ReleaseSelector,
+) -> Option<String> {
+    if semver_for_compare(current_tag) == semver_for_compare(target_tag)
+        || current_tag.eq_ignore_ascii_case(target_tag)
+    {
+        return Some(format!(
+            "aztec-lint is already up to date at {current_tag}; no update required."
+        ));
+    }
+
+    if matches!(selector, ReleaseSelector::Latest)
+        && let (Some(current), Some(latest)) = (
+            semver_for_compare(current_tag),
+            semver_for_compare(target_tag),
+        )
+        && current > latest
+    {
+        return Some(format!(
+            "Current aztec-lint version ({current_tag}) is newer than the latest release ({target_tag}); no update required."
+        ));
+    }
+
+    None
+}
+
+fn semver_for_compare(input: &str) -> Option<SemverCore> {
+    let version = input.strip_prefix('v').unwrap_or(input);
+    let mut parts = version.split('.');
+    let major = parts.next()?.parse::<u64>().ok()?;
+    let minor = parts.next()?.parse::<u64>().ok()?;
+    let patch = parts.next()?.parse::<u64>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some(SemverCore {
+        major,
+        minor,
+        patch,
+    })
 }
 
 fn normalize_version_input(input: &str) -> Result<ReleaseSelector, CliError> {
@@ -422,7 +509,10 @@ fn extract_binary_from_zip(
 
 #[cfg(test)]
 mod tests {
-    use super::{ReleaseSelector, expected_checksum_for_asset, normalize_version_input};
+    use super::{
+        ReleaseSelector, expected_checksum_for_asset, normalize_version_input,
+        parse_release_tag_from_url, skip_update_message,
+    };
 
     #[test]
     fn normalize_version_accepts_latest() {
@@ -471,6 +561,51 @@ mod tests {
         assert_eq!(
             expected_checksum_for_asset(checksums, "aztec-lint-windows-x86_64.zip"),
             Some("abc123".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_release_tag_from_url_extracts_tag_segment() {
+        let tag = parse_release_tag_from_url(
+            "https://github.com/NethermindEth/aztec-lint/releases/tag/v1.2.3",
+        );
+        assert_eq!(tag, Some("v1.2.3".to_string()));
+    }
+
+    #[test]
+    fn skip_update_message_reports_up_to_date_for_matching_versions() {
+        let message = skip_update_message("v1.2.3", "v1.2.3", &ReleaseSelector::Latest);
+        assert!(message.is_some(), "matching versions should skip update");
+    }
+
+    #[test]
+    fn skip_update_message_reports_up_to_date_for_prefixed_mismatch() {
+        let message = skip_update_message("v1.2.3", "1.2.3", &ReleaseSelector::Latest);
+        assert!(
+            message.is_some(),
+            "equivalent semver values should skip update"
+        );
+    }
+
+    #[test]
+    fn skip_update_message_skips_when_current_is_newer_than_latest() {
+        let message = skip_update_message("v1.2.4", "v1.2.3", &ReleaseSelector::Latest);
+        assert!(
+            message.is_some(),
+            "newer local version should skip latest update"
+        );
+    }
+
+    #[test]
+    fn skip_update_message_allows_targeted_version_change() {
+        let message = skip_update_message(
+            "v1.2.4",
+            "v1.2.3",
+            &ReleaseSelector::Tag("v1.2.3".to_string()),
+        );
+        assert!(
+            message.is_none(),
+            "explicit tag selection should allow downgrade"
         );
     }
 }

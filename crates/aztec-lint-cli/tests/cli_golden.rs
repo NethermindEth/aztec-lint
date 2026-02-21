@@ -761,6 +761,23 @@ fn update_rejects_invalid_version_format() {
 }
 
 #[test]
+fn update_skips_when_requested_version_is_already_installed() {
+    let mut cmd = cli_bin();
+    cmd.args(["update", "--version", env!("CARGO_PKG_VERSION")]);
+    let output = cmd.output().expect("command should execute");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "matching installed version should short-circuit successfully"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("already up to date"),
+        "expected up-to-date message in stdout, got: {stdout}"
+    );
+}
+
+#[test]
 fn check_workspace_root_discovers_member_projects() {
     let (_workspace, root) = create_workspace_with_members();
     let mut cmd = cli_bin();
