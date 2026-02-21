@@ -41,6 +41,11 @@ Entries are grouped by released version.
 - Changed Aztec taint source/sink detection to derive from semantic DFG/CFG/call-site facts (typed node IDs) for note reads, private params, unconstrained returns, public outputs, storage writes, nullifier/commitment, hash/serialize, branch condition, and merkle-witness sinks.
 - Changed hash/serialize guard sanitization in taint propagation to use CFG dominance over semantic guard coverage instead of line-offset ordering.
 - Added `SemanticModel::statement_block_map(...)` and `SemanticModel::cfg_dominators(...)` in core, plus semantic-path taint tests and a CFG-dominance guard test.
+- Changed Aztec rules `AZTEC001`, `AZTEC002`, `AZTEC003`, `AZTEC020`, `AZTEC021`, and `AZTEC022` to build taint analysis from semantic-aware def-use graphs via `build_def_use_graph_with_semantic(...)`.
+- Changed `AZTEC022` witness-verification detection to use semantic call-site and DFG/assertion facts, with text matching retained only as fallback when semantic data is unavailable.
+- Changed `noir_core::util` text parser helpers to explicit fallback APIs (`text_fallback_*`) and updated `noir_core` rule callsites to use those fallback names.
+- Changed Aztec pattern helper names to explicit fallback APIs (`fallback_*`) and updated Aztec model/taint builders to call fallback helpers only on non-semantic paths.
+- Added semantic-first authoring guidance and fallback gating requirements to `docs/rule-authoring.md` and `docs/architecture.md`.
 
 ## [0.2.0]
 
