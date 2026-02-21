@@ -18,6 +18,9 @@ Entries are grouped by released version.
 - Added Noir semantic extraction in `aztec-lint-core` to populate `ProjectModel.semantic` from checked compiler HIR/interner output.
 - Added `build_project_semantic_bundle(...)` and `ProjectSemanticBundle` while keeping `build_project_model(...)` as the compatibility path.
 - Changed call-graph construction to derive from semantic call-site facts and added fixture coverage proving semantic nodes are extracted for `fixtures/noir_core/minimal/src/main.nr`.
+- Added typed semantic query APIs in `aztec-lint-rules` via `RuleContext::query()` (`functions`, `locals_in_function`, `index_accesses`, `assertions`, `cfg`, `dfg`).
+- Changed `RuleContext` to support semantic model overrides through `set_semantic_model(...)` while keeping file-based accessors for fallback rules.
+- Added engine context tests for query availability, override behavior, and deterministic query ordering.
 
 ## [0.2.0]
 

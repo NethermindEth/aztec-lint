@@ -1,4 +1,5 @@
 pub mod context;
+pub mod query;
 pub mod registry;
 
 use std::collections::{BTreeMap, BTreeSet};

@@ -6,7 +6,9 @@ use std::path::Path;
 use aztec_lint_core::config::AztecConfig;
 use aztec_lint_core::diagnostics::{Confidence, Diagnostic, Severity, normalize_file_path};
 use aztec_lint_core::model::AztecModel;
-use aztec_lint_core::model::{ProjectModel, Span};
+use aztec_lint_core::model::{ProjectModel, SemanticModel, Span};
+
+use super::query::RuleQuery;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceFile {
@@ -80,6 +82,7 @@ pub struct RuleContext<'a> {
     project: &'a ProjectModel,
     files: Vec<SourceFile>,
     suppressions: Vec<SuppressionScope>,
+    semantic_model: Option<SemanticModel>,
     aztec_model: Option<AztecModel>,
     aztec_config: Option<AztecConfig>,
 }
@@ -127,6 +130,7 @@ impl<'a> RuleContext<'a> {
             project,
             files,
             suppressions,
+            semantic_model: None,
             aztec_model: None,
             aztec_config: None,
         }
@@ -138,6 +142,21 @@ impl<'a> RuleContext<'a> {
 
     pub fn files(&self) -> &[SourceFile] {
         &self.files
+    }
+
+    pub fn semantic_model(&self) -> &SemanticModel {
+        self.semantic_model
+            .as_ref()
+            .unwrap_or(&self.project.semantic)
+    }
+
+    pub fn set_semantic_model(&mut self, mut model: SemanticModel) {
+        model.normalize();
+        self.semantic_model = Some(model);
+    }
+
+    pub fn query(&self) -> RuleQuery<'_> {
+        RuleQuery::new(self.semantic_model())
     }
 
     pub fn aztec_model(&self) -> Option<&AztecModel> {
@@ -349,9 +368,121 @@ fn find_item_scope_end(source: &str, item_start: usize, line_end: usize) -> usiz
 
 #[cfg(test)]
 mod tests {
-    use aztec_lint_core::model::ProjectModel;
+    use aztec_lint_core::model::{
+        CfgBlock, CfgEdge, CfgEdgeKind, DfgEdge, DfgEdgeKind, ExpressionCategory, ProjectModel,
+        SemanticExpression, SemanticFunction, SemanticModel, SemanticStatement, Span,
+        StatementCategory, TypeCategory,
+    };
 
     use super::RuleContext;
+
+    fn sample_semantic_model() -> SemanticModel {
+        SemanticModel {
+            functions: vec![
+                SemanticFunction {
+                    symbol_id: "fn::b".to_string(),
+                    name: "b".to_string(),
+                    module_symbol_id: "module::main".to_string(),
+                    return_type_repr: "Field".to_string(),
+                    return_type_category: TypeCategory::Field,
+                    parameter_types: vec!["Field".to_string()],
+                    is_entrypoint: false,
+                    is_unconstrained: false,
+                    span: Span::new("src/main.nr", 40, 41, 4, 1),
+                },
+                SemanticFunction {
+                    symbol_id: "fn::a".to_string(),
+                    name: "a".to_string(),
+                    module_symbol_id: "module::main".to_string(),
+                    return_type_repr: "Field".to_string(),
+                    return_type_category: TypeCategory::Field,
+                    parameter_types: vec!["Field".to_string()],
+                    is_entrypoint: true,
+                    is_unconstrained: false,
+                    span: Span::new("src/main.nr", 20, 21, 2, 1),
+                },
+            ],
+            expressions: vec![
+                SemanticExpression {
+                    expr_id: "expr::2".to_string(),
+                    function_symbol_id: "fn::a".to_string(),
+                    category: ExpressionCategory::Index,
+                    type_category: TypeCategory::Field,
+                    type_repr: "Field".to_string(),
+                    span: Span::new("src/main.nr", 60, 61, 6, 1),
+                },
+                SemanticExpression {
+                    expr_id: "expr::1".to_string(),
+                    function_symbol_id: "fn::a".to_string(),
+                    category: ExpressionCategory::Index,
+                    type_category: TypeCategory::Field,
+                    type_repr: "Field".to_string(),
+                    span: Span::new("src/main.nr", 50, 51, 5, 1),
+                },
+            ],
+            statements: vec![
+                SemanticStatement {
+                    stmt_id: "stmt::2".to_string(),
+                    function_symbol_id: "fn::a".to_string(),
+                    category: StatementCategory::Constrain,
+                    span: Span::new("src/main.nr", 80, 81, 8, 1),
+                },
+                SemanticStatement {
+                    stmt_id: "stmt::1".to_string(),
+                    function_symbol_id: "fn::a".to_string(),
+                    category: StatementCategory::Assert,
+                    span: Span::new("src/main.nr", 70, 71, 7, 1),
+                },
+            ],
+            cfg_blocks: vec![
+                CfgBlock {
+                    function_symbol_id: "fn::a".to_string(),
+                    block_id: "bb1".to_string(),
+                    statement_ids: vec!["stmt::2".to_string()],
+                },
+                CfgBlock {
+                    function_symbol_id: "fn::a".to_string(),
+                    block_id: "bb0".to_string(),
+                    statement_ids: vec!["stmt::1".to_string()],
+                },
+            ],
+            cfg_edges: vec![
+                CfgEdge {
+                    function_symbol_id: "fn::a".to_string(),
+                    from_block_id: "bb1".to_string(),
+                    to_block_id: "bb0".to_string(),
+                    kind: CfgEdgeKind::FalseBranch,
+                },
+                CfgEdge {
+                    function_symbol_id: "fn::a".to_string(),
+                    from_block_id: "bb0".to_string(),
+                    to_block_id: "bb1".to_string(),
+                    kind: CfgEdgeKind::TrueBranch,
+                },
+            ],
+            dfg_edges: vec![
+                DfgEdge {
+                    function_symbol_id: "fn::a".to_string(),
+                    from_node_id: "stmt::1".to_string(),
+                    to_node_id: "def::2".to_string(),
+                    kind: DfgEdgeKind::DefUse,
+                },
+                DfgEdge {
+                    function_symbol_id: "fn::a".to_string(),
+                    from_node_id: "stmt::1".to_string(),
+                    to_node_id: "def::1".to_string(),
+                    kind: DfgEdgeKind::DefUse,
+                },
+                DfgEdge {
+                    function_symbol_id: "fn::a".to_string(),
+                    from_node_id: "stmt::1".to_string(),
+                    to_node_id: "def::1".to_string(),
+                    kind: DfgEdgeKind::DefUse,
+                },
+            ],
+            ..SemanticModel::default()
+        }
+    }
 
     #[test]
     fn allow_attributes_apply_to_next_item_scope() {
@@ -429,5 +560,104 @@ fn main() {
             context.suppression_reason("NOIR001", &span),
             Some("allow(NOIR001)")
         );
+    }
+
+    #[test]
+    fn query_uses_project_semantic_model_by_default() {
+        let mut project = ProjectModel {
+            semantic: sample_semantic_model(),
+            ..ProjectModel::default()
+        };
+        project.normalize();
+
+        let context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), "fn main() {}".to_string())],
+        );
+
+        let query = context.query();
+        let function_ids = query
+            .functions()
+            .iter()
+            .map(|function| function.symbol_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(function_ids, vec!["fn::a", "fn::b"]);
+    }
+
+    #[test]
+    fn set_semantic_model_overrides_project_semantic() {
+        let mut project = ProjectModel::default();
+        project.semantic.functions.push(SemanticFunction {
+            symbol_id: "fn::project".to_string(),
+            name: "project".to_string(),
+            module_symbol_id: "module::main".to_string(),
+            return_type_repr: "Field".to_string(),
+            return_type_category: TypeCategory::Field,
+            parameter_types: vec![],
+            is_entrypoint: true,
+            is_unconstrained: false,
+            span: Span::new("src/main.nr", 10, 11, 1, 1),
+        });
+        project.normalize();
+
+        let mut context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), "fn main() {}".to_string())],
+        );
+        assert_eq!(context.query().functions()[0].symbol_id, "fn::project");
+
+        context.set_semantic_model(sample_semantic_model());
+
+        let query = context.query();
+        let function_ids = query
+            .functions()
+            .iter()
+            .map(|function| function.symbol_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(function_ids, vec!["fn::a", "fn::b"]);
+    }
+
+    #[test]
+    fn query_results_are_deterministically_ordered() {
+        let project = ProjectModel::default();
+        let mut context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), "fn main() {}".to_string())],
+        );
+        context.set_semantic_model(sample_semantic_model());
+
+        let locals = context.query().locals_in_function("fn::a");
+        assert_eq!(locals.len(), 2);
+        assert_eq!(locals[0].definition_node_id, "def::1");
+        assert_eq!(locals[1].definition_node_id, "def::2");
+
+        let index_expr_ids = context
+            .query()
+            .index_accesses(Some("fn::a"))
+            .iter()
+            .map(|expression| expression.expr_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(index_expr_ids, vec!["expr::1", "expr::2"]);
+
+        let assertion_stmt_ids = context
+            .query()
+            .assertions(Some("fn::a"))
+            .iter()
+            .map(|statement| statement.stmt_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(assertion_stmt_ids, vec!["stmt::1", "stmt::2"]);
+
+        let cfg = context.query().cfg("fn::a");
+        assert_eq!(cfg.blocks.len(), 2);
+        assert_eq!(cfg.blocks[0].block_id, "bb0");
+        assert_eq!(cfg.blocks[1].block_id, "bb1");
+        assert_eq!(cfg.edges.len(), 2);
+        assert_eq!(cfg.edges[0].from_block_id, "bb0");
+        assert_eq!(cfg.edges[1].from_block_id, "bb1");
+
+        let dfg = context.query().dfg("fn::a");
+        assert_eq!(dfg.edges.len(), 2);
+        assert_eq!(dfg.edges[0].to_node_id, "def::1");
+        assert_eq!(dfg.edges[1].to_node_id, "def::2");
     }
 }
