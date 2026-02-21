@@ -30,9 +30,10 @@ fn my_fn() { ... }
 
 ## Scope Rules
 
-- `file-level`: directive attached at file root applies to that source file.
-- `module-level`: directive attached to a module applies to its subtree.
 - `item-level`: directive attached to a function/item applies only to that item.
+- `module-level`: directive attached to a module applies to its subtree.
+- `file-level`: directive declared at file root and not attached to a following item applies to that source file.
+- Binding is source-order deterministic: directives on the same line as an item, or directly preceding that item, are attached to that item.
 - Matching is case-insensitive and normalized to canonical rule IDs.
 - Precedence is nearest-scope first: item-level > module-level > file-level > global profile/CLI.
 - If multiple directives for the same rule are declared at the same scope, last one in source order wins.
@@ -61,11 +62,11 @@ Directives are evaluated before confidence/severity gating.
 
 ## Troubleshooting
 
-- Suppression not taking effect:
+- Directive not taking effect:
   - Ensure the directive (`allow`/`warn`/`deny`) targets the intended scope (file/module/item).
   - Ensure the rule ID is correct (`aztec-lint rules`).
   - Check precedence when multiple directives exist for the same rule.
-- Suppression not visible in text output:
+- Suppressed diagnostic not visible in text output:
   - Use `--show-suppressed`.
 - Suppression visible in JSON/SARIF but not text:
   - Expected behavior; text defaults to concise output.

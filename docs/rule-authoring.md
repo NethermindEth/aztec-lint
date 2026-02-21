@@ -27,9 +27,10 @@ Add the rule in `crates/aztec-lint-rules/src/engine/registry.rs` with:
 
 Engine metadata is authoritative for severity/confidence/policy assignment.
 
-## 3. Suppression Contract
+## 3. Directive/Suppression Contract
 
 Do not implement directive handling inside a rule.
+Rules must not parse source-level `allow`/`warn`/`deny` attributes directly.
 
 Directive resolution is handled centrally in the engine using scoped levels (`allow`, `warn`, `deny`) with precedence:
 
