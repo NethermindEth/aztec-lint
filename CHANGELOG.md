@@ -22,6 +22,9 @@ Entries are grouped by released version.
 - Changed `RuleContext` to support semantic model overrides through `set_semantic_model(...)` while keeping file-based accessors for fallback rules.
 - Added engine context tests for query availability, override behavior, and deterministic query ordering.
 - Changed CLI `check` pipeline to build `ProjectSemanticBundle` and inject semantic data into `RuleContext` before rule execution, while preserving diagnostic path rebasing behavior.
+- Changed `NOIR001` to compute unused locals/imports from semantic statements and DFG/identifier facts, with text heuristics retained only as a fallback path.
+- Changed `NOIR002` to detect shadowing from semantic lexical scopes (function + block spans) and semantic `let` declarations, with legacy brace-depth parsing retained as fallback only.
+- Added semantic-path unit coverage for `NOIR001` and `NOIR002`, plus shared statement-level `let` binding extraction utilities.
 
 ## [0.2.0]
 
