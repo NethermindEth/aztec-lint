@@ -352,14 +352,14 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "aztec-lint-aztec"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "aztec-lint-core",
 ]
 
 [[package]]
 name = "aztec-lint-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "assert_cmd",
  "aztec-lint-aztec",
@@ -379,7 +379,7 @@ dependencies = [
 
 [[package]]
 name = "aztec-lint-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "aztec-lint-sdk",
  "blake3",
@@ -397,7 +397,7 @@ dependencies = [
 
 [[package]]
 name = "aztec-lint-rules"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "aztec-lint-aztec",
  "aztec-lint-core",
@@ -405,7 +405,7 @@ dependencies = [
 
 [[package]]
 name = "aztec-lint-sdk"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
