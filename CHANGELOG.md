@@ -15,6 +15,9 @@ Entries are grouped by released version.
 - Added a first-class semantic model in `aztec-lint-core` with typed function, expression, statement, CFG, DFG, call-site, and guard-node structures.
 - Changed `ProjectModel` to include a deterministic `semantic` section with normalization helpers and backward-compatible deserialization defaults.
 - Added deterministic normalization/serialization tests for semantic structures and documented the semantic model contract in `docs/architecture.md`.
+- Added Noir semantic extraction in `aztec-lint-core` to populate `ProjectModel.semantic` from checked compiler HIR/interner output.
+- Added `build_project_semantic_bundle(...)` and `ProjectSemanticBundle` while keeping `build_project_model(...)` as the compatibility path.
+- Changed call-graph construction to derive from semantic call-site facts and added fixture coverage proving semantic nodes are extracted for `fixtures/noir_core/minimal/src/main.nr`.
 
 ## [0.2.0]
 
