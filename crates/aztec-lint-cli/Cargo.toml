@@ -28,8 +28,8 @@ self-replace = "1.5"
 sha2 = "0.10"
 tar = "0.4"
 tempfile = "3.13"
-ureq = "2.12"
-zip = { version = "2.4", default-features = false, features = ["deflate"] }
+ureq = "3.2"
+zip = { version = "8.1", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 assert_cmd = "2.0"

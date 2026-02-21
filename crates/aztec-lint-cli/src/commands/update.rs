@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use tar::Archive;
 use tempfile::tempdir;
 use ureq::Error as UreqError;
+use ureq::ResponseExt;
 use zip::ZipArchive;
 
 use crate::cli::CliError;
@@ -147,17 +148,16 @@ fn fetch_latest_release_tag(repo: &str) -> Result<String, CliError> {
     let response = ureq::get(&latest_url)
         .call()
         .map_err(|source| match source {
-            UreqError::Status(code, response) => CliError::Runtime(format!(
-                "failed to resolve latest release with HTTP {code} for '{latest_url}' ({})",
-                response.status_text()
+            UreqError::StatusCode(code) => CliError::Runtime(format!(
+                "failed to resolve latest release with HTTP {code} for '{latest_url}'"
             )),
-            UreqError::Transport(transport) => CliError::Runtime(format!(
-                "failed to resolve latest release for '{latest_url}': {transport}"
+            other => CliError::Runtime(format!(
+                "failed to resolve latest release for '{latest_url}': {other}"
             )),
         })?;
 
-    let resolved_url = response.get_url();
-    parse_release_tag_from_url(resolved_url).ok_or_else(|| {
+    let resolved_url = response.get_uri().to_string();
+    parse_release_tag_from_url(&resolved_url).ok_or_else(|| {
         CliError::Runtime(format!(
             "failed to parse latest release tag from redirect URL '{resolved_url}'"
         ))
@@ -280,16 +280,13 @@ fn detect_target_platform() -> Result<TargetPlatform, CliError> {
 
 fn download_to_file(url: &str, path: &Path) -> Result<(), CliError> {
     let response = ureq::get(url).call().map_err(|source| match source {
-        UreqError::Status(code, response) => CliError::Runtime(format!(
-            "download failed with HTTP {code} for '{url}' ({})",
-            response.status_text()
-        )),
-        UreqError::Transport(transport) => {
-            CliError::Runtime(format!("download failed for '{url}': {transport}"))
+        UreqError::StatusCode(code) => {
+            CliError::Runtime(format!("download failed with HTTP {code} for '{url}'"))
         }
+        other => CliError::Runtime(format!("download failed for '{url}': {other}")),
     })?;
 
-    let mut reader = response.into_reader();
+    let mut reader = response.into_body().into_reader();
     let mut out = File::create(path).map_err(|source| {
         CliError::Runtime(format!(
             "failed to create download file '{}': {source}",
