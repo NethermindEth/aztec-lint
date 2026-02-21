@@ -3,9 +3,11 @@
 All notable functional changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Until semantic versions are tagged, entries are grouped by calendar date.
+Entries are grouped by released version.
 
 ## [Unreleased]
+
+## [0.1.0]
 
 ### 2026-02-21
 
