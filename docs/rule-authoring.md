@@ -29,24 +29,32 @@ Engine metadata is authoritative for severity/confidence/policy assignment.
 
 ## 3. Suppression Contract
 
-Do not implement suppression inside a rule.
+Do not implement directive handling inside a rule.
 
-Suppression is handled centrally in the engine and sets:
+Directive resolution is handled centrally in the engine using scoped levels (`allow`, `warn`, `deny`) with precedence:
+
+- item-level > module-level > file-level > global profile/CLI baseline
+
+Engine sets:
 
 - `diagnostic.suppressed`
 - `diagnostic.suppression_reason`
 
-Rules should always emit the true positive diagnostic; suppression is applied later.
+Rules should always emit the true positive diagnostic. Suppression and severity overrides are applied later by the engine.
 
 ## 4. Optional Autofix Contract
 
-If a rule emits fixes (`diagnostic.fixes`):
+If a rule emits suggestions/fixes:
 
-- mark only deterministic, span-local edits as `FixSafety::Safe`
+- use helper APIs (`span_suggestion`, `multipart_suggestion`) to build suggestion groups
+- mark only deterministic edits as machine-applicable / `FixSafety::Safe`
 - mark non-trivial edits as `FixSafety::NeedsReview`
-- avoid overlapping/multi-file edits in one diagnostic
+- avoid cross-file edits in one diagnostic
+- avoid overlapping edits inside a grouped suggestion
 
-`aztec-lint fix` only applies safe fixes in v0.
+`aztec-lint fix` applies safe candidates and treats grouped candidates as a single transaction (all-or-none).
+
+During compatibility migration, avoid manually diverging legacy fields from grouped suggestion data. Prefer canonical helper constructors so JSON/SARIF compatibility fields stay deterministic.
 
 ## 5. Testing Requirements
 
@@ -62,6 +70,7 @@ If rule emits fixes, add:
 - idempotence test (`fix` twice => no further changes)
 - invalid-span rejection test
 - overlap resolution test if overlapping fixes are possible
+- transaction test for multipart/grouped edits (partial apply must not occur)
 
 ## 6. Operational Notes
 

@@ -1,17 +1,27 @@
 # Suppression Guide
 
-This document describes suppression behavior in `aztec-lint`.
+This document describes lint directive behavior in `aztec-lint`.
 
 ## Supported Forms
 
-Attach suppressions directly to the item/function:
+Attach directives using canonical rule IDs:
 
 ```noir
 #[allow(AZTEC010)]
 fn my_fn() { ... }
 ```
 
-or scoped form:
+```noir
+#[warn(noir_core::NOIR100)]
+mod arithmetic { ... }
+```
+
+```noir
+#[deny(noir_core::NOIR100)]
+fn critical_path() { ... }
+```
+
+Scoped rule IDs are also supported:
 
 ```noir
 #[allow(noir_core::NOIR100)]
@@ -20,16 +30,21 @@ fn my_fn() { ... }
 
 ## Scope Rules
 
-- Scope is item-local only.
-- File-level and module-level suppression are not supported in v0.
+- `file-level`: directive attached at file root applies to that source file.
+- `module-level`: directive attached to a module applies to its subtree.
+- `item-level`: directive attached to a function/item applies only to that item.
 - Matching is case-insensitive and normalized to canonical rule IDs.
+- Precedence is nearest-scope first: item-level > module-level > file-level > global profile/CLI.
+- If multiple directives for the same rule are declared at the same scope, last one in source order wins.
 
 ## Output Visibility
 
-Suppressed diagnostics include:
+Diagnostics suppressed by `allow` include:
 
 - `suppressed: true`
 - `suppression_reason: "allow(RULE_ID)"`
+
+Diagnostics matched by `warn` or `deny` are not suppressed; they are emitted with overridden severity.
 
 Formatter behavior:
 
@@ -38,16 +53,18 @@ Formatter behavior:
 
 ## Interaction With Filters
 
-Suppression is evaluated before confidence/severity gating.
+Directives are evaluated before confidence/severity gating.
 
 - Exit code gating (`0`/`1`) is based only on unsuppressed diagnostics.
-- Suppressed diagnostics are never blocking.
+- `allow` diagnostics are never blocking.
+- `warn`/`deny` can change whether a diagnostic passes `--severity-threshold`.
 
 ## Troubleshooting
 
 - Suppression not taking effect:
-  - Ensure the `#[allow(...)]` is attached to the same item that contains the diagnostic.
+  - Ensure the directive (`allow`/`warn`/`deny`) targets the intended scope (file/module/item).
   - Ensure the rule ID is correct (`aztec-lint rules`).
+  - Check precedence when multiple directives exist for the same rule.
 - Suppression not visible in text output:
   - Use `--show-suppressed`.
 - Suppression visible in JSON/SARIF but not text:
