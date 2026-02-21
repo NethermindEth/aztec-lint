@@ -242,7 +242,7 @@ Failure modes:
 
 ---
 
-### Step 8: Migrate `noir_core` Maintainability Rules
+### Step 8: Migrate `noir_core` Maintainability Rules **COMPLETED**
 
 Files:
 - `crates/aztec-lint-rules/src/noir_core/noir100_magic_numbers.rs`
