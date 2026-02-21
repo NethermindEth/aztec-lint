@@ -8,7 +8,7 @@ use aztec_lint_core::policy::CORRECTNESS;
 use crate::Rule;
 use crate::engine::context::{RuleContext, SourceFile};
 use crate::noir_core::util::{
-    find_function_scopes, find_let_bindings_in_statement, is_ident_continue,
+    is_ident_continue, text_fallback_function_scopes, text_fallback_statement_bindings,
 };
 
 pub struct Noir002ShadowingRule;
@@ -65,7 +65,7 @@ impl Noir002ShadowingRule {
 
     fn run_text_fallback(&self, ctx: &RuleContext<'_>, out: &mut Vec<Diagnostic>) {
         for file in ctx.files() {
-            for scope in find_function_scopes(file.text()) {
+            for scope in text_fallback_function_scopes(file.text()) {
                 let body_start = scope.body_start.saturating_add(1);
                 let body_end = scope.body_end.saturating_sub(1);
                 if body_start >= body_end || body_end > file.text().len() {
@@ -212,7 +212,7 @@ fn bindings_for_function(
         let Some(statement_start) = usize::try_from(statement.span.start).ok() else {
             continue;
         };
-        for (name, relative_start) in find_let_bindings_in_statement(statement_source) {
+        for (name, relative_start) in text_fallback_statement_bindings(statement_source) {
             let binding_start = statement_start.saturating_add(relative_start);
             let Some(scope) = innermost_scope(scopes, binding_start) else {
                 continue;

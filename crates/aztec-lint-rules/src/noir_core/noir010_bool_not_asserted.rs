@@ -7,7 +7,8 @@ use aztec_lint_core::policy::CORRECTNESS;
 use crate::Rule;
 use crate::engine::context::{RuleContext, SourceFile};
 use crate::noir_core::util::{
-    count_identifier_occurrences, find_let_bindings, find_let_bindings_in_statement, source_slice,
+    count_identifier_occurrences, source_slice, text_fallback_line_bindings,
+    text_fallback_statement_bindings,
 };
 
 pub struct Noir010BoolNotAssertedRule;
@@ -78,7 +79,7 @@ impl Noir010BoolNotAssertedRule {
             definitions.sort();
             definitions.dedup();
 
-            let parsed_bindings = find_let_bindings_in_statement(statement_source);
+            let parsed_bindings = text_fallback_statement_bindings(statement_source);
             for (index, definition_node_id) in definitions.iter().enumerate() {
                 let Some((name, relative_offset)) = parsed_bindings.get(index) else {
                     continue;
@@ -152,7 +153,7 @@ impl Noir010BoolNotAssertedRule {
             let mut offset = 0usize;
 
             for line in file.text().lines() {
-                for (name, column) in find_let_bindings(line) {
+                for (name, column) in text_fallback_line_bindings(line) {
                     let Some(rhs) = assignment_rhs(line, &name, column) else {
                         continue;
                     };

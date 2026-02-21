@@ -7,8 +7,8 @@ use aztec_lint_core::policy::CORRECTNESS;
 use crate::Rule;
 use crate::engine::context::{RuleContext, SourceFile};
 use crate::noir_core::util::{
-    count_identifier_occurrences, extract_identifiers, find_let_bindings,
-    find_let_bindings_in_statement, is_ident_continue,
+    count_identifier_occurrences, extract_identifiers, is_ident_continue,
+    text_fallback_line_bindings, text_fallback_statement_bindings,
 };
 
 pub struct Noir001UnusedRule;
@@ -81,7 +81,7 @@ impl Noir001UnusedRule {
                 continue;
             };
 
-            let bindings = find_let_bindings_in_statement(statement_source);
+            let bindings = text_fallback_statement_bindings(statement_source);
             let Some(statement_start) = usize::try_from(span.start).ok() else {
                 continue;
             };
@@ -195,7 +195,7 @@ impl Noir001UnusedRule {
             let mut seen = BTreeSet::<(String, usize)>::new();
 
             for line in source.lines() {
-                for (name, column) in find_let_bindings(line) {
+                for (name, column) in text_fallback_line_bindings(line) {
                     if name.starts_with('_') {
                         continue;
                     }

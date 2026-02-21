@@ -56,7 +56,9 @@ pub fn count_identifier_occurrences(source: &str, identifier: &str) -> usize {
     count
 }
 
-pub fn find_let_bindings(line: &str) -> Vec<(String, usize)> {
+/// Text-only fallback helper.
+/// Correctness/soundness rules must not use this as a primary signal.
+pub fn text_fallback_line_bindings(line: &str) -> Vec<(String, usize)> {
     let tokens = extract_identifiers(line);
     let mut out = Vec::<(String, usize)>::new();
     let mut index = 0usize;
@@ -87,7 +89,9 @@ pub fn find_let_bindings(line: &str) -> Vec<(String, usize)> {
     out
 }
 
-pub fn find_let_bindings_in_statement(statement: &str) -> Vec<(String, usize)> {
+/// Text-only fallback helper.
+/// Correctness/soundness rules must not use this as a primary signal.
+pub fn text_fallback_statement_bindings(statement: &str) -> Vec<(String, usize)> {
     let Some(let_start) = find_keyword(statement, "let") else {
         return Vec::new();
     };
@@ -343,7 +347,9 @@ pub struct FunctionScope {
     pub body_end: usize,
 }
 
-pub fn find_function_scopes(source: &str) -> Vec<FunctionScope> {
+/// Text-only fallback helper.
+/// Correctness/soundness rules must not use this as a primary signal.
+pub fn text_fallback_function_scopes(source: &str) -> Vec<FunctionScope> {
     let bytes = source.as_bytes();
     let mut index = 0usize;
     let mut scopes = Vec::<FunctionScope>::new();
@@ -425,7 +431,8 @@ fn matching_brace_end(source: &str, open_index: usize) -> Option<usize> {
 mod tests {
     use super::{
         count_identifier_occurrences, extract_index_access_parts, extract_numeric_literals,
-        find_function_scopes, find_let_bindings, find_let_bindings_in_statement,
+        text_fallback_function_scopes, text_fallback_line_bindings,
+        text_fallback_statement_bindings,
     };
 
     #[test]
@@ -437,14 +444,14 @@ mod tests {
 
     #[test]
     fn finds_let_bindings() {
-        let bindings = find_let_bindings("let mut value = 2; let next = value + 1;");
+        let bindings = text_fallback_line_bindings("let mut value = 2; let next = value + 1;");
         assert_eq!(bindings[0].0, "value");
         assert_eq!(bindings[1].0, "next");
     }
 
     #[test]
     fn finds_let_bindings_in_statement_pattern() {
-        let bindings = find_let_bindings_in_statement("let (left, mut right) = pair;");
+        let bindings = text_fallback_statement_bindings("let (left, mut right) = pair;");
         assert_eq!(bindings.len(), 2);
         assert_eq!(bindings[0].0, "left");
         assert_eq!(bindings[1].0, "right");
@@ -452,14 +459,14 @@ mod tests {
 
     #[test]
     fn finds_let_bindings_in_statement_with_type_annotation() {
-        let bindings = find_let_bindings_in_statement("let value: Field = 42;");
+        let bindings = text_fallback_statement_bindings("let value: Field = 42;");
         assert_eq!(bindings.len(), 1);
         assert_eq!(bindings[0].0, "value");
     }
 
     #[test]
     fn finds_let_bindings_in_struct_pattern_without_type_labels() {
-        let bindings = find_let_bindings_in_statement("let Point { x, y: z } = point;");
+        let bindings = text_fallback_statement_bindings("let Point { x, y: z } = point;");
         assert_eq!(bindings.len(), 2);
         assert_eq!(bindings[0].0, "x");
         assert_eq!(bindings[1].0, "z");
@@ -467,7 +474,7 @@ mod tests {
 
     #[test]
     fn finds_let_bindings_in_enum_pattern() {
-        let bindings = find_let_bindings_in_statement("let Some(value) = maybe;");
+        let bindings = text_fallback_statement_bindings("let Some(value) = maybe;");
         assert_eq!(bindings.len(), 1);
         assert_eq!(bindings[0].0, "value");
     }
@@ -498,7 +505,7 @@ mod tests {
     #[test]
     fn extracts_function_scopes() {
         let source = "fn main() { if true { helper(); } } fn helper() {}";
-        let scopes = find_function_scopes(source);
+        let scopes = text_fallback_function_scopes(source);
         assert_eq!(scopes.len(), 2);
         assert_eq!(scopes[0].name, "main");
         assert_eq!(scopes[1].name, "helper");

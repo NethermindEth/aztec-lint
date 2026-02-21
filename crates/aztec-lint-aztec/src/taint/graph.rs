@@ -9,7 +9,7 @@ use aztec_lint_core::model::{
 
 use crate::detect::SourceUnit;
 use crate::patterns::{
-    contains_note_read, extract_call_name, is_contract_start, is_enqueue_call_name,
+    extract_call_name, fallback_contains_note_read, is_contract_start, is_enqueue_call_name,
     is_function_start, is_nullifier_call_name, is_public_sink_call_name, normalize_line,
 };
 
@@ -1033,7 +1033,7 @@ fn analyze_line(
             ),
         });
 
-        if contains_note_read(normalized, config) {
+        if fallback_contains_note_read(normalized, config) {
             builder.function.sources.push(TaintSource {
                 variable: name.clone(),
                 kind: TaintSourceKind::NoteRead,

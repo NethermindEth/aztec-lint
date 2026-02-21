@@ -7,11 +7,12 @@ use aztec_lint_core::model::{
 
 use crate::detect::SourceUnit;
 use crate::patterns::{
-    contains_note_read, contains_note_write, contains_nullifier_emit, contains_public_sink,
-    extract_call_name, extract_enqueue_target_function, has_attribute, has_external_kind,
-    is_contract_start, is_enqueue_call_name, is_function_start, is_note_getter_call_name,
-    is_note_write_call_name, is_nullifier_call_name, is_public_sink_call_name,
-    is_same_contract_enqueue, is_struct_start, looks_like_enqueue, normalize_line,
+    extract_call_name, extract_enqueue_target_function, fallback_contains_note_read,
+    fallback_contains_note_write, fallback_contains_nullifier_emit, fallback_contains_public_sink,
+    fallback_looks_like_enqueue, has_attribute, has_external_kind, is_contract_start,
+    is_enqueue_call_name, is_function_start, is_note_getter_call_name, is_note_write_call_name,
+    is_nullifier_call_name, is_public_sink_call_name, is_same_contract_enqueue, is_struct_start,
+    normalize_line,
 };
 
 pub fn build_aztec_model(sources: &[SourceUnit], config: &AztecConfig) -> AztecModel {
@@ -152,35 +153,35 @@ fn build_for_source(
             (current_contract.clone(), current_function.as_ref())
         {
             let span = line_span(source, offset, line.len());
-            if contains_note_read(line, config) {
+            if fallback_contains_note_read(line, config) {
                 fallback_note_read_sites.push(SemanticSite {
                     contract_id: contract_id.clone(),
                     function_symbol_id: function.scope.function_symbol_id.clone(),
                     span: span.clone(),
                 });
             }
-            if contains_note_write(line) {
+            if fallback_contains_note_write(line) {
                 fallback_note_write_sites.push(SemanticSite {
                     contract_id: contract_id.clone(),
                     function_symbol_id: function.scope.function_symbol_id.clone(),
                     span: span.clone(),
                 });
             }
-            if contains_nullifier_emit(line, config) {
+            if fallback_contains_nullifier_emit(line, config) {
                 fallback_nullifier_emit_sites.push(SemanticSite {
                     contract_id: contract_id.clone(),
                     function_symbol_id: function.scope.function_symbol_id.clone(),
                     span: span.clone(),
                 });
             }
-            if contains_public_sink(line) {
+            if fallback_contains_public_sink(line) {
                 fallback_public_sinks.push(SemanticSite {
                     contract_id: contract_id.clone(),
                     function_symbol_id: function.scope.function_symbol_id.clone(),
                     span: span.clone(),
                 });
             }
-            if looks_like_enqueue(line, config) {
+            if fallback_looks_like_enqueue(line, config) {
                 fallback_enqueue_sites.push(EnqueueSite {
                     source_contract_id: contract_id.clone(),
                     source_function_symbol_id: function.scope.function_symbol_id.clone(),

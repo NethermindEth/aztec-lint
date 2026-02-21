@@ -55,7 +55,9 @@ pub fn has_external_kind(line: &str, kind: &str, config: &AztecConfig) -> bool {
     raw.contains(&marker)
 }
 
-pub fn looks_like_enqueue(line: &str, config: &AztecConfig) -> bool {
+/// Text-only fallback helper.
+/// Semantic classification should be preferred whenever semantic data is available.
+pub fn fallback_looks_like_enqueue(line: &str, config: &AztecConfig) -> bool {
     let raw = normalize_line(line);
     raw.contains(&format!("self.{}(", config.enqueue_fn)) || raw.contains("enqueue_self")
 }
@@ -141,26 +143,34 @@ pub fn is_same_contract_enqueue(line: &str) -> bool {
     raw.contains("this_address") || raw.contains("enqueue_self")
 }
 
-pub fn contains_note_read(line: &str, config: &AztecConfig) -> bool {
+/// Text-only fallback helper.
+/// Semantic classification should be preferred whenever semantic data is available.
+pub fn fallback_contains_note_read(line: &str, config: &AztecConfig) -> bool {
     let raw = normalize_line(line);
     extract_call_names(raw)
         .iter()
         .any(|name| is_note_getter_call_name(name, config))
 }
 
-pub fn contains_note_write(line: &str) -> bool {
+/// Text-only fallback helper.
+/// Semantic classification should be preferred whenever semantic data is available.
+pub fn fallback_contains_note_write(line: &str) -> bool {
     let raw = normalize_line(line);
     raw.contains(".insert(") && (raw.contains("deliver(") || raw.contains("ONCHAIN_CONSTRAINED"))
 }
 
-pub fn contains_nullifier_emit(line: &str, config: &AztecConfig) -> bool {
+/// Text-only fallback helper.
+/// Semantic classification should be preferred whenever semantic data is available.
+pub fn fallback_contains_nullifier_emit(line: &str, config: &AztecConfig) -> bool {
     let raw = normalize_line(line);
     extract_call_names(raw)
         .iter()
         .any(|name| is_nullifier_call_name(name, config))
 }
 
-pub fn contains_public_sink(line: &str) -> bool {
+/// Text-only fallback helper.
+/// Semantic classification should be preferred whenever semantic data is available.
+pub fn fallback_contains_public_sink(line: &str) -> bool {
     let raw = normalize_line(line);
     extract_call_names(raw)
         .iter()
@@ -239,9 +249,9 @@ mod tests {
     use aztec_lint_core::config::AztecConfig;
 
     use super::{
-        contains_note_read, contains_nullifier_emit, contains_public_sink, extract_call_name,
-        extract_enqueue_target_function, has_external_kind, is_public_sink_call_name,
-        is_same_contract_enqueue, is_struct_start,
+        extract_call_name, extract_enqueue_target_function, fallback_contains_note_read,
+        fallback_contains_nullifier_emit, fallback_contains_public_sink, has_external_kind,
+        is_public_sink_call_name, is_same_contract_enqueue, is_struct_start,
     };
 
     #[test]
@@ -296,14 +306,16 @@ mod tests {
     #[test]
     fn detects_calls_when_target_call_is_not_first_on_line() {
         let config = AztecConfig::default();
-        assert!(contains_note_read(
+        assert!(fallback_contains_note_read(
             "let notes = wrapper(self.notes.get_notes());",
             &config
         ));
-        assert!(contains_nullifier_emit(
+        assert!(fallback_contains_nullifier_emit(
             "let hash = wrapper(self.emit_nullifier(value));",
             &config
         ));
-        assert!(contains_public_sink("let x = wrapper(emit(value));"));
+        assert!(fallback_contains_public_sink(
+            "let x = wrapper(emit(value));"
+        ));
     }
 }

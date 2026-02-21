@@ -7,7 +7,7 @@ use aztec_lint_core::policy::MAINTAINABILITY;
 
 use crate::Rule;
 use crate::engine::context::{RuleContext, SourceFile};
-use crate::noir_core::util::find_function_scopes;
+use crate::noir_core::util::text_fallback_function_scopes;
 
 pub struct Noir110ComplexityRule;
 
@@ -79,7 +79,7 @@ impl Noir110ComplexityRule {
     fn run_text_fallback(&self, ctx: &RuleContext<'_>, out: &mut Vec<Diagnostic>) {
         for file in ctx.files() {
             let source = file.text();
-            for function in find_function_scopes(source) {
+            for function in text_fallback_function_scopes(source) {
                 let body = &source[function.body_start..function.body_end];
                 let complexity = compute_complexity_score(body);
                 if complexity <= COMPLEXITY_LIMIT {

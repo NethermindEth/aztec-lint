@@ -7,8 +7,8 @@ use aztec_lint_core::policy::CORRECTNESS;
 use crate::Rule;
 use crate::engine::context::{RuleContext, SourceFile};
 use crate::noir_core::util::{
-    count_identifier_occurrences, extract_identifiers, find_let_bindings,
-    find_let_bindings_in_statement, source_slice,
+    count_identifier_occurrences, extract_identifiers, source_slice, text_fallback_line_bindings,
+    text_fallback_statement_bindings,
 };
 
 pub struct Noir030UnconstrainedInfluenceRule;
@@ -175,7 +175,7 @@ impl Noir030UnconstrainedInfluenceRule {
             let mut offset = 0usize;
 
             for line in file.text().lines() {
-                for (name, column) in find_let_bindings(line) {
+                for (name, column) in text_fallback_line_bindings(line) {
                     let Some(rhs) = assignment_rhs(line, &name, column) else {
                         continue;
                     };
@@ -288,7 +288,7 @@ fn function_bindings(
         let Some(statement_start) = usize::try_from(statement.span.start).ok() else {
             continue;
         };
-        let names = find_let_bindings_in_statement(statement_source);
+        let names = text_fallback_statement_bindings(statement_source);
 
         for (index, definition_node_id) in definitions.iter().enumerate() {
             let Some((name, relative_start)) = names.get(index) else {
