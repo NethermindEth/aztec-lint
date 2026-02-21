@@ -1,0 +1,201 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v.*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.1
+          components: clippy,rustfmt
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Validate tag format and version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG="${GITHUB_REF_NAME}"
+          if [[ ! "${TAG}" =~ ^v\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag must match format v.X.Y.Z (example: v.0.1.0), got: ${TAG}" >&2
+            exit 1
+          fi
+
+          VERSION="${TAG#v.}"
+          WORKSPACE_VERSION="$(awk '
+            $0 == "[workspace.package]" { in_section = 1; next }
+            /^\[/ && in_section { in_section = 0 }
+            in_section && $1 == "version" {
+              gsub(/"/, "", $3)
+              print $3
+              exit
+            }
+          ' Cargo.toml)"
+
+          if [[ -z "${WORKSPACE_VERSION}" ]]; then
+            echo "Unable to read workspace.package.version from Cargo.toml" >&2
+            exit 1
+          fi
+
+          if [[ "${WORKSPACE_VERSION}" != "${VERSION}" ]]; then
+            echo "Tag version (${VERSION}) does not match workspace version (${WORKSPACE_VERSION})" >&2
+            exit 1
+          fi
+
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build release notes from CHANGELOG.md
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="${{ steps.version.outputs.version }}"
+
+          extract_section() {
+            local header="$1"
+            awk -v header="$header" '
+              $0 == header { capture = 1; next }
+              /^## / && capture { exit }
+              capture { print }
+            ' CHANGELOG.md
+          }
+
+          section="$(extract_section "## [${VERSION}]")"
+          fallback="false"
+
+          if [[ -z "${section//[[:space:]]/}" ]]; then
+            section="$(extract_section "## ${VERSION}")"
+          fi
+
+          if [[ -z "${section//[[:space:]]/}" ]]; then
+            section="$(extract_section "## [Unreleased]")"
+            fallback="true"
+          fi
+
+          if [[ -z "${section//[[:space:]]/}" ]]; then
+            echo "Unable to extract release notes from CHANGELOG.md" >&2
+            exit 1
+          fi
+
+          {
+            echo "# aztec-lint ${VERSION}"
+            echo
+            if [[ "${fallback}" == "true" ]]; then
+              echo "_Sourced from the [Unreleased] section in CHANGELOG.md._"
+              echo
+            fi
+            printf '%s\n' "${section}"
+          } > RELEASE_NOTES.md
+
+      - name: Verify quality and tests
+        run: |
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+          cargo test --workspace --all-targets --locked
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: RELEASE_NOTES.md
+
+  build-binaries:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os: linux
+            arch: x86_64
+          - runner: macos-13
+            os: macos
+            arch: x86_64
+          - runner: macos-14
+            os: macos
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.1
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build aztec-lint binary
+        run: cargo build --release -p aztec-lint-cli --bin aztec-lint --locked
+
+      - name: Package binary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PACKAGE_NAME="aztec-lint-${{ matrix.os }}-${{ matrix.arch }}"
+          mkdir -p dist/${PACKAGE_NAME}
+          cp target/release/aztec-lint dist/${PACKAGE_NAME}/aztec-lint
+          tar -C dist -czf "dist/${PACKAGE_NAME}.tar.gz" "${PACKAGE_NAME}"
+
+      - name: Upload packaged binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: aztec-lint-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/aztec-lint-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+
+  github-release:
+    needs:
+      - validate
+      - build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: dist
+
+      - name: Download packaged binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: aztec-lint-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum aztec-lint-*.tar.gz > checksums.txt
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          body_path: dist/RELEASE_NOTES.md
+          files: |
+            dist/aztec-lint-linux-x86_64.tar.gz
+            dist/aztec-lint-macos-x86_64.tar.gz
+            dist/aztec-lint-macos-aarch64.tar.gz
+            dist/checksums.txt

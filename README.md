@@ -22,6 +22,29 @@ This repository contains:
 - `crates/aztec-lint-aztec`: Aztec semantic modeling helpers.
 - `crates/aztec-lint-sdk`: plugin-facing API surface.
 
+## Install (curl)
+
+Install latest release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/NethermindEth/aztec-lint/main/scripts/install.sh | bash
+```
+
+Install a pinned release tag:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/NethermindEth/aztec-lint/main/scripts/install.sh | bash -s -- v.0.1.0
+```
+
+Default install location is `~/.local/bin/aztec-lint`.  
+Override with `AZTEC_LINT_INSTALL_DIR=/your/bin/path`.
+
+Published binary targets:
+
+- `linux-x86_64`
+- `macos-x86_64`
+- `macos-aarch64`
+
 ## Quick Start
 
 Prerequisites:
