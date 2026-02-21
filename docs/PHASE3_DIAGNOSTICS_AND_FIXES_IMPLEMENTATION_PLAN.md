@@ -114,7 +114,7 @@ Failure modes to watch:
 - Breaking downstream consumers by removing/renaming legacy fields too early.
 - Duplication drift when legacy and v2 fields disagree.
 
-## Step 3: Upgrade fix engine to transactional grouped edit application
+## Step 3: Upgrade fix engine to transactional grouped edit application **COMPLETED**
 
 Files:
 - `crates/aztec-lint-core/src/fix/apply.rs`

@@ -21,6 +21,11 @@ Entries are grouped by released version.
 - Changed SARIF output to emit grouped fixes (one SARIF fix per suggestion group, with multiple replacements when applicable) and updated SARIF golden fixtures accordingly.
 - Fixed SARIF mixed-mode compatibility so diagnostics that contain both `suggestion_groups` and additional legacy `structured_suggestions` preserve non-duplicated legacy structured fixes instead of dropping them.
 - Changed text rendering and fix candidate extraction to support diagnostics that provide grouped suggestions without explicit legacy fields.
+- Changed fix application in `aztec-lint-core` from single-edit candidates to grouped candidates with transactional all-or-none application semantics per group.
+- Added grouped fix metadata (`group_id`, `provenance`, `edit_count`) and new group-level skip reasons (`mixed_file_group`, `group_overlap`, `invalid_group_span`, `group_noop`) to fix reports.
+- Changed CLI `fix` text output to include deterministic grouped fix event lines plus skipped-reason breakdown counters for CI/editor consumption.
+- Added grouped-fix regression coverage for atomic rollback, same-group overlap rejection, deterministic overlap winner selection, idempotence, and mixed-file group rejection.
+- Fixed fix-report visibility for non-machine suggestions so grouped/legacy structured suggestions are now counted and reported as `unsafe_fix` skips instead of being silently excluded from candidate accounting.
 
 ## [0.3.0]
 
