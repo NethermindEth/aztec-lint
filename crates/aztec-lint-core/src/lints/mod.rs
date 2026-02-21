@@ -405,13 +405,12 @@ fn validate_catalog_integrity(catalog: &[LintSpec]) -> Result<(), String> {
         }
         if let LintLifecycleState::Deprecated { since, .. }
         | LintLifecycleState::Removed { since, .. } = lint.lifecycle
+            && !is_semver_like(since)
         {
-            if !is_semver_like(since) {
-                return Err(format!(
-                    "lint '{}' has invalid lifecycle since '{}'",
-                    lint.id, since
-                ));
-            }
+            return Err(format!(
+                "lint '{}' has invalid lifecycle since '{}'",
+                lint.id, since
+            ));
         }
     }
 

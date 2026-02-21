@@ -59,7 +59,7 @@ impl RuleEngine {
         let mut diagnostics = Vec::<Diagnostic>::new();
 
         for registration in &self.registry {
-            let Some(level) = effective_levels.get(registration.metadata.id).copied() else {
+            let Some(level) = effective_levels.get(registration.lint.id).copied() else {
                 continue;
             };
             if level == RuleLevel::Allow {
@@ -72,13 +72,13 @@ impl RuleEngine {
             registration.rule.run(ctx, &mut rule_diagnostics);
 
             for diagnostic in &mut rule_diagnostics {
-                diagnostic.rule_id = registration.metadata.id.to_string();
+                diagnostic.rule_id = registration.lint.id.to_string();
                 diagnostic.severity = level_to_severity(level);
-                diagnostic.confidence = registration.metadata.confidence;
-                diagnostic.policy = registration.metadata.policy.to_string();
+                diagnostic.confidence = registration.lint.confidence;
+                diagnostic.policy = registration.lint.policy.to_string();
 
                 if let Some(reason) =
-                    ctx.suppression_reason(registration.metadata.id, &diagnostic.primary_span)
+                    ctx.suppression_reason(registration.lint.id, &diagnostic.primary_span)
                 {
                     diagnostic.suppressed = true;
                     diagnostic.suppression_reason = Some(reason.to_string());
@@ -97,46 +97,46 @@ fn validate_registry_metadata(registry: &[RuleRegistration]) {
     let mut seen_rule_ids = BTreeSet::<&'static str>::new();
 
     for registration in registry {
-        let metadata = &registration.metadata;
-        let normalized_rule_id = metadata.id.trim().to_ascii_uppercase();
+        let lint = registration.lint;
+        let normalized_rule_id = lint.id.trim().to_ascii_uppercase();
         assert!(
             !normalized_rule_id.is_empty(),
             "rule metadata id cannot be empty"
         );
         assert_eq!(
-            metadata.id, normalized_rule_id,
+            lint.id, normalized_rule_id,
             "rule metadata id '{}' must be canonical uppercase",
-            metadata.id
+            lint.id
         );
         assert!(
             normalized_rule_id
                 .chars()
                 .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_'),
             "rule metadata id '{}' contains unsupported characters",
-            metadata.id
+            lint.id
         );
         assert!(
-            seen_rule_ids.insert(metadata.id),
+            seen_rule_ids.insert(lint.id),
             "duplicate rule metadata id '{}'",
-            metadata.id
+            lint.id
         );
 
         assert!(
-            is_pack_name_canonical(metadata.pack),
+            is_pack_name_canonical(lint.pack),
             "rule metadata pack '{}' must be lowercase snake_case",
-            metadata.pack
+            lint.pack
         );
         assert!(
-            aztec_lint_core::policy::is_supported_policy(metadata.policy),
+            aztec_lint_core::policy::is_supported_policy(lint.policy),
             "rule metadata policy '{}' is unsupported",
-            metadata.policy
+            lint.policy
         );
         assert_eq!(
             registration.rule.id(),
-            metadata.id,
+            lint.id,
             "rule implementation id '{}' does not match metadata id '{}'",
             registration.rule.id(),
-            metadata.id
+            lint.id
         );
     }
 }
@@ -145,39 +145,24 @@ fn validate_registry_integrity_with_catalog(registry: &[RuleRegistration]) {
     let mut seen_rule_ids = BTreeSet::<&'static str>::new();
 
     for registration in registry {
-        let metadata = &registration.metadata;
-        seen_rule_ids.insert(metadata.id);
+        let lint = registration.lint;
+        seen_rule_ids.insert(lint.id);
 
-        let canonical = find_lint(metadata.id).unwrap_or_else(|| {
+        let canonical = find_lint(lint.id).unwrap_or_else(|| {
             panic!(
                 "runtime rule '{}' is missing from canonical lint catalog",
-                metadata.id
+                lint.id
             )
         });
         assert!(
             canonical.lifecycle.is_active(),
             "runtime rule '{}' maps to non-active canonical lint metadata",
-            metadata.id
+            lint.id
         );
         assert_eq!(
-            metadata.pack, canonical.pack,
-            "runtime rule '{}' pack '{}' diverges from canonical pack '{}'",
-            metadata.id, metadata.pack, canonical.pack
-        );
-        assert_eq!(
-            metadata.policy, canonical.policy,
-            "runtime rule '{}' policy '{}' diverges from canonical policy '{}'",
-            metadata.id, metadata.policy, canonical.policy
-        );
-        assert_eq!(
-            metadata.default_level, canonical.default_level,
-            "runtime rule '{}' default level '{}' diverges from canonical default level '{}'",
-            metadata.id, metadata.default_level, canonical.default_level
-        );
-        assert_eq!(
-            metadata.confidence, canonical.confidence,
-            "runtime rule '{}' confidence '{:?}' diverges from canonical confidence '{:?}'",
-            metadata.id, metadata.confidence, canonical.confidence
+            lint, canonical,
+            "runtime rule '{}' metadata diverges from canonical lint metadata",
+            lint.id
         );
     }
 
@@ -212,11 +197,12 @@ mod tests {
 
     use aztec_lint_core::config::RuleLevel;
     use aztec_lint_core::diagnostics::Confidence;
+    use aztec_lint_core::lints::{LintCategory, LintDocs, LintLifecycleState, LintSpec, find_lint};
     use aztec_lint_core::model::ProjectModel;
 
     use crate::Rule;
     use crate::engine::context::RuleContext;
-    use crate::engine::registry::{RuleMetadata, RuleRegistration, full_registry};
+    use crate::engine::registry::{RuleRegistration, full_registry};
 
     use super::{RuleEngine, validate_registry_integrity_with_catalog};
 
@@ -259,14 +245,9 @@ fn main() {
             )],
         );
 
+        let lint = find_lint("NOIR100").expect("NOIR100 should be in canonical catalog");
         let engine = RuleEngine::with_registry(vec![RuleRegistration {
-            metadata: RuleMetadata {
-                id: "NOIR100",
-                pack: "noir_core",
-                policy: aztec_lint_core::policy::MAINTAINABILITY,
-                default_level: RuleLevel::Warn,
-                confidence: aztec_lint_core::diagnostics::Confidence::Low,
-            },
+            lint,
             rule: Box::new(TestRule),
         }]);
 
@@ -299,20 +280,27 @@ fn main() {
         }
     }
 
-    fn test_registration(
-        metadata_id: &'static str,
+    fn leak_test_lint(
+        id: &'static str,
         pack: &'static str,
         policy: &'static str,
-        impl_id: &'static str,
-    ) -> RuleRegistration {
+    ) -> &'static LintSpec {
+        Box::leak(Box::new(LintSpec {
+            id,
+            pack,
+            policy,
+            category: LintCategory::Correctness,
+            introduced_in: "0.1.0",
+            default_level: RuleLevel::Warn,
+            confidence: Confidence::Medium,
+            lifecycle: LintLifecycleState::Active,
+            docs: test_docs(),
+        }))
+    }
+
+    fn test_registration(lint: &'static LintSpec, impl_id: &'static str) -> RuleRegistration {
         RuleRegistration {
-            metadata: RuleMetadata {
-                id: metadata_id,
-                pack,
-                policy,
-                default_level: RuleLevel::Warn,
-                confidence: Confidence::Medium,
-            },
+            lint,
             rule: Box::new(StaticRule { id: impl_id }),
         }
     }
@@ -320,12 +308,8 @@ fn main() {
     #[test]
     fn engine_rejects_non_canonical_rule_id_metadata() {
         let result = catch_unwind(AssertUnwindSafe(|| {
-            RuleEngine::with_registry(vec![test_registration(
-                "noir100",
-                "noir_core",
-                aztec_lint_core::policy::CORRECTNESS,
-                "noir100",
-            )]);
+            let lint = leak_test_lint("noir100", "noir_core", aztec_lint_core::policy::CORRECTNESS);
+            RuleEngine::with_registry(vec![test_registration(lint, "noir100")]);
         }));
         assert!(result.is_err());
     }
@@ -333,12 +317,8 @@ fn main() {
     #[test]
     fn engine_rejects_unsupported_policy_metadata() {
         let result = catch_unwind(AssertUnwindSafe(|| {
-            RuleEngine::with_registry(vec![test_registration(
-                "NOIR100",
-                "noir_core",
-                "non_deterministic",
-                "NOIR100",
-            )]);
+            let lint = leak_test_lint("NOIR100", "noir_core", "non_deterministic");
+            RuleEngine::with_registry(vec![test_registration(lint, "NOIR100")]);
         }));
         assert!(result.is_err());
     }
@@ -346,12 +326,8 @@ fn main() {
     #[test]
     fn engine_rejects_non_canonical_pack_metadata() {
         let result = catch_unwind(AssertUnwindSafe(|| {
-            RuleEngine::with_registry(vec![test_registration(
-                "NOIR100",
-                "NoirCore",
-                aztec_lint_core::policy::CORRECTNESS,
-                "NOIR100",
-            )]);
+            let lint = leak_test_lint("NOIR100", "NoirCore", aztec_lint_core::policy::CORRECTNESS);
+            RuleEngine::with_registry(vec![test_registration(lint, "NOIR100")]);
         }));
         assert!(result.is_err());
     }
@@ -359,12 +335,8 @@ fn main() {
     #[test]
     fn engine_rejects_rule_and_metadata_id_mismatch() {
         let result = catch_unwind(AssertUnwindSafe(|| {
-            RuleEngine::with_registry(vec![test_registration(
-                "NOIR100",
-                "noir_core",
-                aztec_lint_core::policy::CORRECTNESS,
-                "NOIR101",
-            )]);
+            let lint = leak_test_lint("NOIR100", "noir_core", aztec_lint_core::policy::CORRECTNESS);
+            RuleEngine::with_registry(vec![test_registration(lint, "NOIR101")]);
         }));
         assert!(result.is_err());
     }
@@ -372,19 +344,13 @@ fn main() {
     #[test]
     fn engine_rejects_duplicate_rule_ids() {
         let result = catch_unwind(AssertUnwindSafe(|| {
+            let lint_a =
+                leak_test_lint("NOIR100", "noir_core", aztec_lint_core::policy::CORRECTNESS);
+            let lint_b =
+                leak_test_lint("NOIR100", "noir_core", aztec_lint_core::policy::CORRECTNESS);
             RuleEngine::with_registry(vec![
-                test_registration(
-                    "NOIR100",
-                    "noir_core",
-                    aztec_lint_core::policy::CORRECTNESS,
-                    "NOIR100",
-                ),
-                test_registration(
-                    "NOIR100",
-                    "noir_core",
-                    aztec_lint_core::policy::CORRECTNESS,
-                    "NOIR100",
-                ),
+                test_registration(lint_a, "NOIR100"),
+                test_registration(lint_b, "NOIR100"),
             ]);
         }));
         assert!(result.is_err());
@@ -398,12 +364,8 @@ fn main() {
     #[test]
     fn integrity_check_rejects_rule_missing_from_catalog() {
         let result = catch_unwind(AssertUnwindSafe(|| {
-            validate_registry_integrity_with_catalog(&[test_registration(
-                "NOIR999",
-                "noir_core",
-                aztec_lint_core::policy::CORRECTNESS,
-                "NOIR999",
-            )]);
+            let lint = leak_test_lint("NOIR999", "noir_core", aztec_lint_core::policy::CORRECTNESS);
+            validate_registry_integrity_with_catalog(&[test_registration(lint, "NOIR999")]);
         }));
         assert!(result.is_err());
     }
@@ -443,25 +405,16 @@ fn main() {
             vec![("src/main.nr".to_string(), "fn main() {}\n".to_string())],
         );
 
+        let lint_noir100 = find_lint("NOIR100").expect("NOIR100 should be in canonical catalog");
+        let lint_noir101 =
+            leak_test_lint("NOIR101", "noir_core", aztec_lint_core::policy::CORRECTNESS);
         let registry = vec![
             RuleRegistration {
-                metadata: RuleMetadata {
-                    id: "NOIR100",
-                    pack: "noir_core",
-                    policy: aztec_lint_core::policy::MAINTAINABILITY,
-                    default_level: RuleLevel::Warn,
-                    confidence: Confidence::Low,
-                },
+                lint: lint_noir100,
                 rule: Box::new(TestRule),
             },
             RuleRegistration {
-                metadata: RuleMetadata {
-                    id: "NOIR101",
-                    pack: "noir_core",
-                    policy: aztec_lint_core::policy::CORRECTNESS,
-                    default_level: RuleLevel::Warn,
-                    confidence: Confidence::Medium,
-                },
+                lint: lint_noir101,
                 rule: Box::new(MutatingRule { id: "NOIR101" }),
             },
         ];
@@ -481,5 +434,17 @@ fn main() {
             .collect::<Vec<_>>();
         ids.sort_unstable();
         assert_eq!(ids, vec!["NOIR100", "NOIR101"]);
+    }
+
+    const fn test_docs() -> LintDocs {
+        LintDocs {
+            summary: "summary",
+            what_it_does: "what it does",
+            why_this_matters: "why this matters",
+            known_limitations: "known limitations",
+            how_to_fix: "how to fix",
+            examples: &["example"],
+            references: &["docs/reference.md"],
+        }
     }
 }

@@ -1,6 +1,4 @@
-use aztec_lint_core::config::RuleLevel;
-use aztec_lint_core::diagnostics::Confidence;
-use aztec_lint_core::policy::{CORRECTNESS, MAINTAINABILITY, PRIVACY, PROTOCOL, SOUNDNESS};
+use aztec_lint_core::lints::{LintSpec, find_lint};
 
 use crate::Rule;
 use crate::aztec::{
@@ -20,176 +18,44 @@ use crate::noir_core::{
     noir120_nesting::Noir120NestingRule,
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct RuleMetadata {
-    pub id: &'static str,
-    pub pack: &'static str,
-    pub policy: &'static str,
-    pub default_level: RuleLevel,
-    pub confidence: Confidence,
-}
-
 pub struct RuleRegistration {
-    pub metadata: RuleMetadata,
+    pub lint: &'static LintSpec,
     pub rule: Box<dyn Rule>,
 }
 
 pub fn full_registry() -> Vec<RuleRegistration> {
-    let mut registry = vec![
-        RuleRegistration {
-            metadata: RuleMetadata {
-                id: "NOIR001",
-                pack: "noir_core",
-                policy: CORRECTNESS,
-                default_level: RuleLevel::Deny,
-                confidence: Confidence::High,
-            },
-            rule: Box::new(Noir001UnusedRule),
-        },
-        RuleRegistration {
-            metadata: RuleMetadata {
-                id: "NOIR002",
-                pack: "noir_core",
-                policy: CORRECTNESS,
-                default_level: RuleLevel::Deny,
-                confidence: Confidence::Medium,
-            },
-            rule: Box::new(Noir002ShadowingRule),
-        },
-        RuleRegistration {
-            metadata: RuleMetadata {
-                id: "NOIR010",
-                pack: "noir_core",
-                policy: CORRECTNESS,
-                default_level: RuleLevel::Deny,
-                confidence: Confidence::High,
-            },
-            rule: Box::new(Noir010BoolNotAssertedRule),
-        },
-        RuleRegistration {
-            metadata: RuleMetadata {
-                id: "NOIR020",
-                pack: "noir_core",
-                policy: CORRECTNESS,
-                default_level: RuleLevel::Deny,
-                confidence: Confidence::Medium,
-            },
-            rule: Box::new(Noir020BoundsRule),
-        },
-        RuleRegistration {
-            metadata: RuleMetadata {
-                id: "NOIR030",
-                pack: "noir_core",
-                policy: CORRECTNESS,
-                default_level: RuleLevel::Deny,
-                confidence: Confidence::Medium,
-            },
-            rule: Box::new(Noir030UnconstrainedInfluenceRule),
-        },
-        RuleRegistration {
-            metadata: RuleMetadata {
-                id: "NOIR100",
-                pack: "noir_core",
-                policy: MAINTAINABILITY,
-                default_level: RuleLevel::Warn,
-                confidence: Confidence::Low,
-            },
-            rule: Box::new(Noir100MagicNumbersRule),
-        },
-        RuleRegistration {
-            metadata: RuleMetadata {
-                id: "NOIR110",
-                pack: "noir_core",
-                policy: MAINTAINABILITY,
-                default_level: RuleLevel::Warn,
-                confidence: Confidence::Low,
-            },
-            rule: Box::new(Noir110ComplexityRule),
-        },
-        RuleRegistration {
-            metadata: RuleMetadata {
-                id: "NOIR120",
-                pack: "noir_core",
-                policy: MAINTAINABILITY,
-                default_level: RuleLevel::Warn,
-                confidence: Confidence::Low,
-            },
-            rule: Box::new(Noir120NestingRule),
-        },
-    ];
+    vec![
+        register(Box::new(Noir001UnusedRule)),
+        register(Box::new(Noir002ShadowingRule)),
+        register(Box::new(Noir010BoolNotAssertedRule)),
+        register(Box::new(Noir020BoundsRule)),
+        register(Box::new(Noir030UnconstrainedInfluenceRule)),
+        register(Box::new(Noir100MagicNumbersRule)),
+        register(Box::new(Noir110ComplexityRule)),
+        register(Box::new(Noir120NestingRule)),
+        register(Box::new(Aztec001PrivacyLeakRule)),
+        register(Box::new(Aztec002SecretBranchingRule)),
+        register(Box::new(Aztec003PrivateDebugLogRule)),
+        register(Box::new(Aztec010OnlySelfEnqueueRule)),
+        register(Box::new(Aztec020UnconstrainedInfluenceRule)),
+        register(Box::new(Aztec021RangeBeforeHashRule)),
+        register(Box::new(Aztec022MerkleWitnessRule)),
+    ]
+}
 
-    registry.extend([
-        RuleRegistration {
-            metadata: RuleMetadata {
-                id: "AZTEC001",
-                pack: "aztec_pack",
-                policy: PRIVACY,
-                default_level: RuleLevel::Deny,
-                confidence: Confidence::Medium,
-            },
-            rule: Box::new(Aztec001PrivacyLeakRule),
-        },
-        RuleRegistration {
-            metadata: RuleMetadata {
-                id: "AZTEC002",
-                pack: "aztec_pack",
-                policy: PRIVACY,
-                default_level: RuleLevel::Deny,
-                confidence: Confidence::Low,
-            },
-            rule: Box::new(Aztec002SecretBranchingRule),
-        },
-        RuleRegistration {
-            metadata: RuleMetadata {
-                id: "AZTEC003",
-                pack: "aztec_pack",
-                policy: PRIVACY,
-                default_level: RuleLevel::Deny,
-                confidence: Confidence::Medium,
-            },
-            rule: Box::new(Aztec003PrivateDebugLogRule),
-        },
-        RuleRegistration {
-            metadata: RuleMetadata {
-                id: "AZTEC010",
-                pack: "aztec_pack",
-                policy: PROTOCOL,
-                default_level: RuleLevel::Deny,
-                confidence: Confidence::High,
-            },
-            rule: Box::new(Aztec010OnlySelfEnqueueRule),
-        },
-        RuleRegistration {
-            metadata: RuleMetadata {
-                id: "AZTEC020",
-                pack: "aztec_pack",
-                policy: SOUNDNESS,
-                default_level: RuleLevel::Deny,
-                confidence: Confidence::High,
-            },
-            rule: Box::new(Aztec020UnconstrainedInfluenceRule),
-        },
-        RuleRegistration {
-            metadata: RuleMetadata {
-                id: "AZTEC021",
-                pack: "aztec_pack",
-                policy: SOUNDNESS,
-                default_level: RuleLevel::Deny,
-                confidence: Confidence::Medium,
-            },
-            rule: Box::new(Aztec021RangeBeforeHashRule),
-        },
-        RuleRegistration {
-            metadata: RuleMetadata {
-                id: "AZTEC022",
-                pack: "aztec_pack",
-                policy: SOUNDNESS,
-                default_level: RuleLevel::Deny,
-                confidence: Confidence::Medium,
-            },
-            rule: Box::new(Aztec022MerkleWitnessRule),
-        },
-    ]);
+fn register(rule: Box<dyn Rule>) -> RuleRegistration {
+    let rule_id = rule.id();
+    let lint = find_lint(rule_id).unwrap_or_else(|| {
+        panic!(
+            "runtime rule '{}' is missing from canonical lint catalog",
+            rule_id
+        )
+    });
+    assert!(
+        lint.lifecycle.is_active(),
+        "runtime rule '{}' maps to non-active canonical lint metadata",
+        rule_id
+    );
 
-    registry
+    RuleRegistration { lint, rule }
 }
