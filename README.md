@@ -89,6 +89,8 @@ Use `aztec-lint --help` for full CLI help.
 | `aztec-lint fix [PATH] --dry-run` | Preview fix candidates without file writes (`PATH` defaults to `.`). | `aztec-lint fix --dry-run` |
 | `aztec-lint rules` | List active lint catalog with summary metadata. | `aztec-lint rules` |
 | `aztec-lint explain <RULE_ID>` | Show full documentation for one lint. | `aztec-lint explain AZTEC010` |
+| `aztec-lint update` | Self-update to the latest GitHub release artifact. | `aztec-lint update` |
+| `aztec-lint update --version <VERSION>` | Self-update to a specific release (`vX.Y.Z` or `X.Y.Z`). | `aztec-lint update --version v0.1.0` |
 | `aztec-lint aztec scan [PATH]` | Run check using the `aztec` profile shortcut (`PATH` defaults to `.`). | `aztec-lint aztec scan` |
 
 Common lint flags (supported by `check`, `fix`, default mode, and `aztec scan`):
