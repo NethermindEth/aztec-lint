@@ -33,7 +33,7 @@ curl -fsSL https://raw.githubusercontent.com/NethermindEth/aztec-lint/main/scrip
 Install a pinned release tag:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NethermindEth/aztec-lint/main/scripts/install.sh | bash -s -- v.0.1.0
+curl -fsSL https://raw.githubusercontent.com/NethermindEth/aztec-lint/main/scripts/install.sh | bash -s -- v0.1.0
 ```
 
 Default install location is `~/.local/bin/aztec-lint`.  

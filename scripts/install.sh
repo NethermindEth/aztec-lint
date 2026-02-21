@@ -41,17 +41,17 @@ resolve_tag() {
     return
   fi
 
-  if [[ "$VERSION_INPUT" =~ ^v\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  if [[ "$VERSION_INPUT" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     printf '%s' "$VERSION_INPUT"
     return
   fi
 
   if [[ "$VERSION_INPUT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    printf 'v.%s' "$VERSION_INPUT"
+    printf 'v%s' "$VERSION_INPUT"
     return
   fi
 
-  fail "version must be 'latest', 'v.X.Y.Z', or 'X.Y.Z'"
+  fail "version must be 'latest', 'vX.Y.Z', or 'X.Y.Z'"
 }
 
 verify_checksum() {
