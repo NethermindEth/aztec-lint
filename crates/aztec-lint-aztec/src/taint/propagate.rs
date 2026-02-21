@@ -43,63 +43,46 @@ pub fn analyze_with_options(graph: &DefUseGraph, options: &TaintOptions) -> Tain
     let mut analysis = TaintAnalysis::default();
 
     for function in &graph.functions {
-        let mut tainted = function
-            .sources
-            .iter()
-            .map(|source| (source.variable.clone(), source.kind))
-            .collect::<BTreeMap<_, _>>();
-        let mut changed = true;
-        let mut steps = 0usize;
-
+        let adjacency = build_adjacency(function);
         let step_limit = options.max_iterations.max(function.definitions.len() + 1);
-        while changed && steps < step_limit {
-            changed = false;
-            steps += 1;
-
-            for definition in &function.definitions {
-                if tainted.contains_key(&definition.variable) {
-                    continue;
-                }
-                let inherited = definition
-                    .dependencies
-                    .iter()
-                    .find_map(|dependency| tainted.get(dependency).copied());
-                if let Some(source_kind) = inherited {
-                    tainted.insert(definition.variable.clone(), source_kind);
-                    changed = true;
-                }
-            }
-        }
+        let mut tainted_nodes = BTreeSet::<String>::new();
 
         if options.inter_procedural {
             // Reserved for future inter-procedural propagation. Intentionally not enabled in v1.
         }
 
-        analysis.tainted_variables.insert(
-            function.function_symbol_id.clone(),
-            tainted.keys().cloned().collect(),
-        );
+        for source in &function.sources {
+            let reachable = reachable_from_source(&source.variable, &adjacency, step_limit);
+            tainted_nodes.extend(reachable.iter().cloned());
 
-        let guard_offsets =
-            function
-                .guards
-                .iter()
-                .fold(BTreeMap::<String, u32>::new(), |mut map, guard| {
-                    map.entry(guard.variable.clone())
-                        .and_modify(|existing| *existing = (*existing).min(guard.span.start))
-                        .or_insert(guard.span.start);
-                    map
+            for sink in &function.sinks {
+                if reachable.is_disjoint(&sink.identifiers) {
+                    continue;
+                }
+                if sink.kind == TaintSinkKind::HashOrSerialize
+                    && is_source_guarded_before_sink(
+                        &source.variable,
+                        sink,
+                        &function.guards,
+                        &function.dominators,
+                    )
+                {
+                    continue;
+                }
+                analysis.flows.push(TaintFlow {
+                    function_symbol_id: function.function_symbol_id.clone(),
+                    variable: source.variable.clone(),
+                    source_kind: source.kind,
+                    sink_kind: sink.kind,
+                    sink_span: sink.span.clone(),
+                    sink_line: sink.line.clone(),
                 });
-
-        for sink in &function.sinks {
-            record_sink_flows(
-                &mut analysis,
-                &function.function_symbol_id,
-                &tainted,
-                &guard_offsets,
-                sink,
-            );
+            }
         }
+
+        analysis
+            .tainted_variables
+            .insert(function.function_symbol_id.clone(), tainted_nodes);
     }
 
     analysis.flows.sort_by_key(|flow| {
@@ -116,48 +99,82 @@ pub fn analyze_with_options(graph: &DefUseGraph, options: &TaintOptions) -> Tain
     analysis
 }
 
-fn record_sink_flows(
-    analysis: &mut TaintAnalysis,
-    function_symbol_id: &str,
-    tainted: &BTreeMap<String, TaintSourceKind>,
-    guard_offsets: &BTreeMap<String, u32>,
-    sink: &SinkSite,
-) {
-    for identifier in &sink.identifiers {
-        let Some(source_kind) = tainted.get(identifier).copied() else {
-            continue;
-        };
-        if sink.kind == TaintSinkKind::HashOrSerialize
-            && is_guarded_before_sink(identifier, sink.sink_span_start(), guard_offsets)
-        {
+fn build_adjacency(function: &super::graph::FunctionGraph) -> BTreeMap<String, BTreeSet<String>> {
+    function.definitions.iter().fold(
+        BTreeMap::<String, BTreeSet<String>>::new(),
+        |mut map, def| {
+            for dependency in &def.dependencies {
+                map.entry(dependency.clone())
+                    .or_default()
+                    .insert(def.variable.clone());
+            }
+            map
+        },
+    )
+}
+
+fn reachable_from_source(
+    source: &str,
+    adjacency: &BTreeMap<String, BTreeSet<String>>,
+    step_limit: usize,
+) -> BTreeSet<String> {
+    let mut visited = BTreeSet::<String>::new();
+    let mut frontier = vec![source.to_string()];
+    let mut steps = 0usize;
+
+    while let Some(node_id) = frontier.pop() {
+        if !visited.insert(node_id.clone()) {
             continue;
         }
+        if steps >= step_limit {
+            continue;
+        }
+        steps += 1;
 
-        analysis.flows.push(TaintFlow {
-            function_symbol_id: function_symbol_id.to_string(),
-            variable: identifier.clone(),
-            source_kind,
-            sink_kind: sink.kind,
-            sink_span: sink.span.clone(),
-            sink_line: sink.line.clone(),
-        });
+        if let Some(next_nodes) = adjacency.get(&node_id) {
+            frontier.extend(next_nodes.iter().cloned());
+        }
     }
+
+    visited
 }
 
-trait SinkSiteSpanExt {
-    fn sink_span_start(&self) -> u32;
+fn is_source_guarded_before_sink(
+    source_variable: &str,
+    sink: &SinkSite,
+    guards: &[super::graph::GuardSite],
+    dominators: &BTreeMap<String, BTreeSet<String>>,
+) -> bool {
+    guards.iter().any(|guard| {
+        let source_is_guarded = if guard.covered_nodes.is_empty() {
+            guard.variable == source_variable
+        } else {
+            guard.covered_nodes.contains(source_variable)
+        };
+        if !source_is_guarded {
+            return false;
+        }
+        guard_dominates_sink(guard, sink, dominators)
+    })
 }
 
-impl SinkSiteSpanExt for SinkSite {
-    fn sink_span_start(&self) -> u32 {
-        self.span.start
+fn guard_dominates_sink(
+    guard: &super::graph::GuardSite,
+    sink: &SinkSite,
+    dominators: &BTreeMap<String, BTreeSet<String>>,
+) -> bool {
+    let Some(sink_block_id) = sink.block_id.as_deref() else {
+        return guard.span.start < sink.span.start;
+    };
+    let Some(guard_block_id) = guard.block_id.as_deref() else {
+        return guard.span.start < sink.span.start;
+    };
+    if sink_block_id == guard_block_id {
+        return guard.span.start < sink.span.start;
     }
-}
-
-fn is_guarded_before_sink(variable: &str, sink_start: u32, guards: &BTreeMap<String, u32>) -> bool {
-    guards
-        .get(variable)
-        .is_some_and(|guard_offset| *guard_offset < sink_start)
+    dominators
+        .get(sink_block_id)
+        .is_some_and(|set| set.contains(guard_block_id))
 }
 
 #[cfg(test)]
@@ -165,10 +182,14 @@ mod tests {
     use std::time::Instant;
 
     use aztec_lint_core::config::AztecConfig;
+    use aztec_lint_core::model::Span;
 
     use crate::detect::SourceUnit;
     use crate::model_builder::build_aztec_model;
-    use crate::taint::graph::{TaintSinkKind, TaintSourceKind, build_def_use_graph};
+    use crate::taint::graph::{
+        DefUseGraph, Definition, FunctionGraph, GuardSite, SinkSite, TaintSinkKind, TaintSource,
+        TaintSourceKind, build_def_use_graph,
+    };
 
     use super::analyze_intra_procedural;
 
@@ -290,5 +311,52 @@ pub contract C {
         let analysis = analyze_intra_procedural(&graph);
         assert!(started.elapsed().as_millis() < 1000);
         assert!(!analysis.flows.is_empty());
+    }
+
+    #[test]
+    fn cfg_dominance_sanitizes_hash_even_with_later_span() {
+        let graph = DefUseGraph {
+            functions: vec![FunctionGraph {
+                contract_id: "src/main.nr::C".to_string(),
+                function_symbol_id: "fn::bridge".to_string(),
+                is_private_entrypoint: true,
+                is_public_entrypoint: false,
+                semantic_function_symbol_id: Some("fn::bridge".to_string()),
+                lines: vec![],
+                definitions: vec![Definition {
+                    variable: "expr::hash".to_string(),
+                    dependencies: std::collections::BTreeSet::from(["def::secret".to_string()]),
+                    span: Span::new("src/main.nr".to_string(), 100, 110, 1, 1),
+                }],
+                sources: vec![TaintSource {
+                    variable: "def::secret".to_string(),
+                    kind: TaintSourceKind::PrivateEntrypointParam,
+                    span: Span::new("src/main.nr".to_string(), 10, 20, 1, 1),
+                }],
+                guards: vec![GuardSite {
+                    variable: "expr::guard_secret".to_string(),
+                    span: Span::new("src/main.nr".to_string(), 300, 310, 1, 1),
+                    block_id: Some("bb::guard".to_string()),
+                    covered_nodes: std::collections::BTreeSet::from(["def::secret".to_string()]),
+                }],
+                sinks: vec![SinkSite {
+                    kind: TaintSinkKind::HashOrSerialize,
+                    identifiers: std::collections::BTreeSet::from(["expr::hash".to_string()]),
+                    span: Span::new("src/main.nr".to_string(), 100, 110, 1, 1),
+                    line: "hash(secret)".to_string(),
+                    block_id: Some("bb::hash".to_string()),
+                }],
+                dominators: std::collections::BTreeMap::from([(
+                    "bb::hash".to_string(),
+                    std::collections::BTreeSet::from([
+                        "bb::guard".to_string(),
+                        "bb::hash".to_string(),
+                    ]),
+                )]),
+            }],
+        };
+
+        let analysis = analyze_intra_procedural(&graph);
+        assert!(analysis.flows.is_empty());
     }
 }

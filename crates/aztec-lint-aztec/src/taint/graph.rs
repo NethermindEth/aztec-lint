@@ -2,10 +2,16 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use aztec_lint_core::config::AztecConfig;
 use aztec_lint_core::diagnostics::normalize_file_path;
-use aztec_lint_core::model::{AztecModel, EntrypointKind, Span};
+use aztec_lint_core::model::{
+    AztecModel, CfgEdgeKind, EntrypointKind, ExpressionCategory, GuardKind, SemanticModel, Span,
+    StatementCategory,
+};
 
 use crate::detect::SourceUnit;
-use crate::patterns::{contains_note_read, is_contract_start, is_function_start, normalize_line};
+use crate::patterns::{
+    contains_note_read, extract_call_name, is_contract_start, is_enqueue_call_name,
+    is_function_start, is_nullifier_call_name, is_public_sink_call_name, normalize_line,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum TaintSourceKind {
@@ -53,6 +59,8 @@ pub struct Definition {
 pub struct GuardSite {
     pub variable: String,
     pub span: Span,
+    pub block_id: Option<String>,
+    pub covered_nodes: BTreeSet<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -61,6 +69,7 @@ pub struct SinkSite {
     pub identifiers: BTreeSet<String>,
     pub span: Span,
     pub line: String,
+    pub block_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -69,11 +78,13 @@ pub struct FunctionGraph {
     pub function_symbol_id: String,
     pub is_private_entrypoint: bool,
     pub is_public_entrypoint: bool,
+    pub semantic_function_symbol_id: Option<String>,
     pub lines: Vec<LineRecord>,
     pub definitions: Vec<Definition>,
     pub sources: Vec<TaintSource>,
     pub guards: Vec<GuardSite>,
     pub sinks: Vec<SinkSite>,
+    pub dominators: BTreeMap<String, BTreeSet<String>>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -82,6 +93,34 @@ pub struct DefUseGraph {
 }
 
 pub fn build_def_use_graph(
+    sources: &[SourceUnit],
+    model: &AztecModel,
+    config: &AztecConfig,
+) -> DefUseGraph {
+    build_def_use_graph_with_semantic(sources, model, None, config)
+}
+
+pub fn build_def_use_graph_with_semantic(
+    sources: &[SourceUnit],
+    model: &AztecModel,
+    semantic: Option<&SemanticModel>,
+    config: &AztecConfig,
+) -> DefUseGraph {
+    if let Some(semantic_model) = semantic
+        && semantic_graph_available(semantic_model)
+    {
+        return build_semantic_def_use_graph(sources, model, semantic_model, config);
+    }
+    build_fallback_def_use_graph(sources, model, config)
+}
+
+fn semantic_graph_available(semantic: &SemanticModel) -> bool {
+    !semantic.functions.is_empty()
+        && !semantic.dfg_edges.is_empty()
+        && !semantic.cfg_blocks.is_empty()
+}
+
+fn build_fallback_def_use_graph(
     sources: &[SourceUnit],
     model: &AztecModel,
     config: &AztecConfig,
@@ -107,7 +146,93 @@ pub fn build_def_use_graph(
         ));
     }
 
-    for function in &mut graph.functions {
+    normalize_function_graphs(&mut graph.functions);
+    graph
+}
+
+fn build_semantic_def_use_graph(
+    sources: &[SourceUnit],
+    model: &AztecModel,
+    semantic: &SemanticModel,
+    config: &AztecConfig,
+) -> DefUseGraph {
+    let source_map = sources
+        .iter()
+        .map(|source| (normalize_file_path(&source.path), source))
+        .collect::<BTreeMap<_, _>>();
+    let semantic_names = semantic
+        .functions
+        .iter()
+        .map(|function| (function.symbol_id.clone(), function.name.clone()))
+        .collect::<BTreeMap<_, _>>();
+    let unconstrained_ids = semantic
+        .functions
+        .iter()
+        .filter(|function| function.is_unconstrained)
+        .map(|function| function.symbol_id.clone())
+        .collect::<BTreeSet<_>>();
+    let entrypoint_meta = match_entrypoints_to_semantic(model, semantic);
+
+    let mut graph = DefUseGraph::default();
+    for function in &semantic.functions {
+        let normalized_file = normalize_file_path(&function.span.file);
+        if !source_map.contains_key(&normalized_file) {
+            continue;
+        }
+
+        let (contract_id, entrypoint_kinds) = entrypoint_meta
+            .get(&function.symbol_id)
+            .cloned()
+            .unwrap_or_else(|| (format!("{normalized_file}::unknown_contract"), Vec::new()));
+
+        let mut function_graph = FunctionGraph {
+            contract_id,
+            function_symbol_id: function.symbol_id.clone(),
+            is_private_entrypoint: entrypoint_kinds.contains(&EntrypointKind::Private),
+            is_public_entrypoint: entrypoint_kinds.contains(&EntrypointKind::Public),
+            semantic_function_symbol_id: Some(function.symbol_id.clone()),
+            lines: Vec::new(),
+            definitions: Vec::new(),
+            sources: Vec::new(),
+            guards: Vec::new(),
+            sinks: Vec::new(),
+            dominators: semantic.cfg_dominators(&function.symbol_id),
+        };
+
+        add_semantic_definitions(function, semantic, &mut function_graph);
+        add_semantic_sources(
+            function,
+            semantic,
+            model,
+            &source_map,
+            &unconstrained_ids,
+            &mut function_graph,
+        );
+        add_semantic_guards(function, semantic, &mut function_graph);
+        add_semantic_sinks(
+            function,
+            semantic,
+            model,
+            config,
+            &source_map,
+            &semantic_names,
+            &mut function_graph,
+        );
+
+        if !function_graph.definitions.is_empty()
+            || !function_graph.sources.is_empty()
+            || !function_graph.sinks.is_empty()
+        {
+            graph.functions.push(function_graph);
+        }
+    }
+
+    normalize_function_graphs(&mut graph.functions);
+    graph
+}
+
+fn normalize_function_graphs(functions: &mut [FunctionGraph]) {
+    for function in functions.iter_mut() {
         function
             .lines
             .sort_by_key(|line| (line.span.file.clone(), line.span.start, line.text.clone()));
@@ -140,16 +265,629 @@ pub fn build_def_use_graph(
                 format!("{:?}", item.kind),
             )
         });
+        function.dominators = function
+            .dominators
+            .iter()
+            .map(|(block, dominates)| (block.clone(), dominates.clone()))
+            .collect();
     }
 
-    graph.functions.sort_by_key(|function| {
+    functions.sort_by_key(|function| {
         (
             function.contract_id.clone(),
             function.function_symbol_id.clone(),
         )
     });
+}
 
-    graph
+fn match_entrypoints_to_semantic(
+    model: &AztecModel,
+    semantic: &SemanticModel,
+) -> BTreeMap<String, (String, Vec<EntrypointKind>)> {
+    let mut out = BTreeMap::<String, (String, Vec<EntrypointKind>)>::new();
+
+    for entrypoint in &model.entrypoints {
+        let normalized_file = normalize_file_path(&entrypoint.span.file);
+        let entrypoint_name = function_name_from_symbol_id(&entrypoint.function_symbol_id);
+        let mut candidates = semantic
+            .functions
+            .iter()
+            .filter(|function| normalize_file_path(&function.span.file) == normalized_file)
+            .filter(|function| spans_overlap(&function.span, &entrypoint.span))
+            .collect::<Vec<_>>();
+        if let Some(name) = entrypoint_name {
+            let named = candidates
+                .iter()
+                .copied()
+                .filter(|function| function.name == name)
+                .collect::<Vec<_>>();
+            if !named.is_empty() {
+                candidates = named;
+            }
+        }
+        let Some(best) = candidates
+            .into_iter()
+            .min_by_key(|function| function.span.start.abs_diff(entrypoint.span.start))
+        else {
+            continue;
+        };
+        let entry = out
+            .entry(best.symbol_id.clone())
+            .or_insert_with(|| (entrypoint.contract_id.clone(), Vec::new()));
+        if entry.0.is_empty() {
+            entry.0 = entrypoint.contract_id.clone();
+        }
+        if !entry.1.contains(&entrypoint.kind) {
+            entry.1.push(entrypoint.kind.clone());
+        }
+    }
+
+    out
+}
+
+fn function_name_from_symbol_id(symbol_id: &str) -> Option<&str> {
+    symbol_id.rsplit("::").next()
+}
+
+fn add_semantic_definitions(
+    function: &aztec_lint_core::model::SemanticFunction,
+    semantic: &SemanticModel,
+    out: &mut FunctionGraph,
+) {
+    let mut node_spans = BTreeMap::<String, Span>::new();
+    for expression in semantic
+        .expressions
+        .iter()
+        .filter(|expression| expression.function_symbol_id == function.symbol_id)
+    {
+        node_spans.insert(expression.expr_id.clone(), expression.span.clone());
+    }
+    for statement in semantic
+        .statements
+        .iter()
+        .filter(|statement| statement.function_symbol_id == function.symbol_id)
+    {
+        node_spans.insert(statement.stmt_id.clone(), statement.span.clone());
+    }
+
+    for edge in semantic
+        .dfg_edges
+        .iter()
+        .filter(|edge| edge.function_symbol_id == function.symbol_id)
+    {
+        let span = node_spans
+            .get(&edge.to_node_id)
+            .cloned()
+            .or_else(|| node_spans.get(&edge.from_node_id).cloned())
+            .unwrap_or_else(|| function.span.clone());
+        out.definitions.push(Definition {
+            variable: edge.to_node_id.clone(),
+            dependencies: BTreeSet::from([edge.from_node_id.clone()]),
+            span,
+        });
+    }
+}
+
+fn add_semantic_sources(
+    function: &aztec_lint_core::model::SemanticFunction,
+    semantic: &SemanticModel,
+    model: &AztecModel,
+    sources: &BTreeMap<String, &SourceUnit>,
+    unconstrained_ids: &BTreeSet<String>,
+    out: &mut FunctionGraph,
+) {
+    let all_defs = semantic
+        .dfg_edges
+        .iter()
+        .filter(|edge| edge.function_symbol_id == function.symbol_id)
+        .flat_map(|edge| [&edge.from_node_id, &edge.to_node_id])
+        .filter(|node_id| node_id.starts_with("def::"))
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let stmt_defined_defs = semantic
+        .dfg_edges
+        .iter()
+        .filter(|edge| edge.function_symbol_id == function.symbol_id)
+        .filter(|edge| {
+            edge.from_node_id.starts_with("stmt::") && edge.to_node_id.starts_with("def::")
+        })
+        .map(|edge| edge.to_node_id.clone())
+        .collect::<BTreeSet<_>>();
+    let parameter_defs = all_defs
+        .difference(&stmt_defined_defs)
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    if out.is_private_entrypoint {
+        for definition_id in parameter_defs {
+            out.sources.push(TaintSource {
+                variable: definition_id,
+                kind: TaintSourceKind::PrivateEntrypointParam,
+                span: function.span.clone(),
+            });
+        }
+    }
+
+    for site in model.note_read_sites.iter().filter(|site| {
+        normalize_file_path(&site.span.file) == normalize_file_path(&function.span.file)
+            && site.span.start >= function.span.start
+            && site.span.end <= function.span.end
+    }) {
+        for node_id in sink_nodes_for_span(&function.symbol_id, &site.span, semantic) {
+            out.sources.push(TaintSource {
+                variable: node_id,
+                kind: TaintSourceKind::NoteRead,
+                span: site.span.clone(),
+            });
+        }
+    }
+
+    for call_site in semantic.call_sites.iter().filter(|call_site| {
+        call_site.function_symbol_id == function.symbol_id
+            && unconstrained_ids.contains(&call_site.callee_symbol_id)
+    }) {
+        out.sources.push(TaintSource {
+            variable: call_site.expr_id.clone(),
+            kind: TaintSourceKind::UnconstrainedCall,
+            span: call_site.span.clone(),
+        });
+    }
+
+    let normalized_file = normalize_file_path(&function.span.file);
+    let Some(source) = sources.get(&normalized_file).copied() else {
+        return;
+    };
+    for expression in semantic
+        .expressions
+        .iter()
+        .filter(|expression| expression.function_symbol_id == function.symbol_id)
+        .filter(|expression| expression.category == ExpressionCategory::MemberAccess)
+    {
+        let Some(text) = span_text(source, &expression.span) else {
+            continue;
+        };
+        if text.contains("self.storage") {
+            out.sources.push(TaintSource {
+                variable: expression.expr_id.clone(),
+                kind: TaintSourceKind::SecretState,
+                span: expression.span.clone(),
+            });
+        }
+    }
+}
+
+fn add_semantic_guards(
+    function: &aztec_lint_core::model::SemanticFunction,
+    semantic: &SemanticModel,
+    out: &mut FunctionGraph,
+) {
+    let statement_block = semantic.statement_block_map(&function.symbol_id);
+    let reverse_dfg = reverse_adjacency(&function.symbol_id, semantic);
+
+    for guard in semantic
+        .guard_nodes
+        .iter()
+        .filter(|guard| guard.function_symbol_id == function.symbol_id)
+        .filter(|guard| {
+            matches!(
+                guard.kind,
+                GuardKind::Assert | GuardKind::Constrain | GuardKind::Range
+            )
+        })
+    {
+        let Some(guarded_expr_id) = &guard.guarded_expr_id else {
+            continue;
+        };
+        let mut covered_nodes = reverse_reachable_nodes(guarded_expr_id, &reverse_dfg);
+        covered_nodes.insert(guarded_expr_id.clone());
+
+        let block_id = innermost_statement_for_span(&function.symbol_id, &guard.span, semantic)
+            .and_then(|statement| statement_block.get(&statement.stmt_id).cloned());
+
+        out.guards.push(GuardSite {
+            variable: guarded_expr_id.clone(),
+            span: guard.span.clone(),
+            block_id,
+            covered_nodes,
+        });
+    }
+}
+
+fn add_semantic_sinks(
+    function: &aztec_lint_core::model::SemanticFunction,
+    semantic: &SemanticModel,
+    model: &AztecModel,
+    config: &AztecConfig,
+    sources: &BTreeMap<String, &SourceUnit>,
+    semantic_names: &BTreeMap<String, String>,
+    out: &mut FunctionGraph,
+) {
+    let statement_block = semantic.statement_block_map(&function.symbol_id);
+    let expr_to_statement = expression_statement_map(&function.symbol_id, semantic);
+    let normalized_file = normalize_file_path(&function.span.file);
+    let source = sources.get(&normalized_file).copied();
+    let sink_context = SinkContext {
+        function_symbol_id: &function.symbol_id,
+        semantic,
+        statement_block: &statement_block,
+        expr_to_statement: &expr_to_statement,
+        source,
+    };
+
+    for site in model.public_sinks.iter().filter(|site| {
+        normalize_file_path(&site.span.file) == normalized_file
+            && site.span.start >= function.span.start
+            && site.span.end <= function.span.end
+    }) {
+        push_sink_for_site(TaintSinkKind::PublicOutput, &site.span, &sink_context, out);
+    }
+    for site in model.nullifier_emit_sites.iter().filter(|site| {
+        normalize_file_path(&site.span.file) == normalized_file
+            && site.span.start >= function.span.start
+            && site.span.end <= function.span.end
+    }) {
+        push_sink_for_site(
+            TaintSinkKind::NullifierOrCommitment,
+            &site.span,
+            &sink_context,
+            out,
+        );
+    }
+    for site in model.enqueue_sites.iter().filter(|site| {
+        normalize_file_path(&site.span.file) == normalized_file
+            && site.span.start >= function.span.start
+            && site.span.end <= function.span.end
+    }) {
+        push_sink_for_site(
+            TaintSinkKind::EnqueuePublicCall,
+            &site.span,
+            &sink_context,
+            out,
+        );
+    }
+
+    for block in semantic
+        .cfg_blocks
+        .iter()
+        .filter(|block| block.function_symbol_id == function.symbol_id)
+    {
+        let has_branch = semantic.cfg_edges.iter().any(|edge| {
+            edge.function_symbol_id == function.symbol_id
+                && edge.from_block_id == block.block_id
+                && matches!(
+                    edge.kind,
+                    CfgEdgeKind::TrueBranch | CfgEdgeKind::FalseBranch
+                )
+        });
+        if !has_branch {
+            continue;
+        }
+        for statement_id in &block.statement_ids {
+            let span = semantic
+                .statements
+                .iter()
+                .find(|statement| {
+                    statement.function_symbol_id == function.symbol_id
+                        && statement.stmt_id == *statement_id
+                })
+                .map(|statement| statement.span.clone())
+                .unwrap_or_else(|| function.span.clone());
+            out.sinks.push(SinkSite {
+                kind: TaintSinkKind::BranchCondition,
+                identifiers: BTreeSet::from([statement_id.clone()]),
+                span: span.clone(),
+                line: source
+                    .and_then(|unit| span_text(unit, &span))
+                    .unwrap_or("")
+                    .to_string(),
+                block_id: Some(block.block_id.clone()),
+            });
+        }
+    }
+
+    let mut covered_calls = BTreeSet::<String>::new();
+    for call_site in semantic
+        .call_sites
+        .iter()
+        .filter(|call_site| call_site.function_symbol_id == function.symbol_id)
+    {
+        covered_calls.insert(call_site.expr_id.clone());
+        let call_name = semantic_names
+            .get(&call_site.callee_symbol_id)
+            .cloned()
+            .or_else(|| {
+                source
+                    .and_then(|unit| span_text(unit, &call_site.span))
+                    .and_then(extract_call_name)
+            });
+        let Some(call_name) = call_name else {
+            continue;
+        };
+        for sink_kind in sink_kinds_for_call_name(&call_name, config) {
+            push_call_sink(
+                sink_kind,
+                &call_site.expr_id,
+                &call_site.span,
+                &statement_block,
+                &expr_to_statement,
+                source,
+                out,
+            );
+        }
+    }
+
+    for expression in semantic
+        .expressions
+        .iter()
+        .filter(|expression| expression.function_symbol_id == function.symbol_id)
+        .filter(|expression| expression.category == ExpressionCategory::Call)
+    {
+        if covered_calls.contains(&expression.expr_id) {
+            continue;
+        }
+        let Some(call_name) = source
+            .and_then(|unit| span_text(unit, &expression.span))
+            .and_then(extract_call_name)
+        else {
+            continue;
+        };
+        for sink_kind in sink_kinds_for_call_name(&call_name, config) {
+            push_call_sink(
+                sink_kind,
+                &expression.expr_id,
+                &expression.span,
+                &statement_block,
+                &expr_to_statement,
+                source,
+                out,
+            );
+        }
+    }
+
+    for statement in semantic
+        .statements
+        .iter()
+        .filter(|statement| statement.function_symbol_id == function.symbol_id)
+        .filter(|statement| {
+            matches!(
+                statement.category,
+                StatementCategory::Assign | StatementCategory::Expression
+            )
+        })
+    {
+        let Some(text) = source.and_then(|unit| span_text(unit, &statement.span)) else {
+            continue;
+        };
+        if text.contains("self.storage")
+            && (text.contains('=') || text.contains(".write(") || text.contains(".set("))
+        {
+            out.sinks.push(SinkSite {
+                kind: TaintSinkKind::PublicStorageWrite,
+                identifiers: BTreeSet::from([statement.stmt_id.clone()]),
+                span: statement.span.clone(),
+                line: text.to_string(),
+                block_id: statement_block.get(&statement.stmt_id).cloned(),
+            });
+        }
+    }
+}
+
+fn sink_kinds_for_call_name(name: &str, config: &AztecConfig) -> Vec<TaintSinkKind> {
+    let mut kinds = Vec::<TaintSinkKind>::new();
+    let lower = name.to_ascii_lowercase();
+
+    if is_public_sink_call_name(name) {
+        kinds.push(TaintSinkKind::PublicOutput);
+    }
+    if is_nullifier_call_name(name, config) {
+        kinds.push(TaintSinkKind::NullifierOrCommitment);
+    }
+    if is_enqueue_call_name(name, config) {
+        kinds.push(TaintSinkKind::EnqueuePublicCall);
+    }
+    if lower == "debug_log" {
+        kinds.push(TaintSinkKind::DebugLog);
+        kinds.push(TaintSinkKind::LogEvent);
+    }
+    if lower.contains("oracle") {
+        kinds.push(TaintSinkKind::OracleArgument);
+    }
+    if matches!(
+        lower.as_str(),
+        "hash" | "pedersen" | "serialize" | "to_bytes"
+    ) || lower.ends_with("_hash")
+        || lower.contains("serialize")
+    {
+        kinds.push(TaintSinkKind::HashOrSerialize);
+    }
+    if lower.contains("merkle") || lower.contains("witness") {
+        kinds.push(TaintSinkKind::MerkleWitness);
+    }
+
+    kinds
+}
+
+fn push_call_sink(
+    kind: TaintSinkKind,
+    expr_id: &str,
+    span: &Span,
+    statement_block: &BTreeMap<String, String>,
+    expr_to_statement: &BTreeMap<String, String>,
+    source: Option<&SourceUnit>,
+    out: &mut FunctionGraph,
+) {
+    let block_id = expr_to_statement
+        .get(expr_id)
+        .and_then(|statement_id| statement_block.get(statement_id))
+        .cloned();
+    out.sinks.push(SinkSite {
+        kind,
+        identifiers: BTreeSet::from([expr_id.to_string()]),
+        span: span.clone(),
+        line: source
+            .and_then(|unit| span_text(unit, span))
+            .unwrap_or("")
+            .to_string(),
+        block_id,
+    });
+}
+
+fn push_sink_for_site(
+    kind: TaintSinkKind,
+    span: &Span,
+    context: &SinkContext<'_>,
+    out: &mut FunctionGraph,
+) {
+    let identifiers = sink_nodes_for_span(context.function_symbol_id, span, context.semantic);
+    if identifiers.is_empty() {
+        return;
+    }
+    let block_id = identifiers.iter().find_map(|node_id| {
+        if node_id.starts_with("stmt::") {
+            return context.statement_block.get(node_id).cloned();
+        }
+        context
+            .expr_to_statement
+            .get(node_id)
+            .and_then(|statement_id| context.statement_block.get(statement_id))
+            .cloned()
+    });
+    out.sinks.push(SinkSite {
+        kind,
+        identifiers,
+        span: span.clone(),
+        line: context
+            .source
+            .and_then(|unit| span_text(unit, span))
+            .unwrap_or("")
+            .to_string(),
+        block_id,
+    });
+}
+
+struct SinkContext<'a> {
+    function_symbol_id: &'a str,
+    semantic: &'a SemanticModel,
+    statement_block: &'a BTreeMap<String, String>,
+    expr_to_statement: &'a BTreeMap<String, String>,
+    source: Option<&'a SourceUnit>,
+}
+
+fn sink_nodes_for_span(
+    function_symbol_id: &str,
+    span: &Span,
+    semantic: &SemanticModel,
+) -> BTreeSet<String> {
+    let mut nodes = BTreeSet::<String>::new();
+
+    for call_site in semantic.call_sites.iter().filter(|call_site| {
+        call_site.function_symbol_id == function_symbol_id && spans_overlap(span, &call_site.span)
+    }) {
+        nodes.insert(call_site.expr_id.clone());
+    }
+    for expression in semantic.expressions.iter().filter(|expression| {
+        expression.function_symbol_id == function_symbol_id
+            && expression.category == ExpressionCategory::Call
+            && spans_overlap(span, &expression.span)
+    }) {
+        nodes.insert(expression.expr_id.clone());
+    }
+    for statement in semantic.statements.iter().filter(|statement| {
+        statement.function_symbol_id == function_symbol_id
+            && statement.category == StatementCategory::Return
+            && spans_overlap(span, &statement.span)
+    }) {
+        nodes.insert(statement.stmt_id.clone());
+    }
+
+    if nodes.is_empty()
+        && let Some(statement) = innermost_statement_for_span(function_symbol_id, span, semantic)
+    {
+        nodes.insert(statement.stmt_id.clone());
+    }
+
+    nodes
+}
+
+fn expression_statement_map(
+    function_symbol_id: &str,
+    semantic: &SemanticModel,
+) -> BTreeMap<String, String> {
+    semantic
+        .dfg_edges
+        .iter()
+        .filter(|edge| edge.function_symbol_id == function_symbol_id)
+        .filter(|edge| {
+            edge.from_node_id.starts_with("expr::") && edge.to_node_id.starts_with("stmt::")
+        })
+        .fold(BTreeMap::<String, String>::new(), |mut map, edge| {
+            map.entry(edge.from_node_id.clone())
+                .or_insert_with(|| edge.to_node_id.clone());
+            map
+        })
+}
+
+fn reverse_adjacency(
+    function_symbol_id: &str,
+    semantic: &SemanticModel,
+) -> BTreeMap<String, BTreeSet<String>> {
+    semantic
+        .dfg_edges
+        .iter()
+        .filter(|edge| edge.function_symbol_id == function_symbol_id)
+        .fold(
+            BTreeMap::<String, BTreeSet<String>>::new(),
+            |mut map, edge| {
+                map.entry(edge.to_node_id.clone())
+                    .or_default()
+                    .insert(edge.from_node_id.clone());
+                map
+            },
+        )
+}
+
+fn reverse_reachable_nodes(
+    start_node: &str,
+    reverse_adjacency: &BTreeMap<String, BTreeSet<String>>,
+) -> BTreeSet<String> {
+    let mut visited = BTreeSet::<String>::new();
+    let mut queue = vec![start_node.to_string()];
+    while let Some(node_id) = queue.pop() {
+        if !visited.insert(node_id.clone()) {
+            continue;
+        }
+        if let Some(parents) = reverse_adjacency.get(&node_id) {
+            queue.extend(parents.iter().cloned());
+        }
+    }
+    visited
+}
+
+fn spans_overlap(left: &Span, right: &Span) -> bool {
+    normalize_file_path(&left.file) == normalize_file_path(&right.file)
+        && left.start < right.end
+        && right.start < left.end
+}
+
+fn innermost_statement_for_span<'a>(
+    function_symbol_id: &str,
+    span: &Span,
+    semantic: &'a SemanticModel,
+) -> Option<&'a aztec_lint_core::model::SemanticStatement> {
+    semantic
+        .statements
+        .iter()
+        .filter(|statement| statement.function_symbol_id == function_symbol_id)
+        .filter(|statement| spans_overlap(&statement.span, span))
+        .min_by_key(|statement| statement.span.end.saturating_sub(statement.span.start))
+}
+
+fn span_text<'a>(source: &'a SourceUnit, span: &Span) -> Option<&'a str> {
+    let start = usize::try_from(span.start).ok()?;
+    let end = usize::try_from(span.end).ok()?;
+    if start >= end || end > source.text.len() {
+        return None;
+    }
+    source.text.get(start..end)
 }
 
 fn build_source_functions(
@@ -194,6 +932,7 @@ fn build_source_functions(
                     function_symbol_id: function_symbol_id.clone(),
                     is_private_entrypoint,
                     is_public_entrypoint,
+                    semantic_function_symbol_id: None,
                     lines: vec![LineRecord {
                         text: normalize_line(line).to_string(),
                         span: span.clone(),
@@ -202,6 +941,7 @@ fn build_source_functions(
                     sources: Vec::new(),
                     guards: Vec::new(),
                     sinks: Vec::new(),
+                    dominators: BTreeMap::new(),
                 },
                 end_depth: brace_depth + line.matches('{').count(),
             };
@@ -324,6 +1064,8 @@ fn analyze_line(
             builder.function.guards.push(GuardSite {
                 variable,
                 span: span.clone(),
+                block_id: None,
+                covered_nodes: BTreeSet::new(),
             });
         }
     }
@@ -334,6 +1076,7 @@ fn analyze_line(
             identifiers: sink_identifiers(sink_kind, normalized),
             span: span.clone(),
             line: normalized.to_string(),
+            block_id: None,
         });
     }
 }
@@ -588,11 +1331,31 @@ fn is_keyword(token: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use aztec_lint_core::config::AztecConfig;
+    use aztec_lint_core::model::{
+        AztecModel, CallSite, CfgBlock, CfgEdge, CfgEdgeKind, DfgEdge, DfgEdgeKind, Entrypoint,
+        EntrypointKind, ExpressionCategory, GuardKind, GuardNode, SemanticExpression,
+        SemanticFunction, SemanticModel, SemanticSite, SemanticStatement, Span, StatementCategory,
+        TypeCategory,
+    };
 
     use crate::detect::SourceUnit;
     use crate::model_builder::build_aztec_model;
 
-    use super::{TaintSinkKind, TaintSourceKind, build_def_use_graph};
+    use super::{
+        TaintSinkKind, TaintSourceKind, build_def_use_graph, build_def_use_graph_with_semantic,
+    };
+
+    fn span_for(source: &str, needle: &str) -> Span {
+        let start = source.find(needle).expect("needle must exist in source");
+        let end = start + needle.len();
+        Span::new(
+            "src/main.nr".to_string(),
+            u32::try_from(start).expect("span start fits in u32"),
+            u32::try_from(end).expect("span end fits in u32"),
+            1,
+            1,
+        )
+    }
 
     #[test]
     fn captures_private_params_and_note_read_sources() {
@@ -651,5 +1414,315 @@ pub contract C {
         assert!(function.sources.iter().any(|item| {
             item.kind == TaintSourceKind::PrivateEntrypointParam && item.variable == "secret"
         }));
+    }
+
+    #[test]
+    fn semantic_graph_builds_typed_sources_and_sinks() {
+        let source = r#"
+#[aztec]
+pub contract C {
+    #[external("private")]
+    fn bridge(secret: Field) {
+        assert(secret < 100);
+        let notes = self.notes.get_notes();
+        let digest = hash(notes);
+        emit(digest);
+    }
+}
+"#;
+        let sources = vec![SourceUnit::new("src/main.nr", source)];
+        let call_notes_span = span_for(source, "self.notes.get_notes()");
+        let call_hash_span = span_for(source, "hash(notes)");
+        let call_emit_span = span_for(source, "emit(digest)");
+        let guard_span = span_for(source, "assert(secret < 100)");
+        let function_span = Span::new(
+            "src/main.nr".to_string(),
+            0,
+            u32::try_from(source.len()).expect("source length fits in u32"),
+            1,
+            1,
+        );
+        let entry_span = function_span.clone();
+
+        let model = AztecModel {
+            entrypoints: vec![Entrypoint {
+                contract_id: "src/main.nr::C".to_string(),
+                function_symbol_id: "src/main.nr::C::fn::bridge".to_string(),
+                kind: EntrypointKind::Private,
+                span: entry_span.clone(),
+            }],
+            note_read_sites: vec![SemanticSite {
+                contract_id: "src/main.nr::C".to_string(),
+                function_symbol_id: "src/main.nr::C::fn::bridge".to_string(),
+                span: call_notes_span.clone(),
+            }],
+            public_sinks: vec![SemanticSite {
+                contract_id: "src/main.nr::C".to_string(),
+                function_symbol_id: "src/main.nr::C::fn::bridge".to_string(),
+                span: call_emit_span.clone(),
+            }],
+            ..AztecModel::default()
+        };
+        let semantic = SemanticModel {
+            functions: vec![
+                SemanticFunction {
+                    symbol_id: "fn::bridge".to_string(),
+                    name: "bridge".to_string(),
+                    module_symbol_id: "module::root".to_string(),
+                    return_type_repr: "()".to_string(),
+                    return_type_category: TypeCategory::Unknown,
+                    parameter_types: vec!["Field".to_string()],
+                    is_entrypoint: true,
+                    is_unconstrained: false,
+                    span: function_span.clone(),
+                },
+                SemanticFunction {
+                    symbol_id: "fn::get_notes".to_string(),
+                    name: "get_notes".to_string(),
+                    module_symbol_id: "module::root".to_string(),
+                    return_type_repr: "Field".to_string(),
+                    return_type_category: TypeCategory::Field,
+                    parameter_types: vec![],
+                    is_entrypoint: false,
+                    is_unconstrained: false,
+                    span: call_notes_span.clone(),
+                },
+                SemanticFunction {
+                    symbol_id: "fn::hash".to_string(),
+                    name: "hash".to_string(),
+                    module_symbol_id: "module::root".to_string(),
+                    return_type_repr: "Field".to_string(),
+                    return_type_category: TypeCategory::Field,
+                    parameter_types: vec!["Field".to_string()],
+                    is_entrypoint: false,
+                    is_unconstrained: false,
+                    span: call_hash_span.clone(),
+                },
+                SemanticFunction {
+                    symbol_id: "fn::emit".to_string(),
+                    name: "emit".to_string(),
+                    module_symbol_id: "module::root".to_string(),
+                    return_type_repr: "()".to_string(),
+                    return_type_category: TypeCategory::Unknown,
+                    parameter_types: vec!["Field".to_string()],
+                    is_entrypoint: false,
+                    is_unconstrained: false,
+                    span: call_emit_span.clone(),
+                },
+            ],
+            expressions: vec![
+                SemanticExpression {
+                    expr_id: "expr::notes_call".to_string(),
+                    function_symbol_id: "fn::bridge".to_string(),
+                    category: ExpressionCategory::Call,
+                    type_category: TypeCategory::Field,
+                    type_repr: "Field".to_string(),
+                    span: call_notes_span.clone(),
+                },
+                SemanticExpression {
+                    expr_id: "expr::hash_call".to_string(),
+                    function_symbol_id: "fn::bridge".to_string(),
+                    category: ExpressionCategory::Call,
+                    type_category: TypeCategory::Field,
+                    type_repr: "Field".to_string(),
+                    span: call_hash_span.clone(),
+                },
+                SemanticExpression {
+                    expr_id: "expr::emit_call".to_string(),
+                    function_symbol_id: "fn::bridge".to_string(),
+                    category: ExpressionCategory::Call,
+                    type_category: TypeCategory::Unknown,
+                    type_repr: "()".to_string(),
+                    span: call_emit_span.clone(),
+                },
+                SemanticExpression {
+                    expr_id: "expr::guard_secret".to_string(),
+                    function_symbol_id: "fn::bridge".to_string(),
+                    category: ExpressionCategory::Identifier,
+                    type_category: TypeCategory::Field,
+                    type_repr: "Field".to_string(),
+                    span: guard_span.clone(),
+                },
+            ],
+            statements: vec![
+                SemanticStatement {
+                    stmt_id: "stmt::guard".to_string(),
+                    function_symbol_id: "fn::bridge".to_string(),
+                    category: StatementCategory::Assert,
+                    span: guard_span.clone(),
+                },
+                SemanticStatement {
+                    stmt_id: "stmt::notes".to_string(),
+                    function_symbol_id: "fn::bridge".to_string(),
+                    category: StatementCategory::Let,
+                    span: call_notes_span.clone(),
+                },
+                SemanticStatement {
+                    stmt_id: "stmt::hash".to_string(),
+                    function_symbol_id: "fn::bridge".to_string(),
+                    category: StatementCategory::Let,
+                    span: call_hash_span.clone(),
+                },
+                SemanticStatement {
+                    stmt_id: "stmt::emit".to_string(),
+                    function_symbol_id: "fn::bridge".to_string(),
+                    category: StatementCategory::Expression,
+                    span: call_emit_span.clone(),
+                },
+            ],
+            cfg_blocks: vec![
+                CfgBlock {
+                    function_symbol_id: "fn::bridge".to_string(),
+                    block_id: "bb::bridge::guard".to_string(),
+                    statement_ids: vec!["stmt::guard".to_string()],
+                },
+                CfgBlock {
+                    function_symbol_id: "fn::bridge".to_string(),
+                    block_id: "bb::bridge::notes".to_string(),
+                    statement_ids: vec!["stmt::notes".to_string()],
+                },
+                CfgBlock {
+                    function_symbol_id: "fn::bridge".to_string(),
+                    block_id: "bb::bridge::hash".to_string(),
+                    statement_ids: vec!["stmt::hash".to_string()],
+                },
+                CfgBlock {
+                    function_symbol_id: "fn::bridge".to_string(),
+                    block_id: "bb::bridge::emit".to_string(),
+                    statement_ids: vec!["stmt::emit".to_string()],
+                },
+            ],
+            cfg_edges: vec![
+                CfgEdge {
+                    function_symbol_id: "fn::bridge".to_string(),
+                    from_block_id: "bb::bridge::guard".to_string(),
+                    to_block_id: "bb::bridge::notes".to_string(),
+                    kind: CfgEdgeKind::Unconditional,
+                },
+                CfgEdge {
+                    function_symbol_id: "fn::bridge".to_string(),
+                    from_block_id: "bb::bridge::notes".to_string(),
+                    to_block_id: "bb::bridge::hash".to_string(),
+                    kind: CfgEdgeKind::Unconditional,
+                },
+                CfgEdge {
+                    function_symbol_id: "fn::bridge".to_string(),
+                    from_block_id: "bb::bridge::hash".to_string(),
+                    to_block_id: "bb::bridge::emit".to_string(),
+                    kind: CfgEdgeKind::Unconditional,
+                },
+            ],
+            dfg_edges: vec![
+                DfgEdge {
+                    function_symbol_id: "fn::bridge".to_string(),
+                    from_node_id: "expr::guard_secret".to_string(),
+                    to_node_id: "stmt::guard".to_string(),
+                    kind: DfgEdgeKind::DefUse,
+                },
+                DfgEdge {
+                    function_symbol_id: "fn::bridge".to_string(),
+                    from_node_id: "expr::notes_call".to_string(),
+                    to_node_id: "stmt::notes".to_string(),
+                    kind: DfgEdgeKind::DefUse,
+                },
+                DfgEdge {
+                    function_symbol_id: "fn::bridge".to_string(),
+                    from_node_id: "stmt::notes".to_string(),
+                    to_node_id: "def::notes".to_string(),
+                    kind: DfgEdgeKind::DefUse,
+                },
+                DfgEdge {
+                    function_symbol_id: "fn::bridge".to_string(),
+                    from_node_id: "def::notes".to_string(),
+                    to_node_id: "expr::hash_call".to_string(),
+                    kind: DfgEdgeKind::UseDef,
+                },
+                DfgEdge {
+                    function_symbol_id: "fn::bridge".to_string(),
+                    from_node_id: "expr::hash_call".to_string(),
+                    to_node_id: "stmt::hash".to_string(),
+                    kind: DfgEdgeKind::DefUse,
+                },
+                DfgEdge {
+                    function_symbol_id: "fn::bridge".to_string(),
+                    from_node_id: "stmt::hash".to_string(),
+                    to_node_id: "def::digest".to_string(),
+                    kind: DfgEdgeKind::DefUse,
+                },
+                DfgEdge {
+                    function_symbol_id: "fn::bridge".to_string(),
+                    from_node_id: "def::digest".to_string(),
+                    to_node_id: "expr::emit_call".to_string(),
+                    kind: DfgEdgeKind::UseDef,
+                },
+                DfgEdge {
+                    function_symbol_id: "fn::bridge".to_string(),
+                    from_node_id: "expr::emit_call".to_string(),
+                    to_node_id: "stmt::emit".to_string(),
+                    kind: DfgEdgeKind::DefUse,
+                },
+            ],
+            call_sites: vec![
+                CallSite {
+                    call_site_id: "call::notes".to_string(),
+                    function_symbol_id: "fn::bridge".to_string(),
+                    callee_symbol_id: "fn::get_notes".to_string(),
+                    expr_id: "expr::notes_call".to_string(),
+                    span: call_notes_span.clone(),
+                },
+                CallSite {
+                    call_site_id: "call::hash".to_string(),
+                    function_symbol_id: "fn::bridge".to_string(),
+                    callee_symbol_id: "fn::hash".to_string(),
+                    expr_id: "expr::hash_call".to_string(),
+                    span: call_hash_span.clone(),
+                },
+                CallSite {
+                    call_site_id: "call::emit".to_string(),
+                    function_symbol_id: "fn::bridge".to_string(),
+                    callee_symbol_id: "fn::emit".to_string(),
+                    expr_id: "expr::emit_call".to_string(),
+                    span: call_emit_span.clone(),
+                },
+            ],
+            guard_nodes: vec![GuardNode {
+                guard_id: "guard::secret".to_string(),
+                function_symbol_id: "fn::bridge".to_string(),
+                kind: GuardKind::Assert,
+                guarded_expr_id: Some("expr::guard_secret".to_string()),
+                span: guard_span.clone(),
+            }],
+        };
+
+        let graph = build_def_use_graph_with_semantic(
+            &sources,
+            &model,
+            Some(&semantic),
+            &AztecConfig::default(),
+        );
+        let function = graph
+            .functions
+            .iter()
+            .find(|function| function.function_symbol_id == "fn::bridge")
+            .expect("semantic function must be present");
+
+        assert!(
+            function
+                .sources
+                .iter()
+                .any(|source| source.kind == TaintSourceKind::NoteRead)
+        );
+        assert!(
+            function
+                .sinks
+                .iter()
+                .any(|sink| sink.kind == TaintSinkKind::HashOrSerialize)
+        );
+        assert!(
+            function
+                .guards
+                .iter()
+                .any(|guard| !guard.covered_nodes.is_empty())
+        );
     }
 }
