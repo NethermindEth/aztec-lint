@@ -85,7 +85,7 @@ Exit criteria:
 
 ---
 
-### Phase 3: Unknown Rule Validation + Fail-Fast
+### Phase 3: Unknown Rule Validation + Fail-Fast **COMPLETE**
 Objective:
 - Reject unknown rule IDs early across CLI overrides and config-resolved levels.
 

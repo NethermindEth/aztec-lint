@@ -44,6 +44,7 @@ pub enum ConfigError {
     UnknownRuleId {
         rule_id: String,
         source: String,
+        replacement: Option<String>,
     },
 }
 
@@ -89,10 +90,23 @@ impl Display for ConfigError {
                 f,
                 "conflicting CLI override for rule '{rule_id}': {existing} vs {requested}"
             ),
-            Self::UnknownRuleId { rule_id, source } => write!(
-                f,
-                "unknown rule id '{rule_id}' in {source} override (run `aztec-lint rules`)"
-            ),
+            Self::UnknownRuleId {
+                rule_id,
+                source,
+                replacement,
+            } => {
+                if let Some(replacement) = replacement {
+                    write!(
+                        f,
+                        "unknown rule id '{rule_id}' in {source} override; use '{replacement}' instead (run `aztec-lint rules`)"
+                    )
+                } else {
+                    write!(
+                        f,
+                        "unknown rule id '{rule_id}' in {source} override (run `aztec-lint rules`)"
+                    )
+                }
+            }
         }
     }
 }

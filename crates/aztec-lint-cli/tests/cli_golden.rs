@@ -132,7 +132,7 @@ fn invalid_flag_combination_returns_exit_code_two() {
 }
 
 #[test]
-fn check_rejects_unknown_rule_override() {
+fn unknown_cli_override_fails_fast_with_actionable_error() {
     let mut cmd = cli_bin();
     let fixture = fixture_dir("noir_core/minimal");
     cmd.args([
@@ -143,11 +143,79 @@ fn check_rejects_unknown_rule_override() {
     ]);
 
     let output = cmd.output().expect("command should execute");
-    assert_eq!(output.status.code(), Some(2));
-
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "unknown overrides should fail"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("unknown rule id 'DOES_NOT_EXIST' in --deny override"),
+        "stderr was: {stderr}"
+    );
+    assert!(
+        stderr.contains("run `aztec-lint rules`"),
+        "stderr was: {stderr}"
+    );
+}
+
+#[test]
+fn unknown_profile_override_fails_before_analysis_starts() {
+    let workspace = tempdir().expect("temp dir should be created");
+    let project = workspace.path().join("project");
+    fs::create_dir_all(project.join("src")).expect("src dir should be created");
+    fs::write(
+        project.join("aztec-lint.toml"),
+        "[profile.default]\nruleset=[\"noir_core\"]\ndeny=[\"NOIR404\"]\n",
+    )
+    .expect("config should be written");
+    fs::write(
+        project.join("Nargo.toml"),
+        "[package]\nname=\"project\"\ntype=\"bin\"\nauthors=[\"\"]\n",
+    )
+    .expect("nargo file should be written");
+    fs::write(project.join("src/main.nr"), "fn main() { assert(true); }\n")
+        .expect("entry source should be written");
+
+    let mut cmd = cli_bin();
+    cmd.current_dir(&project);
+    cmd.args(["check", "."]);
+    let output = cmd.output().expect("command should execute");
+    assert_eq!(output.status.code(), Some(2), "invalid config should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown rule id 'NOIR404' in profile 'default' deny override"),
+        "stderr was: {stderr}"
+    );
+    assert!(
+        stderr.contains("run `aztec-lint rules`"),
+        "stderr was: {stderr}"
+    );
+}
+
+#[test]
+fn unknown_default_mode_override_fails_fast_with_actionable_error() {
+    let mut cmd = cli_bin();
+    let fixture = fixture_dir("noir_core/minimal");
+    cmd.args([
+        fixture.to_string_lossy().as_ref(),
+        "--deny",
+        "DOES_NOT_EXIST",
+    ]);
+
+    let output = cmd.output().expect("command should execute");
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "unknown overrides should fail"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown rule id 'DOES_NOT_EXIST' in --deny override"),
+        "stderr was: {stderr}"
+    );
+    assert!(
+        stderr.contains("run `aztec-lint rules`"),
         "stderr was: {stderr}"
     );
 }

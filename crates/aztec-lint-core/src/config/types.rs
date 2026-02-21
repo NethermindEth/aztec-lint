@@ -4,7 +4,7 @@ use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use crate::config::ConfigError;
-use crate::lints::{all_lints, find_lint};
+use crate::lints::{LintLifecycleState, LintSpec, all_lints};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RawConfig {
@@ -32,6 +32,12 @@ pub struct Profile {
     pub extends: Vec<String>,
     #[serde(default)]
     pub ruleset: Vec<String>,
+    #[serde(default)]
+    pub deny: Vec<String>,
+    #[serde(default)]
+    pub warn: Vec<String>,
+    #[serde(default)]
+    pub allow: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
@@ -166,6 +172,7 @@ impl Config {
         overrides: &RuleOverrides,
     ) -> Result<BTreeMap<String, RuleLevel>, ConfigError> {
         let resolved = self.resolve_profile(profile_name)?;
+        let profile_resolution_order = self.resolve_profile_order(profile_name)?;
         let mut levels = BTreeMap::<String, RuleLevel>::new();
 
         for ruleset in &resolved.rulesets {
@@ -178,8 +185,31 @@ impl Config {
             }
         }
 
-        apply_rule_overrides(&mut levels, overrides)?;
+        for resolved_profile_name in profile_resolution_order {
+            let profile = self.profile.get(&resolved_profile_name).ok_or_else(|| {
+                ConfigError::ProfileNotFound {
+                    profile: resolved_profile_name.clone(),
+                }
+            })?;
+            apply_rule_overrides(
+                &mut levels,
+                &RuleOverrides {
+                    deny: profile.deny.clone(),
+                    warn: profile.warn.clone(),
+                    allow: profile.allow.clone(),
+                },
+                RuleOverrideSource::Profile(&resolved_profile_name),
+            )?;
+        }
+
+        apply_rule_overrides(&mut levels, overrides, RuleOverrideSource::Cli)?;
         Ok(levels)
+    }
+
+    fn resolve_profile_order(&self, profile_name: &str) -> Result<Vec<String>, ConfigError> {
+        let mut stack = Vec::<String>::new();
+        let mut cache = BTreeMap::<String, Vec<String>>::new();
+        self.resolve_profile_order_inner(profile_name, &mut stack, &mut cache)
     }
 
     fn resolve_profile_inner(
@@ -225,6 +255,52 @@ impl Config {
         cache.insert(profile_name.to_string(), merged_rulesets.clone());
         Ok(merged_rulesets)
     }
+
+    fn resolve_profile_order_inner(
+        &self,
+        profile_name: &str,
+        stack: &mut Vec<String>,
+        cache: &mut BTreeMap<String, Vec<String>>,
+    ) -> Result<Vec<String>, ConfigError> {
+        if let Some(existing) = cache.get(profile_name) {
+            return Ok(existing.clone());
+        }
+
+        if let Some(start) = stack.iter().position(|item| item == profile_name) {
+            let mut cycle = stack[start..].to_vec();
+            cycle.push(profile_name.to_string());
+            return Err(ConfigError::ProfileCycle { cycle });
+        }
+
+        let profile =
+            self.profile
+                .get(profile_name)
+                .ok_or_else(|| ConfigError::ProfileNotFound {
+                    profile: profile_name.to_string(),
+                })?;
+
+        stack.push(profile_name.to_string());
+
+        let mut merged_order = Vec::<String>::new();
+        for parent in &profile.extends {
+            if !self.profile.contains_key(parent) {
+                return Err(ConfigError::ParentProfileNotFound {
+                    profile: profile_name.to_string(),
+                    parent: parent.clone(),
+                });
+            }
+
+            let parent_order = self.resolve_profile_order_inner(parent, stack, cache)?;
+            append_unique(&mut merged_order, &parent_order);
+        }
+        if !merged_order.iter().any(|name| name == profile_name) {
+            merged_order.push(profile_name.to_string());
+        }
+
+        stack.pop();
+        cache.insert(profile_name.to_string(), merged_order.clone());
+        Ok(merged_order)
+    }
 }
 
 pub fn builtin_profiles() -> BTreeMap<String, Profile> {
@@ -234,6 +310,9 @@ pub fn builtin_profiles() -> BTreeMap<String, Profile> {
             Profile {
                 extends: Vec::new(),
                 ruleset: vec!["noir_core".to_string()],
+                deny: Vec::new(),
+                warn: Vec::new(),
+                allow: Vec::new(),
             },
         ),
         (
@@ -241,6 +320,9 @@ pub fn builtin_profiles() -> BTreeMap<String, Profile> {
             Profile {
                 extends: vec!["default".to_string()],
                 ruleset: Vec::new(),
+                deny: Vec::new(),
+                warn: Vec::new(),
+                allow: Vec::new(),
             },
         ),
         (
@@ -248,6 +330,9 @@ pub fn builtin_profiles() -> BTreeMap<String, Profile> {
             Profile {
                 extends: vec!["default".to_string()],
                 ruleset: vec!["aztec_pack".to_string()],
+                deny: Vec::new(),
+                warn: Vec::new(),
+                allow: Vec::new(),
             },
         ),
     ])
@@ -268,11 +353,12 @@ fn append_unique(target: &mut Vec<String>, values: &[String]) {
 fn apply_rule_overrides(
     levels: &mut BTreeMap<String, RuleLevel>,
     overrides: &RuleOverrides,
+    source: RuleOverrideSource<'_>,
 ) -> Result<(), ConfigError> {
     let mut seen = BTreeMap::<String, RuleLevel>::new();
-    register_override(&mut seen, &overrides.allow, RuleLevel::Allow, "--allow")?;
-    register_override(&mut seen, &overrides.warn, RuleLevel::Warn, "--warn")?;
-    register_override(&mut seen, &overrides.deny, RuleLevel::Deny, "--deny")?;
+    register_override(&mut seen, &overrides.allow, RuleLevel::Allow, source)?;
+    register_override(&mut seen, &overrides.warn, RuleLevel::Warn, source)?;
+    register_override(&mut seen, &overrides.deny, RuleLevel::Deny, source)?;
 
     for (rule_id, level) in seen {
         levels.insert(rule_id, level);
@@ -284,30 +370,66 @@ fn register_override(
     seen: &mut BTreeMap<String, RuleLevel>,
     rules: &[String],
     requested: RuleLevel,
-    source: &str,
+    source: RuleOverrideSource<'_>,
 ) -> Result<(), ConfigError> {
     for rule in rules {
         let normalized = normalize_rule_id(rule);
-        if find_lint(&normalized).is_none() {
-            return Err(ConfigError::UnknownRuleId {
-                rule_id: normalized,
-                source: source.to_string(),
-            });
-        }
+        let canonical_rule_id = resolve_override_rule_id(&normalized).map_err(|replacement| {
+            ConfigError::UnknownRuleId {
+                rule_id: normalized.clone(),
+                source: source.label_for(requested),
+                replacement: replacement.map(|rule_id| rule_id.to_string()),
+            }
+        })?;
 
-        if let Some(existing) = seen.get(&normalized) {
+        if let Some(existing) = seen.get(canonical_rule_id) {
             if *existing != requested {
                 return Err(ConfigError::ConflictingRuleOverride {
-                    rule_id: normalized,
+                    rule_id: canonical_rule_id.to_string(),
                     existing: *existing,
                     requested,
                 });
             }
             continue;
         }
-        seen.insert(normalized, requested);
+        seen.insert(canonical_rule_id.to_string(), requested);
     }
     Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum RuleOverrideSource<'a> {
+    Cli,
+    Profile(&'a str),
+}
+
+impl RuleOverrideSource<'_> {
+    fn label_for(self, level: RuleLevel) -> String {
+        match self {
+            Self::Cli => format!("--{level}"),
+            Self::Profile(profile_name) => format!("profile '{profile_name}' {level}"),
+        }
+    }
+}
+
+fn resolve_override_rule_id(rule_id: &str) -> Result<&'static str, Option<&'static str>> {
+    resolve_override_rule_id_for_catalog(rule_id, all_lints())
+}
+
+fn resolve_override_rule_id_for_catalog<'a>(
+    rule_id: &str,
+    catalog: &'a [LintSpec],
+) -> Result<&'a str, Option<&'a str>> {
+    let Some(lint) = catalog.iter().find(|lint| lint.id == rule_id) else {
+        return Err(None);
+    };
+
+    match lint.lifecycle {
+        LintLifecycleState::Active => Ok(lint.id),
+        LintLifecycleState::Deprecated { replacement, .. } => Err(replacement),
+        LintLifecycleState::Renamed { to, .. } => Err(Some(to)),
+        LintLifecycleState::Removed { .. } => Err(None),
+    }
 }
 
 fn ruleset_defaults(ruleset: &str) -> Option<Vec<(&'static str, RuleLevel)>> {
@@ -381,6 +503,9 @@ fn default_commitment_requires() -> Vec<String> {
 mod tests {
     use super::{Config, RawConfig, RuleLevel, RuleOverrides};
     use crate::config::ConfigError;
+    use crate::diagnostics::Confidence;
+    use crate::lints::{LintCategory, LintDocs, LintLifecycleState, LintSpec};
+    use crate::policy::CORRECTNESS;
 
     const SPEC_SAMPLE_CONFIG: &str = r#"
 [profile.default]
@@ -520,11 +645,113 @@ extends = ["a"]
             .expect_err("unknown CLI override should fail");
 
         match err {
-            ConfigError::UnknownRuleId { rule_id, source } => {
+            ConfigError::UnknownRuleId {
+                rule_id,
+                source,
+                replacement,
+            } => {
                 assert_eq!(rule_id, "DOES_NOT_EXIST");
                 assert_eq!(source, "--deny");
+                assert_eq!(replacement, None);
             }
             other => panic!("unexpected error: {other:?}"),
         }
+    }
+
+    #[test]
+    fn profile_rule_overrides_apply_before_cli_overrides() {
+        let raw: RawConfig = toml::from_str(
+            r#"
+[profile.default]
+ruleset = ["noir_core"]
+warn = ["NOIR001"]
+
+[profile.aztec]
+extends = ["default"]
+deny = ["NOIR001"]
+"#,
+        )
+        .expect("config with profile overrides must parse");
+        let config = Config::from_raw(raw);
+        let overrides = RuleOverrides {
+            allow: vec!["NOIR001".to_string()],
+            warn: Vec::new(),
+            deny: Vec::new(),
+        };
+
+        let levels = config
+            .effective_rule_levels("aztec", &overrides)
+            .expect("effective levels should resolve");
+
+        assert_eq!(levels.get("NOIR001"), Some(&RuleLevel::Allow));
+    }
+
+    #[test]
+    fn unknown_profile_rule_overrides_are_rejected() {
+        let raw: RawConfig = toml::from_str(
+            r#"
+[profile.default]
+ruleset = ["noir_core"]
+deny = ["NOIR404"]
+"#,
+        )
+        .expect("config with unknown profile override must parse");
+        let config = Config::from_raw(raw);
+
+        let err = config
+            .effective_rule_levels("default", &RuleOverrides::default())
+            .expect_err("unknown profile override should fail");
+
+        match err {
+            ConfigError::UnknownRuleId {
+                rule_id,
+                source,
+                replacement,
+            } => {
+                assert_eq!(rule_id, "NOIR404");
+                assert_eq!(source, "profile 'default' deny");
+                assert_eq!(replacement, None);
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn renamed_override_rule_suggests_replacement() {
+        let catalog = [
+            LintSpec {
+                id: "NOIR001",
+                pack: "noir_core",
+                policy: CORRECTNESS,
+                category: LintCategory::Correctness,
+                default_level: RuleLevel::Deny,
+                confidence: Confidence::High,
+                lifecycle: LintLifecycleState::Active,
+                docs: LintDocs {
+                    summary: "active",
+                    details: "active",
+                },
+            },
+            LintSpec {
+                id: "NOIR_OLD",
+                pack: "noir_core",
+                policy: CORRECTNESS,
+                category: LintCategory::Correctness,
+                default_level: RuleLevel::Deny,
+                confidence: Confidence::High,
+                lifecycle: LintLifecycleState::Renamed {
+                    since: "0.2.0",
+                    to: "NOIR001",
+                },
+                docs: LintDocs {
+                    summary: "renamed",
+                    details: "renamed",
+                },
+            },
+        ];
+
+        let replacement =
+            super::resolve_override_rule_id_for_catalog("NOIR_OLD", &catalog).unwrap_err();
+        assert_eq!(replacement, Some("NOIR001"));
     }
 }
