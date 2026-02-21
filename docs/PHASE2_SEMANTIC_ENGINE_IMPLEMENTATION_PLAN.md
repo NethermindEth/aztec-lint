@@ -176,7 +176,7 @@ Failure modes:
 
 ---
 
-### Step 5: Wire Semantic Model Through CLI Check Pipeline
+### Step 5: Wire Semantic Model Through CLI Check Pipeline **COMPLETED**
 
 Files:
 - `crates/aztec-lint-cli/src/commands/check.rs`
