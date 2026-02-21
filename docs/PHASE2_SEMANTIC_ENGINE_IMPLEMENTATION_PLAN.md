@@ -96,7 +96,7 @@ Failure modes:
 
 ---
 
-### Step 2: Introduce a First-Class Semantic Model in Core
+### Step 2: Introduce a First-Class Semantic Model in Core **COMPLETED**
 
 Files:
 - `crates/aztec-lint-core/src/model/mod.rs`
