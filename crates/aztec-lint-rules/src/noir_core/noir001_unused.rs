@@ -137,6 +137,17 @@ impl Noir001UnusedRule {
                 .or_default()
                 .insert(ident);
         }
+        for (normalized_file, file) in &files {
+            let mut references = attribute_reference_identifiers(file.text());
+            references.extend(type_reference_identifiers(file.text()));
+            if references.is_empty() {
+                continue;
+            }
+            identifiers_by_file
+                .entry(normalized_file.clone())
+                .or_default()
+                .extend(references);
+        }
 
         for import_symbol in ctx
             .project()
@@ -155,6 +166,9 @@ impl Noir001UnusedRule {
             ) else {
                 continue;
             };
+            if is_public_use_statement(import_source) {
+                continue;
+            }
 
             let imported_bindings = import_bindings_in_use_statement(import_source);
             let Some(import_start) = usize::try_from(import_symbol.span.start).ok() else {
@@ -286,6 +300,318 @@ fn identifier_at_span(file: &SourceFile, start: u32, end: u32) -> Option<String>
         .next_back()
 }
 
+fn attribute_reference_identifiers(source: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::<String>::new();
+    let bytes = source.as_bytes();
+    let mut cursor = 0usize;
+
+    while cursor + 1 < bytes.len() {
+        if bytes[cursor] != b'#' || bytes[cursor + 1] != b'[' {
+            cursor += 1;
+            continue;
+        }
+
+        let content_start = cursor + 2;
+        let Some(content_end) = find_attribute_content_end(source, content_start) else {
+            break;
+        };
+        collect_attribute_path_tails(&source[content_start..content_end], &mut out);
+        cursor = content_end + 1;
+    }
+
+    out
+}
+
+fn find_attribute_content_end(source: &str, start: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut depth = 1usize;
+    let mut cursor = start;
+
+    while cursor < bytes.len() {
+        match bytes[cursor] {
+            b'"' | b'\'' => {
+                cursor = skip_quoted_literal(bytes, cursor);
+                continue;
+            }
+            b'[' => depth += 1,
+            b']' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(cursor);
+                }
+            }
+            _ => {}
+        }
+        cursor += 1;
+    }
+
+    None
+}
+
+fn collect_attribute_path_tails(content: &str, out: &mut BTreeSet<String>) {
+    let bytes = content.as_bytes();
+    let mut cursor = 0usize;
+
+    while cursor < bytes.len() {
+        if matches!(bytes[cursor], b'"' | b'\'') {
+            cursor = skip_quoted_literal(bytes, cursor);
+            continue;
+        }
+        if !is_ident_continue(bytes[cursor])
+            || (cursor > 0 && is_ident_continue(bytes[cursor - 1]))
+            || !bytes[cursor].is_ascii_alphabetic() && bytes[cursor] != b'_'
+        {
+            cursor += 1;
+            continue;
+        }
+
+        let mut segment_start = cursor;
+        cursor += 1;
+        while cursor < bytes.len() && is_ident_continue(bytes[cursor]) {
+            cursor += 1;
+        }
+        let mut segment_end = cursor;
+
+        loop {
+            let mut lookahead = cursor;
+            while lookahead < bytes.len() && bytes[lookahead].is_ascii_whitespace() {
+                lookahead += 1;
+            }
+            if lookahead + 1 >= bytes.len()
+                || bytes[lookahead] != b':'
+                || bytes[lookahead + 1] != b':'
+            {
+                break;
+            }
+            lookahead += 2;
+            while lookahead < bytes.len() && bytes[lookahead].is_ascii_whitespace() {
+                lookahead += 1;
+            }
+            if lookahead >= bytes.len()
+                || !bytes[lookahead].is_ascii_alphabetic() && bytes[lookahead] != b'_'
+            {
+                break;
+            }
+
+            segment_start = lookahead;
+            lookahead += 1;
+            while lookahead < bytes.len() && is_ident_continue(bytes[lookahead]) {
+                lookahead += 1;
+            }
+            segment_end = lookahead;
+            cursor = lookahead;
+        }
+
+        let mut after = cursor;
+        while after < bytes.len() && bytes[after].is_ascii_whitespace() {
+            after += 1;
+        }
+        if bytes.get(after) == Some(&b'=') {
+            continue;
+        }
+
+        let candidate = content[segment_start..segment_end].trim();
+        if candidate.is_empty() || matches!(candidate, "self" | "super" | "crate") {
+            continue;
+        }
+        out.insert(candidate.to_string());
+    }
+}
+
+fn skip_quoted_literal(bytes: &[u8], start: usize) -> usize {
+    let quote = bytes[start];
+    let mut cursor = start + 1;
+    while cursor < bytes.len() {
+        if bytes[cursor] == b'\\' {
+            cursor = cursor.saturating_add(2);
+            continue;
+        }
+        if bytes[cursor] == quote {
+            return cursor + 1;
+        }
+        cursor += 1;
+    }
+    bytes.len()
+}
+
+fn type_reference_identifiers(source: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::<String>::new();
+    collect_colon_type_references(source, &mut out);
+    collect_return_type_references(source, &mut out);
+    collect_type_alias_references(source, &mut out);
+    out
+}
+
+fn collect_colon_type_references(source: &str, out: &mut BTreeSet<String>) {
+    let bytes = source.as_bytes();
+    let mut cursor = 0usize;
+
+    while cursor < bytes.len() {
+        if bytes[cursor] != b':' {
+            cursor += 1;
+            continue;
+        }
+        if bytes.get(cursor.saturating_sub(1)) == Some(&b':')
+            || bytes.get(cursor + 1) == Some(&b':')
+        {
+            cursor += 1;
+            continue;
+        }
+
+        let mut start = cursor + 1;
+        while start < bytes.len() && bytes[start].is_ascii_whitespace() {
+            start += 1;
+        }
+        if start >= bytes.len() {
+            break;
+        }
+
+        let end = type_expression_end(source, start);
+        collect_identifier_tokens(&source[start..end], out);
+        cursor = end;
+    }
+}
+
+fn collect_return_type_references(source: &str, out: &mut BTreeSet<String>) {
+    let bytes = source.as_bytes();
+    let mut cursor = 0usize;
+
+    while cursor + 1 < bytes.len() {
+        if bytes[cursor] != b'-' || bytes[cursor + 1] != b'>' {
+            cursor += 1;
+            continue;
+        }
+        let mut start = cursor + 2;
+        while start < bytes.len() && bytes[start].is_ascii_whitespace() {
+            start += 1;
+        }
+        if start >= bytes.len() {
+            break;
+        }
+        let end = type_expression_end(source, start);
+        collect_identifier_tokens(&source[start..end], out);
+        cursor = end;
+    }
+}
+
+fn collect_type_alias_references(source: &str, out: &mut BTreeSet<String>) {
+    let mut cursor = 0usize;
+    while let Some(type_start) = find_keyword(&source[cursor..], "type") {
+        let absolute_type_start = cursor + type_start;
+        let after_type = absolute_type_start + "type".len();
+        let Some(eq_offset) = source[after_type..].find('=') else {
+            cursor = after_type;
+            continue;
+        };
+        let value_start = after_type + eq_offset + 1;
+        let Some(semicolon_offset) = source[value_start..].find(';') else {
+            cursor = value_start;
+            continue;
+        };
+        let value_end = value_start + semicolon_offset;
+        collect_identifier_tokens(&source[value_start..value_end], out);
+        cursor = value_end + 1;
+    }
+}
+
+fn type_expression_end(source: &str, start: usize) -> usize {
+    let bytes = source.as_bytes();
+    let mut cursor = start;
+    let mut angle_depth = 0usize;
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+
+    while cursor < bytes.len() {
+        match bytes[cursor] {
+            b'"' | b'\'' => {
+                cursor = skip_quoted_literal(bytes, cursor);
+                continue;
+            }
+            b'<' => angle_depth += 1,
+            b'>' => {
+                if angle_depth > 0 {
+                    angle_depth -= 1;
+                } else if paren_depth == 0 && bracket_depth == 0 {
+                    break;
+                }
+            }
+            b'(' => paren_depth += 1,
+            b')' => {
+                if paren_depth > 0 {
+                    paren_depth -= 1;
+                } else if angle_depth == 0 && bracket_depth == 0 {
+                    break;
+                }
+            }
+            b'[' => bracket_depth += 1,
+            b']' => {
+                if bracket_depth > 0 {
+                    bracket_depth -= 1;
+                } else if angle_depth == 0 && paren_depth == 0 {
+                    break;
+                }
+            }
+            b',' | b';' | b'{' | b'='
+                if angle_depth == 0 && paren_depth == 0 && bracket_depth == 0 =>
+            {
+                break;
+            }
+            _ => {}
+        }
+        cursor += 1;
+    }
+
+    cursor
+}
+
+fn collect_identifier_tokens(segment: &str, out: &mut BTreeSet<String>) {
+    const KEYWORDS: &[&str] = &[
+        "as", "contract", "crate", "else", "enum", "fn", "for", "if", "impl", "in", "let", "mod",
+        "mut", "pub", "return", "self", "struct", "super", "trait", "type", "use", "where",
+        "while",
+    ];
+    for (identifier, _) in extract_identifiers(segment) {
+        if KEYWORDS.contains(&identifier.as_str()) {
+            continue;
+        }
+        out.insert(identifier);
+    }
+}
+
+fn is_public_use_statement(statement: &str) -> bool {
+    let trimmed = statement.trim_start();
+    let Some(pub_start) = find_keyword(trimmed, "pub") else {
+        return false;
+    };
+    if pub_start != 0 {
+        return false;
+    }
+
+    let bytes = trimmed.as_bytes();
+    let mut cursor = "pub".len();
+    while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+        cursor += 1;
+    }
+
+    if bytes.get(cursor) == Some(&b'(') {
+        cursor += 1;
+        let mut depth = 1usize;
+        while cursor < bytes.len() && depth > 0 {
+            match bytes[cursor] {
+                b'(' => depth += 1,
+                b')' => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+            cursor += 1;
+        }
+        while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+    }
+
+    trimmed[cursor..].starts_with("use ")
+}
+
 fn import_bindings(line: &str) -> Vec<(String, usize)> {
     let trimmed = line.trim_start();
     if !trimmed.starts_with("use ") {
@@ -364,49 +690,110 @@ fn find_keyword(source: &str, keyword: &str) -> Option<usize> {
 }
 
 fn parse_use_clause_bindings(clause: &str) -> Vec<String> {
-    let trimmed = clause.trim();
     let mut out = Vec::<String>::new();
-
-    if let (Some(open), Some(close)) = (trimmed.find('{'), trimmed.rfind('}'))
-        && open < close
-    {
-        let inner = &trimmed[open + 1..close];
-        for part in inner.split(',') {
-            if let Some(binding) = parse_single_import_binding(part) {
-                out.push(binding);
-            }
-        }
-        return out;
-    }
-
-    for part in trimmed.split(',') {
-        if let Some(binding) = parse_single_import_binding(part) {
-            out.push(binding);
-        }
-    }
-
+    parse_use_clause_bindings_recursive(clause.trim(), &mut out);
     out
 }
 
-fn parse_single_import_binding(part: &str) -> Option<String> {
+fn parse_use_clause_bindings_recursive(clause: &str, out: &mut Vec<String>) {
+    for part in split_top_level(clause, b',') {
+        parse_single_import_binding(part.trim(), out);
+    }
+}
+
+fn parse_single_import_binding(part: &str, out: &mut Vec<String>) {
     let trimmed = part.trim();
     if trimmed.is_empty() || trimmed == "*" {
-        return None;
+        return;
+    }
+
+    if let Some(inner) = braced_inner(trimmed) {
+        parse_use_clause_bindings_recursive(inner, out);
+        return;
     }
 
     let candidate = trimmed
         .rsplit_once(" as ")
         .map(|(_, alias)| alias.trim())
         .unwrap_or_else(|| trimmed.rsplit("::").next().unwrap_or(trimmed).trim());
-    if candidate.is_empty() {
-        return None;
-    }
-
     let candidate = candidate.trim_matches('{').trim_matches('}');
     if candidate.is_empty() || matches!(candidate, "crate" | "super" | "self" | "pub" | "*") {
-        return None;
+        return;
     }
-    Some(candidate.to_string())
+
+    out.push(candidate.to_string());
+}
+
+fn split_top_level(input: &str, delimiter: u8) -> Vec<&str> {
+    let bytes = input.as_bytes();
+    let mut out = Vec::<&str>::new();
+    let mut start = 0usize;
+    let mut cursor = 0usize;
+    let mut brace_depth = 0usize;
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+
+    while cursor < bytes.len() {
+        match bytes[cursor] {
+            b'"' | b'\'' => {
+                cursor = skip_quoted_literal(bytes, cursor);
+                continue;
+            }
+            b'{' => brace_depth += 1,
+            b'}' => brace_depth = brace_depth.saturating_sub(1),
+            b'(' => paren_depth += 1,
+            b')' => paren_depth = paren_depth.saturating_sub(1),
+            b'[' => bracket_depth += 1,
+            b']' => bracket_depth = bracket_depth.saturating_sub(1),
+            _ => {}
+        }
+
+        if bytes[cursor] == delimiter && brace_depth == 0 && paren_depth == 0 && bracket_depth == 0
+        {
+            out.push(&input[start..cursor]);
+            start = cursor + 1;
+        }
+        cursor += 1;
+    }
+
+    out.push(&input[start..]);
+    out
+}
+
+fn braced_inner(input: &str) -> Option<&str> {
+    let bytes = input.as_bytes();
+    let mut cursor = 0usize;
+    let mut open = None::<usize>;
+    let mut depth = 0usize;
+
+    while cursor < bytes.len() {
+        match bytes[cursor] {
+            b'"' | b'\'' => {
+                cursor = skip_quoted_literal(bytes, cursor);
+                continue;
+            }
+            b'{' => {
+                if depth == 0 {
+                    open = Some(cursor);
+                }
+                depth += 1;
+            }
+            b'}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    let open_index = open?;
+                    if !input[cursor + 1..].trim().is_empty() {
+                        return None;
+                    }
+                    return Some(&input[open_index + 1..cursor]);
+                }
+            }
+            _ => {}
+        }
+        cursor += 1;
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -425,7 +812,7 @@ mod tests {
     use crate::Rule;
     use crate::engine::context::RuleContext;
 
-    use super::Noir001UnusedRule;
+    use super::{Noir001UnusedRule, import_bindings_in_use_statement};
 
     #[test]
     fn reports_unused_local_binding() {
@@ -660,6 +1047,181 @@ mod tests {
         Noir001UnusedRule.run(&context, &mut diagnostics);
 
         assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn semantic_attribute_macro_use_marks_import_as_used() {
+        let source = "use dep::aztec::macros::aztec;\n#[aztec]\nfn main() {}";
+        let project = semantic_project_with_import(
+            source,
+            "use dep::aztec::macros::aztec;",
+            "dep::aztec::macros::aztec",
+        );
+
+        let context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), source.to_string())],
+        );
+        let mut diagnostics = Vec::new();
+        Noir001UnusedRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn semantic_unused_attribute_macro_import_is_reported_without_attribute_use() {
+        let source = "use dep::aztec::macros::aztec;\nfn main() {}";
+        let project = semantic_project_with_import(
+            source,
+            "use dep::aztec::macros::aztec;",
+            "dep::aztec::macros::aztec",
+        );
+
+        let context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), source.to_string())],
+        );
+        let mut diagnostics = Vec::new();
+        Noir001UnusedRule.run(&context, &mut diagnostics);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].message, "import `aztec` is never used");
+    }
+
+    #[test]
+    fn semantic_attribute_macro_alias_marks_import_as_used() {
+        let source = "use dep::aztec::macros::aztec as az;\n#[az]\nfn main() {}";
+        let project = semantic_project_with_import(
+            source,
+            "use dep::aztec::macros::aztec as az;",
+            "dep::aztec::macros::aztec as az",
+        );
+
+        let context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), source.to_string())],
+        );
+        let mut diagnostics = Vec::new();
+        Noir001UnusedRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn semantic_grouped_import_tracks_each_binding_independently() {
+        let source =
+            "use dep::aztec::macros::{events::event, hash::sha256 as h};\n#[event]\nfn main() {}";
+        let project = semantic_project_with_import(
+            source,
+            "use dep::aztec::macros::{events::event, hash::sha256 as h};",
+            "dep::aztec::macros::{events::event, hash::sha256 as h}",
+        );
+
+        let context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), source.to_string())],
+        );
+        let mut diagnostics = Vec::new();
+        Noir001UnusedRule.run(&context, &mut diagnostics);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].message, "import `h` is never used");
+    }
+
+    #[test]
+    fn semantic_public_reexport_is_not_reported() {
+        let source = "pub use dep::types::position::PositionReceipt;\nfn main() {}";
+        let project = semantic_project_with_import(
+            source,
+            "pub use dep::types::position::PositionReceipt;",
+            "dep::types::position::PositionReceipt",
+        );
+
+        let context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), source.to_string())],
+        );
+        let mut diagnostics = Vec::new();
+        Noir001UnusedRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn semantic_type_position_use_marks_import_as_used() {
+        let source = "use dep::aztec::address::AztecAddress;\nstruct PositionReceipt {\n    pub owner: AztecAddress,\n}\nfn main() {}";
+        let project = semantic_project_with_import(
+            source,
+            "use dep::aztec::address::AztecAddress;",
+            "dep::aztec::address::AztecAddress",
+        );
+
+        let context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), source.to_string())],
+        );
+        let mut diagnostics = Vec::new();
+        Noir001UnusedRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn import_parser_flattens_nested_use_tree() {
+        let bindings = import_bindings_in_use_statement("use x::{a, b::{c as d}};");
+        let names = bindings
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["a".to_string(), "d".to_string()]);
+    }
+
+    fn semantic_project_with_import(
+        source: &str,
+        import_statement: &str,
+        import_name: &str,
+    ) -> ProjectModel {
+        let (import_start, import_end) = span_range(source, import_statement);
+        let function_start = source
+            .find("fn main()")
+            .expect("semantic fixture should include `fn main()`");
+        let function_end = u32::try_from(source.len()).unwrap_or(u32::MAX);
+        let function_start_u32 = u32::try_from(function_start).unwrap_or(u32::MAX);
+
+        let mut project = ProjectModel::default();
+        project.symbols.push(SymbolRef {
+            symbol_id: "import::1".to_string(),
+            name: import_name.to_string(),
+            kind: SymbolKind::Import,
+            span: Span::new("src/main.nr", import_start, import_end, 1, 1),
+        });
+        project.semantic.functions.push(SemanticFunction {
+            symbol_id: "fn::main".to_string(),
+            name: "main".to_string(),
+            module_symbol_id: "module::main".to_string(),
+            return_type_repr: "()".to_string(),
+            return_type_category: TypeCategory::Unknown,
+            parameter_types: Vec::new(),
+            is_entrypoint: true,
+            is_unconstrained: false,
+            span: Span::new("src/main.nr", function_start_u32, function_end, 1, 1),
+        });
+        project.semantic.expressions.push(SemanticExpression {
+            expr_id: "expr::seed".to_string(),
+            function_symbol_id: "fn::main".to_string(),
+            category: ExpressionCategory::Literal,
+            type_category: TypeCategory::Unknown,
+            type_repr: "unknown".to_string(),
+            span: Span::new(
+                "src/main.nr",
+                function_start_u32,
+                function_start_u32.saturating_add(1),
+                1,
+                1,
+            ),
+        });
+        project.normalize();
+        project
     }
 
     fn temp_test_root(prefix: &str) -> PathBuf {
