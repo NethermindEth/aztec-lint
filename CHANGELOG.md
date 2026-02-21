@@ -7,6 +7,8 @@ Entries are grouped by released version.
 
 ## [Unreleased]
 
+## [0.3.0]
+
 ### 2026-02-21
 
 - Added baseline-freeze fixture coverage for semantically impacted rules across `noir_core` and `aztec` test suites.
