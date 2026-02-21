@@ -4,3 +4,4 @@ pub mod check;
 pub mod explain;
 pub mod fix;
 pub mod rules;
+pub mod update;

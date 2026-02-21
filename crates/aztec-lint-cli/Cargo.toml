@@ -23,7 +23,13 @@ aztec-lint-aztec.workspace = true
 clap = { version = "4.5", features = ["derive"] }
 serde_json.workspace = true
 toml.workspace = true
+flate2 = "1.0"
+self-replace = "1.5"
+sha2 = "0.10"
+tar = "0.4"
+tempfile = "3.13"
+ureq = "2.12"
+zip = { version = "2.4", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 assert_cmd = "2.0"
-tempfile = "3.13"

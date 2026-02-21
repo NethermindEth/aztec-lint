@@ -744,6 +744,23 @@ fn check_without_discoverable_project_returns_internal_error() {
 }
 
 #[test]
+fn update_rejects_invalid_version_format() {
+    let mut cmd = cli_bin();
+    cmd.args(["update", "--version", "invalid-version"]);
+    let output = cmd.output().expect("command should execute");
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "invalid update version should fail before network access"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("invalid version"),
+        "expected invalid version error in stderr, got: {stderr}"
+    );
+}
+
+#[test]
 fn check_workspace_root_discovers_member_projects() {
     let (_workspace, root) = create_workspace_with_members();
     let mut cmd = cli_bin();

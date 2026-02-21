@@ -6,7 +6,7 @@ use std::process::ExitCode;
 use aztec_lint_core::config::{ConfigError, RuleOverrides};
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
-use crate::commands::{aztec_scan, check, explain, fix, rules};
+use crate::commands::{aztec_scan, check, explain, fix, rules, update};
 use crate::exit_codes;
 
 #[derive(Debug)]
@@ -114,6 +114,7 @@ enum Command {
     Fix(fix::FixArgs),
     Rules(rules::RulesArgs),
     Explain(explain::ExplainArgs),
+    Update(update::UpdateArgs),
     Aztec(AztecArgs),
 }
 
@@ -160,9 +161,12 @@ pub fn run() -> ExitCode {
 }
 
 fn starts_with_subcommand(args: &[OsString]) -> bool {
-    args.get(1)
-        .and_then(|arg| arg.to_str())
-        .is_some_and(|arg| matches!(arg, "check" | "fix" | "rules" | "explain" | "aztec"))
+    args.get(1).and_then(|arg| arg.to_str()).is_some_and(|arg| {
+        matches!(
+            arg,
+            "check" | "fix" | "rules" | "explain" | "update" | "aztec"
+        )
+    })
 }
 
 fn parse_subcommand_mode(args: Vec<OsString>) -> Result<SubcommandCli, clap::Error> {
@@ -179,6 +183,7 @@ fn dispatch_subcommand(cli: SubcommandCli) -> Result<ExitCode, CliError> {
         Command::Fix(args) => fix::run(args),
         Command::Rules(args) => rules::run(args),
         Command::Explain(args) => explain::run(args),
+        Command::Update(args) => update::run(args),
         Command::Aztec(args) => match args.command {
             AztecSubcommand::Scan(scan_args) => aztec_scan::run(scan_args),
         },
