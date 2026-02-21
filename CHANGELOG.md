@@ -33,6 +33,10 @@ Entries are grouped by released version.
 - Changed `NOIR110` to compute complexity from semantic CFG decision blocks, with text heuristics retained only as fallback.
 - Changed `NOIR120` to compute nesting from semantic block-span containment, with brace-depth parsing retained only as fallback.
 - Added semantic-path unit coverage for `NOIR100`, `NOIR110`, and `NOIR120`.
+- Added semantic-aware Aztec model construction via `build_aztec_model_with_semantic(...)`, while keeping `build_aztec_model(...)` as the compatibility path.
+- Changed Aztec semantic site extraction (`note_read_sites`, `note_write_sites`, `nullifier_emit_sites`, `public_sinks`, `enqueue_sites`) to derive primarily from semantic call-site and statement facts, with source text heuristics retained only as fallback.
+- Changed CLI `check` Aztec model wiring to pass the project semantic model into Aztec model construction.
+- Added `AztecModel::normalize()` in core to centralize deterministic ordering/dedup behavior.
 
 ## [0.2.0]
 
