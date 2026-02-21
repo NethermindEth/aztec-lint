@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use serde::{Deserialize, Serialize};
 
 use crate::model::Span;
@@ -121,6 +123,109 @@ impl SemanticModel {
         });
         self.guard_nodes
             .dedup_by(|left, right| left.guard_id == right.guard_id);
+    }
+
+    pub fn statement_block_map(&self, function_symbol_id: &str) -> BTreeMap<String, String> {
+        self.cfg_blocks
+            .iter()
+            .filter(|block| block.function_symbol_id == function_symbol_id)
+            .fold(BTreeMap::<String, String>::new(), |mut out, block| {
+                for statement_id in &block.statement_ids {
+                    out.insert(statement_id.clone(), block.block_id.clone());
+                }
+                out
+            })
+    }
+
+    pub fn cfg_dominators(&self, function_symbol_id: &str) -> BTreeMap<String, BTreeSet<String>> {
+        let blocks = self
+            .cfg_blocks
+            .iter()
+            .filter(|block| block.function_symbol_id == function_symbol_id)
+            .map(|block| block.block_id.clone())
+            .collect::<BTreeSet<_>>();
+        if blocks.is_empty() {
+            return BTreeMap::new();
+        }
+
+        let mut predecessors = BTreeMap::<String, BTreeSet<String>>::new();
+        for block_id in &blocks {
+            predecessors.insert(block_id.clone(), BTreeSet::new());
+        }
+        for edge in self
+            .cfg_edges
+            .iter()
+            .filter(|edge| edge.function_symbol_id == function_symbol_id)
+        {
+            if blocks.contains(&edge.from_block_id) && blocks.contains(&edge.to_block_id) {
+                predecessors
+                    .entry(edge.to_block_id.clone())
+                    .or_default()
+                    .insert(edge.from_block_id.clone());
+            }
+        }
+
+        let entry_blocks = blocks
+            .iter()
+            .filter(|block_id| {
+                predecessors
+                    .get(*block_id)
+                    .is_none_or(|predecessors| predecessors.is_empty())
+            })
+            .cloned()
+            .collect::<BTreeSet<_>>();
+
+        let mut dominators = BTreeMap::<String, BTreeSet<String>>::new();
+        for block_id in &blocks {
+            if entry_blocks.contains(block_id) {
+                dominators.insert(block_id.clone(), BTreeSet::from([block_id.clone()]));
+            } else {
+                dominators.insert(block_id.clone(), blocks.clone());
+            }
+        }
+
+        loop {
+            let mut changed = false;
+            for block_id in &blocks {
+                if entry_blocks.contains(block_id) {
+                    continue;
+                }
+                let predecessors = predecessors.get(block_id).cloned().unwrap_or_default();
+                if predecessors.is_empty() {
+                    let singleton = BTreeSet::from([block_id.clone()]);
+                    if dominators.get(block_id) != Some(&singleton) {
+                        dominators.insert(block_id.clone(), singleton);
+                        changed = true;
+                    }
+                    continue;
+                }
+
+                let mut iter = predecessors.into_iter();
+                let Some(first) = iter.next() else {
+                    continue;
+                };
+                let mut next = dominators.get(&first).cloned().unwrap_or_default();
+                for predecessor in iter {
+                    let predecessor_dominators =
+                        dominators.get(&predecessor).cloned().unwrap_or_default();
+                    next = next
+                        .intersection(&predecessor_dominators)
+                        .cloned()
+                        .collect::<BTreeSet<_>>();
+                }
+                next.insert(block_id.clone());
+
+                if dominators.get(block_id) != Some(&next) {
+                    dominators.insert(block_id.clone(), next);
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+
+        dominators
     }
 }
 
@@ -274,6 +379,8 @@ pub enum TypeCategory {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use serde_json::{from_str, to_vec};
 
     use super::{
@@ -542,5 +649,85 @@ mod tests {
         assert!(model.dfg_edges.is_empty());
         assert!(model.call_sites.is_empty());
         assert!(model.guard_nodes.is_empty());
+    }
+
+    #[test]
+    fn statement_block_map_indexes_statement_blocks() {
+        let model = SemanticModel {
+            cfg_blocks: vec![
+                CfgBlock {
+                    function_symbol_id: "fn::a".to_string(),
+                    block_id: "bb0".to_string(),
+                    statement_ids: vec!["stmt::0".to_string()],
+                },
+                CfgBlock {
+                    function_symbol_id: "fn::a".to_string(),
+                    block_id: "bb1".to_string(),
+                    statement_ids: vec!["stmt::1".to_string(), "stmt::2".to_string()],
+                },
+            ],
+            ..SemanticModel::default()
+        };
+
+        let map = model.statement_block_map("fn::a");
+        assert_eq!(map.get("stmt::0"), Some(&"bb0".to_string()));
+        assert_eq!(map.get("stmt::1"), Some(&"bb1".to_string()));
+        assert_eq!(map.get("stmt::2"), Some(&"bb1".to_string()));
+    }
+
+    #[test]
+    fn cfg_dominators_computes_forward_dominance() {
+        let model = SemanticModel {
+            cfg_blocks: vec![
+                CfgBlock {
+                    function_symbol_id: "fn::a".to_string(),
+                    block_id: "bb0".to_string(),
+                    statement_ids: vec![],
+                },
+                CfgBlock {
+                    function_symbol_id: "fn::a".to_string(),
+                    block_id: "bb1".to_string(),
+                    statement_ids: vec![],
+                },
+                CfgBlock {
+                    function_symbol_id: "fn::a".to_string(),
+                    block_id: "bb2".to_string(),
+                    statement_ids: vec![],
+                },
+            ],
+            cfg_edges: vec![
+                CfgEdge {
+                    function_symbol_id: "fn::a".to_string(),
+                    from_block_id: "bb0".to_string(),
+                    to_block_id: "bb1".to_string(),
+                    kind: CfgEdgeKind::Unconditional,
+                },
+                CfgEdge {
+                    function_symbol_id: "fn::a".to_string(),
+                    from_block_id: "bb1".to_string(),
+                    to_block_id: "bb2".to_string(),
+                    kind: CfgEdgeKind::Unconditional,
+                },
+            ],
+            ..SemanticModel::default()
+        };
+
+        let dominators = model.cfg_dominators("fn::a");
+        assert_eq!(
+            dominators.get("bb0"),
+            Some(&BTreeSet::from(["bb0".to_string()]))
+        );
+        assert_eq!(
+            dominators.get("bb1"),
+            Some(&BTreeSet::from(["bb0".to_string(), "bb1".to_string()]))
+        );
+        assert_eq!(
+            dominators.get("bb2"),
+            Some(&BTreeSet::from([
+                "bb0".to_string(),
+                "bb1".to_string(),
+                "bb2".to_string()
+            ]))
+        );
     }
 }
