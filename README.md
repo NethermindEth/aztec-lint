@@ -44,6 +44,7 @@ Published binary targets:
 - `linux-x86_64`
 - `macos-x86_64`
 - `macos-aarch64`
+- `windows-x86_64` (zip archive)
 
 ## Quick Start
 
