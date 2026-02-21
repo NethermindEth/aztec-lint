@@ -103,9 +103,9 @@ AZTEC022\taztec_pack\tsoundness\tmedium\tSuspicious Merkle witness usage.\n\
 NOIR001\tnoir_core\tcorrectness\thigh\tUnused variable or import.\n\
 NOIR002\tnoir_core\tcorrectness\tmedium\tSuspicious shadowing.\n\
 NOIR010\tnoir_core\tcorrectness\thigh\tBoolean computed but not asserted.\n\
-NOIR020\tnoir_core\tcorrectness\tmedium\tArray indexing without bounds validation.\n\
+NOIR020\tnoir_core\tcorrectness\thigh\tArray indexing without bounds validation.\n\
 NOIR030\tnoir_core\tcorrectness\tmedium\tUnconstrained value influences constrained logic.\n\
-NOIR100\tnoir_core\tmaintainability\tlow\tMagic number literal should be named.\n\
+NOIR100\tnoir_core\tmaintainability\thigh\tMagic number literal should be named.\n\
 NOIR110\tnoir_core\tmaintainability\tlow\tFunction complexity exceeds threshold.\n\
 NOIR120\tnoir_core\tmaintainability\tlow\tFunction nesting depth exceeds threshold.\n";
 
@@ -723,7 +723,7 @@ fn check_sarif_paths_include_project_prefix_for_multi_project_targets() {
 }
 
 #[test]
-fn check_min_confidence_high_ignores_low_confidence_findings() {
+fn check_min_confidence_high_reports_high_confidence_findings() {
     let mut cmd = cli_bin();
     let fixture = fixture_dir("noir_core/warnings_only");
     cmd.args([
@@ -732,7 +732,7 @@ fn check_min_confidence_high_ignores_low_confidence_findings() {
         "--min-confidence",
         "high",
     ]);
-    cmd.assert().code(0);
+    cmd.assert().code(1);
 }
 
 #[test]

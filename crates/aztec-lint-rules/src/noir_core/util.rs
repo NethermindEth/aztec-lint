@@ -165,27 +165,6 @@ pub fn source_slice(source: &str, start: u32, end: u32) -> Option<&str> {
     source.get(start..end)
 }
 
-pub fn extract_index_access_parts(expression: &str) -> Option<(String, String, usize)> {
-    let open = expression.find('[')?;
-    let close_rel = expression[open + 1..].find(']')?;
-    let close = open + 1 + close_rel;
-    let inner = expression[open + 1..close].trim();
-    if inner.is_empty() || inner.chars().all(|ch| ch.is_ascii_digit()) {
-        return None;
-    }
-
-    let base = expression[..open].trim();
-    let base_identifiers = extract_identifiers(base);
-    let base_name = base_identifiers.last()?.0.clone();
-
-    let identifiers = extract_identifiers(inner);
-    if identifiers.len() != 1 {
-        return None;
-    }
-    let (name, offset) = &identifiers[0];
-    Some((base_name, name.clone(), open + 1 + offset))
-}
-
 fn find_keyword(source: &str, keyword: &str) -> Option<usize> {
     let bytes = source.as_bytes();
     let keyword_bytes = keyword.as_bytes();
@@ -430,9 +409,8 @@ fn matching_brace_end(source: &str, open_index: usize) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::{
-        count_identifier_occurrences, extract_index_access_parts, extract_numeric_literals,
-        text_fallback_function_scopes, text_fallback_line_bindings,
-        text_fallback_statement_bindings,
+        count_identifier_occurrences, extract_numeric_literals, text_fallback_function_scopes,
+        text_fallback_line_bindings, text_fallback_statement_bindings,
     };
 
     #[test]
@@ -485,21 +463,6 @@ mod tests {
         assert_eq!(literals.len(), 2);
         assert_eq!(literals[0].0, "42");
         assert_eq!(literals[1].0, "7");
-    }
-
-    #[test]
-    fn extracts_index_access_parts() {
-        let (base, index, offset) =
-            extract_index_access_parts("arr[idx + 1]").expect("parts should be extracted");
-        assert_eq!(base, "arr");
-        assert_eq!(index, "idx");
-        assert_eq!(offset, 4);
-
-        let (base, index, offset) =
-            extract_index_access_parts("state.values[idx]").expect("parts should be extracted");
-        assert_eq!(base, "values");
-        assert_eq!(index, "idx");
-        assert_eq!(offset, 13);
     }
 
     #[test]

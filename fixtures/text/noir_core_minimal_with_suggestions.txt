@@ -6,17 +6,7 @@ warning[NOIR100]: magic number `3` should be named
    |                    ^
    |                    ^ help: replace `3` with a named constant; replace with `NAMED_CONSTANT`
    |
-   = note: confidence=low, policy=maintainability
+   = note: confidence=high, policy=maintainability
    = help: extract this literal into a named constant for readability
 
-warning[NOIR100]: magic number `6` should be named
-  --> src/main.nr:9:17
-   |
- 9 |     assert(y == 6);
-   |                 ^
-   |                 ^ help: replace `6` with a named constant; replace with `NAMED_CONSTANT`
-   |
-   = note: confidence=low, policy=maintainability
-   = help: extract this literal into a named constant for readability
-
-diagnostics=2 errors=0 warnings=2
+diagnostics=1 errors=0 warnings=1

@@ -213,7 +213,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         category: LintCategory::Correctness,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Deny,
-        confidence: Confidence::Medium,
+        confidence: Confidence::High,
         lifecycle: LintLifecycleState::Active,
         docs: LintDocs {
             summary: "Array indexing without bounds validation.",
@@ -251,7 +251,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         category: LintCategory::Maintainability,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Warn,
-        confidence: Confidence::Low,
+        confidence: Confidence::High,
         lifecycle: LintLifecycleState::Active,
         docs: LintDocs {
             summary: "Magic number literal should be named.",
