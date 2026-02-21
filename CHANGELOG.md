@@ -25,6 +25,10 @@ Entries are grouped by released version.
 - Changed `NOIR001` to compute unused locals/imports from semantic statements and DFG/identifier facts, with text heuristics retained only as a fallback path.
 - Changed `NOIR002` to detect shadowing from semantic lexical scopes (function + block spans) and semantic `let` declarations, with legacy brace-depth parsing retained as fallback only.
 - Added semantic-path unit coverage for `NOIR001` and `NOIR002`, plus shared statement-level `let` binding extraction utilities.
+- Changed `NOIR010` to derive bool bindings from semantic types/DFG and validate assertion consumption from semantic guard/use-def links, with text heuristics retained only as fallback.
+- Changed `NOIR020` to detect index accesses and guard coverage from semantic expression/guard facts, with text heuristics retained only as fallback.
+- Changed `NOIR030` to propagate unconstrained call influence through semantic DFG into assert/constrain sinks, with text heuristics retained only as fallback.
+- Added shared semantic parsing helpers in `noir_core::util` (`source_slice`, `extract_index_identifier`) and semantic-path unit coverage for `NOIR010`, `NOIR020`, and `NOIR030`.
 
 ## [0.2.0]
 
