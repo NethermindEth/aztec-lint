@@ -7,8 +7,8 @@ use aztec_lint_core::policy::CORRECTNESS;
 use crate::Rule;
 use crate::engine::context::{RuleContext, SourceFile};
 use crate::noir_core::util::{
-    count_identifier_occurrences, source_slice, text_fallback_line_bindings,
-    text_fallback_statement_bindings,
+    count_identifier_occurrences, extract_identifiers, is_ident_continue, source_slice,
+    text_fallback_line_bindings, text_fallback_statement_bindings,
 };
 
 pub struct Noir010BoolNotAssertedRule;
@@ -118,6 +118,16 @@ impl Noir010BoolNotAssertedRule {
                 .insert(guarded_expr_id.clone());
         }
 
+        let asserted_identifiers_by_file = files
+            .iter()
+            .map(|(normalized_file, file)| {
+                (
+                    normalized_file.clone(),
+                    assertion_reference_identifiers(file.text()),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+
         for binding in bool_bindings {
             if binding.name.starts_with('_') {
                 continue;
@@ -126,18 +136,32 @@ impl Noir010BoolNotAssertedRule {
                 .get(&binding.function_symbol_id)
                 .cloned()
                 .unwrap_or_default();
-            let is_asserted = adjacency_by_function
+            let is_asserted_semantic = adjacency_by_function
                 .get(&binding.function_symbol_id)
                 .is_some_and(|adjacency| {
                     has_path_to_any(&binding.definition_node_id, &assert_targets, adjacency)
                 });
-            if is_asserted {
+            let is_asserted_text = asserted_identifiers_by_file
+                .get(&binding.file)
+                .is_some_and(|identifiers| identifiers.contains(&binding.name));
+            if is_asserted_semantic || is_asserted_text {
                 continue;
             }
 
             let Some(file) = files.get(&binding.file).copied() else {
                 continue;
             };
+            let has_meaningful_use_semantic = adjacency_by_function
+                .get(&binding.function_symbol_id)
+                .is_some_and(|adjacency| {
+                    has_meaningful_use(&binding.definition_node_id, adjacency)
+                });
+            let has_meaningful_use_text =
+                count_identifier_occurrences(file.text(), &binding.name) > 1;
+            if has_meaningful_use_semantic || has_meaningful_use_text {
+                continue;
+            }
+
             out.push(ctx.diagnostic(
                 self.id(),
                 CORRECTNESS,
@@ -165,20 +189,13 @@ impl Noir010BoolNotAssertedRule {
                 offset += line.len() + 1;
             }
 
-            let mut asserted = BTreeSet::<String>::new();
-            for line in file.text().lines() {
-                if !(line.contains("assert(") || line.contains("assert_eq(")) {
-                    continue;
-                }
-                for (name, _) in &bool_bindings {
-                    if count_identifier_occurrences(line, name) > 0 {
-                        asserted.insert(name.clone());
-                    }
-                }
-            }
+            let asserted = assertion_reference_identifiers(file.text());
 
             for (name, declaration_offset) in bool_bindings {
-                if asserted.contains(&name) {
+                if name.starts_with('_') || asserted.contains(&name) {
+                    continue;
+                }
+                if count_identifier_occurrences(file.text(), &name) > 1 {
                     continue;
                 }
                 out.push(ctx.diagnostic(
@@ -243,6 +260,179 @@ fn has_path_to_any(
     false
 }
 
+fn has_meaningful_use(definition_node_id: &str, adjacency: &BTreeMap<String, Vec<String>>) -> bool {
+    let mut visited = BTreeSet::<String>::new();
+    let mut queue = VecDeque::<String>::from([definition_node_id.to_string()]);
+
+    while let Some(node_id) = queue.pop_front() {
+        if !visited.insert(node_id.clone()) {
+            continue;
+        }
+        if node_id != definition_node_id
+            && (node_id.starts_with("expr::") || node_id.starts_with("stmt::"))
+        {
+            return true;
+        }
+        if let Some(next_nodes) = adjacency.get(&node_id) {
+            for next in next_nodes {
+                queue.push_back(next.clone());
+            }
+        }
+    }
+
+    false
+}
+
+fn assertion_reference_identifiers(source: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::<String>::new();
+    let bytes = source.as_bytes();
+    let mut cursor = 0usize;
+
+    while cursor < bytes.len() {
+        if !is_ident_start(bytes[cursor])
+            || (cursor > 0 && is_ident_continue(bytes[cursor.saturating_sub(1)]))
+        {
+            cursor += 1;
+            continue;
+        }
+
+        let call_start = cursor;
+        cursor += 1;
+        while cursor < bytes.len() && is_ident_continue(bytes[cursor]) {
+            cursor += 1;
+        }
+        let call_end = cursor;
+        let call_name = &source[call_start..call_end];
+
+        let mut lookahead = cursor;
+        while lookahead < bytes.len() && bytes[lookahead].is_ascii_whitespace() {
+            lookahead += 1;
+        }
+        if bytes.get(lookahead) != Some(&b'(') {
+            continue;
+        }
+        if is_definition_like_call(source, call_start) || !is_assertion_like_name(call_name) {
+            continue;
+        }
+
+        let Some(close) = find_matching_paren(bytes, lookahead) else {
+            continue;
+        };
+        let args = &source[lookahead + 1..close];
+        for (identifier, _) in extract_identifiers(args) {
+            if matches!(
+                identifier.as_str(),
+                "assert"
+                    | "assert_eq"
+                    | "fn"
+                    | "let"
+                    | "mut"
+                    | "pub"
+                    | "return"
+                    | "self"
+                    | "super"
+                    | "crate"
+                    | "true"
+                    | "false"
+                    | "if"
+                    | "else"
+                    | "for"
+                    | "while"
+            ) {
+                continue;
+            }
+            out.insert(identifier);
+        }
+        cursor = close + 1;
+    }
+
+    out
+}
+
+fn is_ident_start(byte: u8) -> bool {
+    byte.is_ascii_alphabetic() || byte == b'_'
+}
+
+fn is_assertion_like_name(name: &str) -> bool {
+    let normalized = name.to_ascii_lowercase();
+    normalized == "assert"
+        || normalized == "assert_eq"
+        || normalized.starts_with("assert_")
+        || normalized.ends_with("_assert")
+        || normalized.contains("require")
+        || normalized.contains("ensure")
+        || normalized.starts_with("check_")
+}
+
+fn is_definition_like_call(source: &str, call_start: usize) -> bool {
+    if call_start == 0 {
+        return false;
+    }
+    let bytes = source.as_bytes();
+    let mut cursor = call_start;
+    while cursor > 0 && bytes[cursor - 1].is_ascii_whitespace() {
+        cursor -= 1;
+    }
+    if cursor == 0 {
+        return false;
+    }
+
+    let mut token_end = cursor;
+    while token_end > 0 && is_ident_continue(bytes[token_end - 1]) {
+        token_end -= 1;
+    }
+    if token_end == cursor {
+        return false;
+    }
+    matches!(
+        &source[token_end..cursor],
+        "fn" | "trait" | "impl" | "mod" | "use" | "pub"
+    )
+}
+
+fn find_matching_paren(bytes: &[u8], open_paren: usize) -> Option<usize> {
+    if bytes.get(open_paren) != Some(&b'(') {
+        return None;
+    }
+
+    let mut depth = 1usize;
+    let mut cursor = open_paren + 1;
+    while cursor < bytes.len() {
+        match bytes[cursor] {
+            b'(' => depth += 1,
+            b')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(cursor);
+                }
+            }
+            b'"' | b'\'' => {
+                cursor = skip_quoted_literal(bytes, cursor);
+                continue;
+            }
+            _ => {}
+        }
+        cursor += 1;
+    }
+    None
+}
+
+fn skip_quoted_literal(bytes: &[u8], start: usize) -> usize {
+    let quote = bytes[start];
+    let mut cursor = start + 1;
+    while cursor < bytes.len() {
+        if bytes[cursor] == b'\\' {
+            cursor = cursor.saturating_add(2);
+            continue;
+        }
+        if bytes[cursor] == quote {
+            return cursor + 1;
+        }
+        cursor += 1;
+    }
+    bytes.len()
+}
+
 fn assignment_rhs<'a>(line: &'a str, name: &str, name_column: usize) -> Option<&'a str> {
     let tail = &line[name_column + name.len()..];
     let equals = tail.find('=')?;
@@ -298,6 +488,93 @@ mod tests {
             vec![(
                 "src/main.nr".to_string(),
                 "fn main() { let is_valid = 1 == 1; assert(is_valid); }".to_string(),
+            )],
+        );
+
+        let mut diagnostics = Vec::new();
+        Noir010BoolNotAssertedRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn ignores_negated_asserted_bool_value() {
+        let project = ProjectModel::default();
+        let context = RuleContext::from_sources(
+            &project,
+            vec![(
+                "src/main.nr".to_string(),
+                "fn main() { let violates_requirement = !(1 > 0); assert(!violates_requirement); }"
+                    .to_string(),
+            )],
+        );
+
+        let mut diagnostics = Vec::new();
+        Noir010BoolNotAssertedRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn ignores_asserted_alias_bool_value() {
+        let project = ProjectModel::default();
+        let context = RuleContext::from_sources(
+            &project,
+            vec![(
+                "src/main.nr".to_string(),
+                "fn main() { let b = 1 == 1; let b2 = b; assert(b2); }".to_string(),
+            )],
+        );
+
+        let mut diagnostics = Vec::new();
+        Noir010BoolNotAssertedRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn ignores_bool_used_in_assert_conjunction() {
+        let project = ProjectModel::default();
+        let context = RuleContext::from_sources(
+            &project,
+            vec![(
+                "src/main.nr".to_string(),
+                "fn main() { let b = 1 == 1; let other = true; assert(b && other); }".to_string(),
+            )],
+        );
+
+        let mut diagnostics = Vec::new();
+        Noir010BoolNotAssertedRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn ignores_bool_with_non_assert_meaningful_use() {
+        let project = ProjectModel::default();
+        let context = RuleContext::from_sources(
+            &project,
+            vec![(
+                "src/main.nr".to_string(),
+                "fn main() { let intent_consumed_before: bool = false; let _snapshot = intent_consumed_before; }".to_string(),
+            )],
+        );
+
+        let mut diagnostics = Vec::new();
+        Noir010BoolNotAssertedRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn ignores_assertion_like_wrapper_call() {
+        let project = ProjectModel::default();
+        let context = RuleContext::from_sources(
+            &project,
+            vec![(
+                "src/main.nr".to_string(),
+                "fn main() { let violates_requirement = !(1 > 0); require(violates_requirement); }"
+                    .to_string(),
             )],
         );
 
