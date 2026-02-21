@@ -87,6 +87,34 @@ pub fn find_let_bindings(line: &str) -> Vec<(String, usize)> {
     out
 }
 
+pub fn find_let_bindings_in_statement(statement: &str) -> Vec<(String, usize)> {
+    let Some(let_start) = find_keyword(statement, "let") else {
+        return Vec::new();
+    };
+
+    let mut cursor = let_start + "let".len();
+    let bytes = statement.as_bytes();
+    while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+        cursor += 1;
+    }
+
+    if statement[cursor..].starts_with("mut")
+        && statement
+            .as_bytes()
+            .get(cursor + "mut".len())
+            .is_some_and(|byte| byte.is_ascii_whitespace())
+    {
+        cursor += "mut".len();
+        while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+    }
+
+    let pattern_end = cursor
+        + find_pattern_end(&statement[cursor..]).unwrap_or(statement.len().saturating_sub(cursor));
+    parse_pattern_bindings(&statement[cursor..pattern_end], cursor)
+}
+
 pub fn extract_numeric_literals(line: &str) -> Vec<(String, usize)> {
     let bytes = line.as_bytes();
     let mut out = Vec::<(String, usize)>::new();
@@ -122,6 +150,159 @@ pub fn collect_identifiers(line: &str) -> BTreeSet<String> {
         .into_iter()
         .map(|(token, _)| token)
         .collect()
+}
+
+fn find_keyword(source: &str, keyword: &str) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let keyword_bytes = keyword.as_bytes();
+    let mut index = 0usize;
+
+    while index + keyword_bytes.len() <= bytes.len() {
+        if &bytes[index..index + keyword_bytes.len()] != keyword_bytes {
+            index += 1;
+            continue;
+        }
+        let left_ok = index == 0 || !is_ident_continue(bytes[index - 1]);
+        let right_ok = bytes
+            .get(index + keyword_bytes.len())
+            .is_none_or(|byte| !is_ident_continue(*byte));
+        if left_ok && right_ok {
+            return Some(index);
+        }
+        index += 1;
+    }
+
+    None
+}
+
+fn find_pattern_end(pattern_tail: &str) -> Option<usize> {
+    let bytes = pattern_tail.as_bytes();
+    let mut index = 0usize;
+    let mut paren_depth = 0usize;
+    let mut brace_depth = 0usize;
+    let mut bracket_depth = 0usize;
+
+    while index < bytes.len() {
+        match bytes[index] {
+            b'(' => paren_depth += 1,
+            b')' => paren_depth = paren_depth.saturating_sub(1),
+            b'{' => brace_depth += 1,
+            b'}' => brace_depth = brace_depth.saturating_sub(1),
+            b'[' => bracket_depth += 1,
+            b']' => bracket_depth = bracket_depth.saturating_sub(1),
+            b'=' | b';' if paren_depth == 0 && brace_depth == 0 && bracket_depth == 0 => {
+                return Some(index);
+            }
+            b':' if paren_depth == 0 && brace_depth == 0 && bracket_depth == 0 => {
+                let prev_is_colon = index > 0 && bytes[index - 1] == b':';
+                let next_is_colon = bytes.get(index + 1) == Some(&b':');
+                if !prev_is_colon && !next_is_colon {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+
+    None
+}
+
+fn parse_pattern_bindings(pattern: &str, base_offset: usize) -> Vec<(String, usize)> {
+    let bytes = pattern.as_bytes();
+    let mut index = 0usize;
+    let mut paren_depth = 0usize;
+    let mut brace_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut out = Vec::<(String, usize)>::new();
+
+    while index < bytes.len() {
+        match bytes[index] {
+            b'(' => {
+                paren_depth += 1;
+                index += 1;
+                continue;
+            }
+            b')' => {
+                paren_depth = paren_depth.saturating_sub(1);
+                index += 1;
+                continue;
+            }
+            b'{' => {
+                brace_depth += 1;
+                index += 1;
+                continue;
+            }
+            b'}' => {
+                brace_depth = brace_depth.saturating_sub(1);
+                index += 1;
+                continue;
+            }
+            b'[' => {
+                bracket_depth += 1;
+                index += 1;
+                continue;
+            }
+            b']' => {
+                bracket_depth = bracket_depth.saturating_sub(1);
+                index += 1;
+                continue;
+            }
+            _ => {}
+        }
+
+        if !is_ident_start(bytes[index]) {
+            index += 1;
+            continue;
+        }
+
+        let start = index;
+        index += 1;
+        while index < bytes.len() && is_ident_continue(bytes[index]) {
+            index += 1;
+        }
+
+        let name = &pattern[start..index];
+        if name == "_" || matches!(name, "let" | "mut" | "ref" | "pub" | "crate" | "super") {
+            continue;
+        }
+
+        let preceded_by_path = start >= 2 && &bytes[start - 2..start] == b"::";
+        if preceded_by_path {
+            continue;
+        }
+        let followed_by_path = bytes.get(index..index + 2) == Some(b"::");
+        if followed_by_path {
+            continue;
+        }
+
+        let next_non_ws = bytes
+            .get(index..)
+            .and_then(|tail| {
+                tail.iter()
+                    .position(|byte| !byte.is_ascii_whitespace())
+                    .map(|offset| index + offset)
+            })
+            .and_then(|position| bytes.get(position))
+            .copied();
+
+        let is_struct_or_enum_constructor = matches!(next_non_ws, Some(b'{') | Some(b'('))
+            && paren_depth == 0
+            && bracket_depth == 0;
+        if is_struct_or_enum_constructor {
+            continue;
+        }
+
+        let is_field_label =
+            brace_depth > 0 && next_non_ws == Some(b':') && bytes.get(index + 1) != Some(&b':');
+        if is_field_label {
+            continue;
+        }
+
+        out.push((name.to_string(), base_offset + start));
+    }
+
+    out
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -214,7 +395,7 @@ fn matching_brace_end(source: &str, open_index: usize) -> Option<usize> {
 mod tests {
     use super::{
         count_identifier_occurrences, extract_numeric_literals, find_function_scopes,
-        find_let_bindings,
+        find_let_bindings, find_let_bindings_in_statement,
     };
 
     #[test]
@@ -229,6 +410,36 @@ mod tests {
         let bindings = find_let_bindings("let mut value = 2; let next = value + 1;");
         assert_eq!(bindings[0].0, "value");
         assert_eq!(bindings[1].0, "next");
+    }
+
+    #[test]
+    fn finds_let_bindings_in_statement_pattern() {
+        let bindings = find_let_bindings_in_statement("let (left, mut right) = pair;");
+        assert_eq!(bindings.len(), 2);
+        assert_eq!(bindings[0].0, "left");
+        assert_eq!(bindings[1].0, "right");
+    }
+
+    #[test]
+    fn finds_let_bindings_in_statement_with_type_annotation() {
+        let bindings = find_let_bindings_in_statement("let value: Field = 42;");
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].0, "value");
+    }
+
+    #[test]
+    fn finds_let_bindings_in_struct_pattern_without_type_labels() {
+        let bindings = find_let_bindings_in_statement("let Point { x, y: z } = point;");
+        assert_eq!(bindings.len(), 2);
+        assert_eq!(bindings[0].0, "x");
+        assert_eq!(bindings[1].0, "z");
+    }
+
+    #[test]
+    fn finds_let_bindings_in_enum_pattern() {
+        let bindings = find_let_bindings_in_statement("let Some(value) = maybe;");
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].0, "value");
     }
 
     #[test]
