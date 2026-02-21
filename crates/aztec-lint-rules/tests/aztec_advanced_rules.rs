@@ -38,10 +38,39 @@ fn run_rule(rule_id: &str, source: &str) -> Vec<Diagnostic> {
     )
 }
 
+fn assert_single_suppressed_with_reason(diagnostics: &[Diagnostic], expected_rule: &str) {
+    let expected_reason = format!("allow({expected_rule})");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "expected exactly one diagnostic for {expected_rule}"
+    );
+    assert!(
+        diagnostics[0].suppressed,
+        "expected diagnostic to be suppressed for {expected_rule}"
+    );
+    assert_eq!(
+        diagnostics[0].suppression_reason.as_deref(),
+        Some(expected_reason.as_str()),
+        "expected canonical suppression reason for {expected_rule}"
+    );
+}
+
 #[test]
 fn aztec002_fixture_pair() {
     assert!(!run_rule("AZTEC002", &fixture_source("aztec002_positive.nr")).is_empty());
     assert!(run_rule("AZTEC002", &fixture_source("aztec002_negative.nr")).is_empty());
+
+    assert!(
+        !run_rule(
+            "AZTEC002",
+            &fixture_source("aztec002_effect_coupling_positive.nr")
+        )
+        .is_empty()
+    );
+
+    let suppressed = run_rule("AZTEC002", &fixture_source("aztec002_suppressed.nr"));
+    assert_single_suppressed_with_reason(&suppressed, "AZTEC002");
 }
 
 #[test]
@@ -50,8 +79,7 @@ fn aztec003_fixture_pair_and_suppression() {
     assert!(run_rule("AZTEC003", &fixture_source("aztec003_negative.nr")).is_empty());
 
     let suppressed = run_rule("AZTEC003", &fixture_source("aztec003_suppressed.nr"));
-    assert_eq!(suppressed.len(), 1);
-    assert!(suppressed[0].suppressed);
+    assert_single_suppressed_with_reason(&suppressed, "AZTEC003");
 }
 
 #[test]
@@ -69,14 +97,23 @@ fn aztec021_fixture_pair_and_scoped_suppression() {
         })
     }));
     assert!(run_rule("AZTEC021", &fixture_source("aztec021_negative.nr")).is_empty());
+    assert!(
+        !run_rule(
+            "AZTEC021",
+            &fixture_source("aztec021_guard_after_hash_positive.nr")
+        )
+        .is_empty()
+    );
 
     let suppressed = run_rule("AZTEC021", &fixture_source("aztec021_suppressed.nr"));
-    assert_eq!(suppressed.len(), 1);
-    assert!(suppressed[0].suppressed);
+    assert_single_suppressed_with_reason(&suppressed, "AZTEC021");
 }
 
 #[test]
 fn aztec022_fixture_pair() {
     assert!(!run_rule("AZTEC022", &fixture_source("aztec022_positive.nr")).is_empty());
     assert!(run_rule("AZTEC022", &fixture_source("aztec022_negative.nr")).is_empty());
+
+    let suppressed = run_rule("AZTEC022", &fixture_source("aztec022_suppressed.nr"));
+    assert_single_suppressed_with_reason(&suppressed, "AZTEC022");
 }

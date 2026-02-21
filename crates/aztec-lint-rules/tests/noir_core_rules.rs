@@ -1,12 +1,15 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use aztec_lint_core::config::RuleLevel;
 use aztec_lint_core::diagnostics::Diagnostic;
 use aztec_lint_core::fix::{FixApplicationMode, apply_fixes};
 use aztec_lint_core::model::ProjectModel;
 use aztec_lint_core::output::text::{CheckTextReport, render_check_report};
 use aztec_lint_rules::Rule;
+use aztec_lint_rules::RuleEngine;
 use aztec_lint_rules::engine::context::RuleContext;
 use aztec_lint_rules::noir_core::noir001_unused::Noir001UnusedRule;
 use aztec_lint_rules::noir_core::noir002_shadowing::Noir002ShadowingRule;
@@ -36,6 +39,19 @@ fn run_rule(rule: &dyn Rule, source: &str) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     rule.run(&context, &mut diagnostics);
     diagnostics
+}
+
+fn run_rule_with_engine(rule_id: &str, source: &str) -> Vec<Diagnostic> {
+    let project = ProjectModel::default();
+    let context = RuleContext::from_sources(
+        &project,
+        vec![("src/main.nr".to_string(), source.to_string())],
+    );
+    let engine = RuleEngine::new();
+    engine.run(
+        &context,
+        &BTreeMap::from([(rule_id.to_string(), RuleLevel::Deny)]),
+    )
 }
 
 #[test]
@@ -92,6 +108,65 @@ fn noir120_fixture_pair() {
     let rule = Noir120NestingRule;
     assert!(!run_rule(&rule, &fixture_source("noir120_positive.nr")).is_empty());
     assert!(run_rule(&rule, &fixture_source("noir120_negative.nr")).is_empty());
+}
+
+#[test]
+fn noir001_alias_import_edge_case_is_covered() {
+    let rule = Noir001UnusedRule;
+    assert!(run_rule(&rule, &fixture_source("noir001_alias_import_negative.nr")).is_empty());
+}
+
+#[test]
+fn noir002_nested_scope_edge_case_is_covered() {
+    let rule = Noir002ShadowingRule;
+    assert!(!run_rule(&rule, &fixture_source("noir002_nested_scope_positive.nr")).is_empty());
+}
+
+#[test]
+fn noir020_range_guard_edge_cases_are_covered() {
+    let rule = Noir020BoundsRule;
+    assert!(
+        run_rule(
+            &rule,
+            &fixture_source("noir020_guard_after_access_negative.nr")
+        )
+        .is_empty()
+    );
+    assert!(run_rule(&rule, &fixture_source("noir020_branch_guard_negative.nr")).is_empty());
+}
+
+#[test]
+fn noir_core_phase2_rules_support_suppression() {
+    let cases = [
+        ("NOIR001", "noir001_suppressed.nr"),
+        ("NOIR002", "noir002_suppressed.nr"),
+        ("NOIR010", "noir010_suppressed.nr"),
+        ("NOIR020", "noir020_suppressed.nr"),
+        ("NOIR030", "noir030_suppressed.nr"),
+        ("NOIR100", "noir100_suppressed.nr"),
+        ("NOIR110", "noir110_suppressed.nr"),
+        ("NOIR120", "noir120_suppressed.nr"),
+    ];
+
+    for (rule_id, fixture) in cases {
+        let diagnostics = run_rule_with_engine(rule_id, &fixture_source(fixture));
+        let expected_reason = format!("allow({rule_id})");
+        assert!(
+            !diagnostics.is_empty(),
+            "expected diagnostics for suppressed fixture {rule_id}"
+        );
+        assert!(
+            diagnostics.iter().all(|diagnostic| diagnostic.suppressed),
+            "expected all diagnostics to be suppressed for {rule_id}"
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.suppression_reason.as_deref()
+                    == Some(expected_reason.as_str())),
+            "expected suppression reason to match for {rule_id}"
+        );
+    }
 }
 
 #[test]
