@@ -1,0 +1,1 @@
+pub use super::noir100_magic_numbers::Noir101RepeatedLocalInitMagicNumbersRule;

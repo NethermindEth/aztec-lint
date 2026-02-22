@@ -14,8 +14,9 @@ use crate::noir_core::{
     noir001_unused::Noir001UnusedRule, noir002_shadowing::Noir002ShadowingRule,
     noir010_bool_not_asserted::Noir010BoolNotAssertedRule, noir020_bounds::Noir020BoundsRule,
     noir030_unconstrained_influence::Noir030UnconstrainedInfluenceRule,
-    noir100_magic_numbers::Noir100MagicNumbersRule, noir110_complexity::Noir110ComplexityRule,
-    noir120_nesting::Noir120NestingRule,
+    noir100_magic_numbers::Noir100MagicNumbersRule,
+    noir101_repeated_local_inits::Noir101RepeatedLocalInitMagicNumbersRule,
+    noir110_complexity::Noir110ComplexityRule, noir120_nesting::Noir120NestingRule,
 };
 
 pub struct RuleRegistration {
@@ -31,6 +32,7 @@ pub fn full_registry() -> Vec<RuleRegistration> {
         register(Box::new(Noir020BoundsRule)),
         register(Box::new(Noir030UnconstrainedInfluenceRule)),
         register(Box::new(Noir100MagicNumbersRule)),
+        register(Box::new(Noir101RepeatedLocalInitMagicNumbersRule)),
         register(Box::new(Noir110ComplexityRule)),
         register(Box::new(Noir120NestingRule)),
         register(Box::new(Aztec001PrivacyLeakRule)),

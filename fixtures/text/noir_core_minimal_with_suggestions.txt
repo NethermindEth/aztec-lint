@@ -1,14 +1,14 @@
-checked=<FIXTURE> profile=aztec changed_only=false active_rules=15
-warning[NOIR100]: magic number `3` should be named
-  --> src/main.nr:8:20
+checked=<FIXTURE> profile=aztec changed_only=false active_rules=16
+warning[NOIR100]: magic number `6` should be named
+  --> src/main.nr:9:17
    |
- 8 |     let y = helper(3);
-   |                    ^
-   |                    ^ help: replace `3` with a named constant; replace with `NAMED_CONSTANT`
+ 9 |     assert(y == 6);
+   |                 ^
+   |                 ^ help: replace `6` with a named constant; replace with `NAMED_CONSTANT`
    |
    = note: confidence=high, policy=maintainability
    = help: extract this literal into a named constant for readability
-   = help: suggestion group sg0001 [maybe-incorrect; edits=1]: replace `3` with a named constant
-   = help:   edit src/main.nr:8:20..21 replace with `NAMED_CONSTANT`
+   = help: suggestion group sg0001 [maybe-incorrect; edits=1]: replace `6` with a named constant
+   = help:   edit src/main.nr:9:17..18 replace with `NAMED_CONSTANT`
 
 diagnostics=1 errors=0 warnings=1

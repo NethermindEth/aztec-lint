@@ -106,6 +106,7 @@ NOIR010\tnoir_core\tcorrectness\thigh\tBoolean computed but not asserted.\n\
 NOIR020\tnoir_core\tcorrectness\thigh\tArray indexing without bounds validation.\n\
 NOIR030\tnoir_core\tcorrectness\tmedium\tUnconstrained value influences constrained logic.\n\
 NOIR100\tnoir_core\tmaintainability\thigh\tMagic number literal should be named.\n\
+NOIR101\tnoir_core\tmaintainability\tlow\tRepeated local initializer magic number should be named.\n\
 NOIR110\tnoir_core\tmaintainability\tlow\tFunction complexity exceeds threshold.\n\
 NOIR120\tnoir_core\tmaintainability\tlow\tFunction nesting depth exceeds threshold.\n";
 
@@ -380,7 +381,7 @@ fn profile_default_excludes_aztec_pack() {
 
     let output = cmd.output().expect("command should execute");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("active_rules=8"), "stdout was: {stdout}");
+    assert!(stdout.contains("active_rules=9"), "stdout was: {stdout}");
 }
 
 #[test]
@@ -396,7 +397,7 @@ fn profile_noir_excludes_aztec_pack() {
 
     let output = cmd.output().expect("command should execute");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("active_rules=8"), "stdout was: {stdout}");
+    assert!(stdout.contains("active_rules=9"), "stdout was: {stdout}");
 }
 
 #[test]
@@ -412,7 +413,7 @@ fn profile_aztec_includes_default_and_aztec_pack() {
 
     let output = cmd.output().expect("command should execute");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("active_rules=15"), "stdout was: {stdout}");
+    assert!(stdout.contains("active_rules=16"), "stdout was: {stdout}");
 }
 
 #[test]
@@ -425,7 +426,7 @@ fn bare_invocation_runs_check_with_aztec_profile_by_default() {
     assert_eq!(output.status.code(), Some(1), "run should report findings");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("active_rules=15"),
+        stdout.contains("active_rules=16"),
         "bare invocation should default to aztec profile: {stdout}"
     );
 }

@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use crate::config::RuleLevel;
 use crate::diagnostics::Confidence;
 use crate::policy::{CORRECTNESS, MAINTAINABILITY, PRIVACY, PROTOCOL, SOUNDNESS};
@@ -255,12 +257,31 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         lifecycle: LintLifecycleState::Active,
         docs: LintDocs {
             summary: "Magic number literal should be named.",
-            what_it_does: "Encourages replacing unexplained numeric constants with named constants.",
+            what_it_does: "Detects high-signal numeric literals used in branch/assert/hash/serialization and related protocol-sensitive contexts.",
             why_this_matters: "Named constants improve readability and reduce accidental misuse.",
-            known_limitations: "Small obvious literals may still be reported depending on context.",
+            known_limitations: "Low-signal plain local initializer literals are intentionally excluded from this rule.",
             how_to_fix: "Define a constant with domain meaning and use it in place of the literal.",
             examples: &["Replace `42` with `MAX_NOTES_PER_BATCH`."],
             references: &[DOCS_REFERENCE_RULE_AUTHORING],
+        },
+    },
+    LintSpec {
+        id: "NOIR101",
+        pack: "noir_core",
+        policy: MAINTAINABILITY,
+        category: LintCategory::Maintainability,
+        introduced_in: INTRODUCED_IN_V0_1_0,
+        default_level: RuleLevel::Warn,
+        confidence: Confidence::Low,
+        lifecycle: LintLifecycleState::Active,
+        docs: LintDocs {
+            summary: "Repeated local initializer magic number should be named.",
+            what_it_does: "Reports repeated literal values used in plain local initializer assignments within the same function/module scope.",
+            why_this_matters: "Repeated unexplained initializer literals are often copy-pasted constants that should be named for clarity.",
+            known_limitations: "Single local initializer literals are intentionally skipped to reduce noise.",
+            how_to_fix: "Extract the repeated literal into a named constant and reuse it.",
+            examples: &["Replace repeated `let fee = 42; let limit = 42;` with a shared constant."],
+            references: &[DOCS_REFERENCE_RULE_AUTHORING, DOCS_REFERENCE_DECISION_0003],
         },
     },
     LintSpec {
@@ -314,6 +335,85 @@ pub fn find_lint(rule_id: &str) -> Option<&'static LintSpec> {
 
 pub fn normalize_lint_id(rule_id: &str) -> String {
     rule_id.trim().to_ascii_uppercase()
+}
+
+pub fn render_lints_reference_markdown() -> String {
+    let mut output = String::new();
+    let _ = writeln!(output, "# Lint Reference");
+    let _ = writeln!(output);
+    let _ = writeln!(
+        output,
+        "This document lists active enforced lints in `aztec-lint` and explains what each lint checks, why it matters, known limitations, and typical remediation."
+    );
+    let _ = writeln!(output);
+    let _ = writeln!(
+        output,
+        "Source of truth for this data is the canonical lint metadata catalog in `crates/aztec-lint-core/src/lints/mod.rs`."
+    );
+    let _ = writeln!(output);
+
+    for pack in ["aztec_pack", "noir_core"] {
+        let heading = match pack {
+            "aztec_pack" => "## AZTEC Pack",
+            "noir_core" => "## Noir Core Pack",
+            _ => continue,
+        };
+        let _ = writeln!(output, "{heading}");
+        let _ = writeln!(output);
+
+        for lint in all_lints()
+            .iter()
+            .filter(|lint| lint.lifecycle.is_active() && lint.pack == pack)
+        {
+            let _ = writeln!(output, "### {}", lint.id);
+            let _ = writeln!(output);
+            let _ = writeln!(output, "- Pack: `{}`", lint.pack);
+            let _ = writeln!(output, "- Category: `{}`", lint.category.as_str());
+            let _ = writeln!(output, "- Policy: `{}`", lint.policy);
+            let _ = writeln!(output, "- Default Level: `{}`", lint.default_level);
+            let _ = writeln!(
+                output,
+                "- Confidence: `{}`",
+                confidence_label(lint.confidence)
+            );
+            let _ = writeln!(output, "- Introduced In: `{}`", lint.introduced_in);
+            let _ = writeln!(output, "- Lifecycle: `active`");
+            let _ = writeln!(output, "- Summary: {}", lint.docs.summary);
+            let _ = writeln!(output);
+            let _ = writeln!(output, "What it does:");
+            let _ = writeln!(output, "{}", lint.docs.what_it_does);
+            let _ = writeln!(output);
+            let _ = writeln!(output, "Why this matters:");
+            let _ = writeln!(output, "{}", lint.docs.why_this_matters);
+            let _ = writeln!(output);
+            let _ = writeln!(output, "Known limitations:");
+            let _ = writeln!(output, "{}", lint.docs.known_limitations);
+            let _ = writeln!(output);
+            let _ = writeln!(output, "How to fix:");
+            let _ = writeln!(output, "{}", lint.docs.how_to_fix);
+            let _ = writeln!(output);
+            let _ = writeln!(output, "Examples:");
+            for example in lint.docs.examples {
+                let _ = writeln!(output, "- {example}");
+            }
+            let _ = writeln!(output);
+            let _ = writeln!(output, "References:");
+            for reference in lint.docs.references {
+                let _ = writeln!(output, "- `{reference}`");
+            }
+            let _ = writeln!(output);
+        }
+    }
+
+    output
+}
+
+const fn confidence_label(confidence: Confidence) -> &'static str {
+    match confidence {
+        Confidence::Low => "low",
+        Confidence::Medium => "medium",
+        Confidence::High => "high",
+    }
 }
 
 #[cfg(test)]
@@ -439,9 +539,12 @@ fn is_semver_like(version: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+
     use super::{
         LintCategory, LintDocs, LintLifecycleState, LintSpec, all_lints, find_lint,
-        validate_catalog_integrity,
+        render_lints_reference_markdown, validate_catalog_integrity,
     };
     use crate::config::RuleLevel;
     use crate::diagnostics::Confidence;
@@ -450,6 +553,17 @@ mod tests {
     #[test]
     fn lint_catalog_invariants_hold() {
         validate_catalog_integrity(all_lints()).expect("canonical lint catalog should be valid");
+    }
+
+    #[test]
+    fn lints_reference_doc_matches_catalog() {
+        let expected = render_lints_reference_markdown();
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/lints-reference.md");
+        let actual = fs::read_to_string(&path).expect("lints reference doc should be readable");
+        assert_eq!(
+            actual, expected,
+            "docs/lints-reference.md is out of date; regenerate from canonical lint metadata"
+        );
     }
 
     #[test]

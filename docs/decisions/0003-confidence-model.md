@@ -19,11 +19,11 @@ Confidence is deterministic and rule-scoped. Each rule has a fixed default confi
 Initial mapping for default and planned rules:
 
 - High:
-  - `NOIR001`, `NOIR010`, `AZTEC010`, `AZTEC020`
+  - `NOIR001`, `NOIR010`, `NOIR100`, `AZTEC010`, `AZTEC020`
 - Medium:
   - `NOIR002`, `NOIR020`, `NOIR030`, `AZTEC001`, `AZTEC003`, `AZTEC011`, `AZTEC012`, `AZTEC021`, `AZTEC022`
 - Low:
-  - `NOIR100`, `NOIR110`, `NOIR120`, `NOIR200`, `AZTEC002`, `AZTEC040`, `AZTEC041`
+  - `NOIR101`, `NOIR110`, `NOIR120`, `NOIR200`, `AZTEC002`, `AZTEC040`, `AZTEC041`
 
 Confidence assignment does not depend on runtime randomness or environment.
 

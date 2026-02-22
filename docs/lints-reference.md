@@ -105,7 +105,7 @@ References:
 - Confidence: `high`
 - Introduced In: `0.1.0`
 - Lifecycle: `active`
-- Summary: Private to public bridge requires `#[only_self]`.
+- Summary: Private to public bridge requires #[only_self].
 
 What it does:
 Checks enqueue-based private-to-public transitions enforce self-only invocation constraints.
@@ -120,7 +120,7 @@ How to fix:
 Apply the configured only-self attribute and ensure bridge entrypoints enforce it.
 
 Examples:
-- Annotate private-to-public bridge functions with `#[only_self]`.
+- Annotate private-to-public bridge functions with #[only_self].
 
 References:
 - `docs/decisions/0001-aztec010-scope.md`
@@ -311,7 +311,7 @@ References:
 - Category: `correctness`
 - Policy: `correctness`
 - Default Level: `deny`
-- Confidence: `medium`
+- Confidence: `high`
 - Introduced In: `0.1.0`
 - Lifecycle: `active`
 - Summary: Array indexing without bounds validation.
@@ -370,19 +370,19 @@ References:
 - Category: `maintainability`
 - Policy: `maintainability`
 - Default Level: `warn`
-- Confidence: `low`
+- Confidence: `high`
 - Introduced In: `0.1.0`
 - Lifecycle: `active`
 - Summary: Magic number literal should be named.
 
 What it does:
-Encourages replacing unexplained numeric constants with named constants.
+Detects high-signal numeric literals used in branch/assert/hash/serialization and related protocol-sensitive contexts.
 
 Why this matters:
 Named constants improve readability and reduce accidental misuse.
 
 Known limitations:
-Small obvious literals may still be reported depending on context.
+Low-signal plain local initializer literals are intentionally excluded from this rule.
 
 How to fix:
 Define a constant with domain meaning and use it in place of the literal.
@@ -392,6 +392,36 @@ Examples:
 
 References:
 - `docs/rule-authoring.md`
+
+### NOIR101
+
+- Pack: `noir_core`
+- Category: `maintainability`
+- Policy: `maintainability`
+- Default Level: `warn`
+- Confidence: `low`
+- Introduced In: `0.1.0`
+- Lifecycle: `active`
+- Summary: Repeated local initializer magic number should be named.
+
+What it does:
+Reports repeated literal values used in plain local initializer assignments within the same function/module scope.
+
+Why this matters:
+Repeated unexplained initializer literals are often copy-pasted constants that should be named for clarity.
+
+Known limitations:
+Single local initializer literals are intentionally skipped to reduce noise.
+
+How to fix:
+Extract the repeated literal into a named constant and reuse it.
+
+Examples:
+- Replace repeated `let fee = 42; let limit = 42;` with a shared constant.
+
+References:
+- `docs/rule-authoring.md`
+- `docs/decisions/0003-confidence-model.md`
 
 ### NOIR110
 
@@ -450,3 +480,4 @@ Examples:
 
 References:
 - `docs/rule-authoring.md`
+

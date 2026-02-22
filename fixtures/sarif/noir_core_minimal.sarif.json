@@ -22,10 +22,10 @@
                   "replacements": [
                     {
                       "deletedRegion": {
-                        "endColumn": 21,
-                        "endLine": 8,
-                        "startColumn": 20,
-                        "startLine": 8
+                        "endColumn": 18,
+                        "endLine": 9,
+                        "startColumn": 17,
+                        "startLine": 9
                       },
                       "insertedContent": {
                         "text": "NAMED_CONSTANT"
@@ -35,7 +35,7 @@
                 }
               ],
               "description": {
-                "text": "replace `3` with a named constant"
+                "text": "replace `6` with a named constant"
               },
               "properties": {
                 "applicability": "maybe_incorrect",
@@ -54,19 +54,19 @@
                   "uri": "src/main.nr"
                 },
                 "region": {
-                  "endColumn": 21,
-                  "endLine": 8,
-                  "startColumn": 20,
-                  "startLine": 8
+                  "endColumn": 18,
+                  "endLine": 9,
+                  "startColumn": 17,
+                  "startLine": 9
                 }
               }
             }
           ],
           "message": {
-            "text": "magic number `3` should be named"
+            "text": "magic number `6` should be named"
           },
           "partialFingerprints": {
-            "aztecLint/v1": "f5cf1593791feb2f83de3d1d1ae46eeac9e7894064724640a755308355d7262a"
+            "aztecLint/v1": "1a59bec53ddec2caeddcc94f21ed4fd190b46913a5c50c53af615fc1d9f4e2cc"
           },
           "properties": {
             "confidence": "high",
@@ -82,14 +82,14 @@
             "structuredSuggestions": [
               {
                 "applicability": "maybe_incorrect",
-                "message": "replace `3` with a named constant",
+                "message": "replace `6` with a named constant",
                 "replacement": "NAMED_CONSTANT",
                 "span": {
-                  "col": 20,
-                  "end": 97,
+                  "col": 17,
+                  "end": 117,
                   "file": "src/main.nr",
-                  "line": 8,
-                  "start": 96
+                  "line": 9,
+                  "start": 116
                 }
               }
             ],
@@ -107,7 +107,7 @@
               "id": "NOIR100",
               "name": "NOIR100",
               "shortDescription": {
-                "text": "magic number `3` should be named"
+                "text": "magic number `6` should be named"
               }
             }
           ]

@@ -17,6 +17,7 @@ use aztec_lint_rules::noir_core::noir010_bool_not_asserted::Noir010BoolNotAssert
 use aztec_lint_rules::noir_core::noir020_bounds::Noir020BoundsRule;
 use aztec_lint_rules::noir_core::noir030_unconstrained_influence::Noir030UnconstrainedInfluenceRule;
 use aztec_lint_rules::noir_core::noir100_magic_numbers::Noir100MagicNumbersRule;
+use aztec_lint_rules::noir_core::noir101_repeated_local_inits::Noir101RepeatedLocalInitMagicNumbersRule;
 use aztec_lint_rules::noir_core::noir110_complexity::Noir110ComplexityRule;
 use aztec_lint_rules::noir_core::noir120_nesting::Noir120NestingRule;
 
@@ -99,6 +100,13 @@ fn noir100_fixture_pair() {
 }
 
 #[test]
+fn noir101_fixture_pair() {
+    let rule = Noir101RepeatedLocalInitMagicNumbersRule;
+    assert!(!run_rule(&rule, &fixture_source("noir101_positive.nr")).is_empty());
+    assert!(run_rule(&rule, &fixture_source("noir101_negative.nr")).is_empty());
+}
+
+#[test]
 fn noir110_fixture_pair() {
     let rule = Noir110ComplexityRule;
     assert!(!run_rule(&rule, &fixture_source("noir110_positive.nr")).is_empty());
@@ -146,6 +154,7 @@ fn noir_core_phase2_rules_support_suppression() {
         ("NOIR020", "noir020_suppressed.nr"),
         ("NOIR030", "noir030_suppressed.nr"),
         ("NOIR100", "noir100_suppressed.nr"),
+        ("NOIR101", "noir101_suppressed.nr"),
         ("NOIR110", "noir110_suppressed.nr"),
         ("NOIR120", "noir120_suppressed.nr"),
     ];
@@ -174,7 +183,7 @@ fn noir_core_phase2_rules_support_suppression() {
 #[test]
 fn noir100_maybe_incorrect_suggestions_are_rendered_but_not_auto_applied() {
     let rule = Noir100MagicNumbersRule;
-    let source = "fn main() { let fee = 42; }\n";
+    let source = "fn main(limit: u32) { if limit > 42 { assert(limit > 0); } }\n";
     let diagnostics = run_rule(&rule, source);
     assert_eq!(diagnostics.len(), 1);
     assert!(diagnostics[0].structured_suggestions.is_empty());
