@@ -26,6 +26,9 @@ Entries are grouped by released version.
 - Changed CLI `fix` text output to include deterministic grouped fix event lines plus skipped-reason breakdown counters for CI/editor consumption.
 - Added grouped-fix regression coverage for atomic rollback, same-group overlap rejection, deterministic overlap winner selection, idempotence, and mixed-file group rejection.
 - Fixed fix-report visibility for non-machine suggestions so grouped/legacy structured suggestions are now counted and reported as `unsafe_fix` skips instead of being silently excluded from candidate accounting.
+- Changed rule emitters `NOIR001`, `NOIR100`, and `AZTEC021` to emit group-backed suggestions directly via `suggestion_groups` as the primary suggestion contract.
+- Kept applicability discipline in migrated emitters: deterministic underscore-prefix local renames remain `MachineApplicable`, while exploratory constant/range guidance remains `MaybeIncorrect`.
+- Updated rule-level and integration tests to assert suggestion-group structure and applicability for migrated emitters (`crates/aztec-lint-rules/tests/noir_core_rules.rs` and `crates/aztec-lint-rules/tests/aztec_advanced_rules.rs`).
 
 ## [0.3.0]
 

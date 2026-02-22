@@ -140,7 +140,7 @@ Failure modes to watch:
 - Partial group writes leading to corrupted source.
 - Group overlap detection missing zero-length insertion edge cases currently handled in `ranges_overlap`.
 
-## Step 4: Migrate rule emitters to suggestion groups
+## Step 4: Migrate rule emitters to suggestion groups **COMPLETED**
 
 Files:
 - `crates/aztec-lint-rules/src/noir_core/noir001_unused.rs`
