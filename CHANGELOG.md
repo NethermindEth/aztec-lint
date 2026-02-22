@@ -11,6 +11,7 @@ Entries are grouped by released version.
 
 - Changed `NOIR100` magic-number detection to report only high-signal contexts (branching, assertions/constraints, range boundaries, hash/serialization/protocol-sensitive uses) and stop reporting one-off plain local initializer literals.
 - Added `NOIR101` (`warn`, `low` confidence) to report repeated plain local-initializer literals within the same function/module scope, reducing noise while still surfacing copy-pasted unnamed constants.
+- Fixed noisy local-init behavior so single literals such as `let _unused = 9;` no longer trigger magic-number warnings.
 - Added regression coverage and fixture updates for the new `NOIR100`/`NOIR101` split, including explicit non-reporting of single local initializers and reporting of repeated initializer literals.
 - Added catalog-driven lint reference generation in `aztec-lint-core` and a synchronization test that fails when `docs/lints-reference.md` drifts from `crates/aztec-lint-core/src/lints/mod.rs`.
 - Updated lint catalog/docs confidence alignment (`NOIR100` high, `NOIR101` low) and refreshed CLI/text/SARIF golden outputs for deterministic snapshots.
