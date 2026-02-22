@@ -224,25 +224,22 @@ fn pending_fix_groups(diagnostic: &Diagnostic) -> Vec<PendingFixGroup> {
         .collect::<Vec<_>>();
 
     if !diagnostic.suggestion_groups.is_empty() {
-        pending.extend(
-            diagnostic
-                .suggestion_groups
-                .iter()
-                .map(|group| PendingFixGroup {
-                    source: FixSource::StructuredSuggestion,
-                    group_id: group.id.clone(),
-                    provenance: group.provenance.clone(),
-                    edits: group
-                        .edits
-                        .iter()
-                        .map(|edit| PendingGroupEdit {
-                            span: edit.span.clone(),
-                            replacement: edit.replacement.clone(),
-                        })
-                        .collect(),
-                    safety: group.applicability.to_fix_safety(),
-                }),
-        );
+        pending.extend(diagnostic.suggestion_groups.iter().map(|group| {
+            PendingFixGroup {
+                source: FixSource::StructuredSuggestion,
+                group_id: group.id.clone(),
+                provenance: group.provenance.clone(),
+                edits: group
+                    .edits
+                    .iter()
+                    .map(|edit| PendingGroupEdit {
+                        span: edit.span.clone(),
+                        replacement: edit.replacement.clone(),
+                    })
+                    .collect(),
+                safety: group.applicability.to_fix_safety(),
+            }
+        }));
 
         pending.extend(
             diagnostic
@@ -264,22 +261,18 @@ fn pending_fix_groups(diagnostic: &Diagnostic) -> Vec<PendingFixGroup> {
                 }),
         );
     } else {
-        pending.extend(
-            diagnostic
-                .structured_suggestions
-                .iter()
-                .enumerate()
-                .map(|(index, suggestion)| PendingFixGroup {
-                    source: FixSource::StructuredSuggestion,
-                    group_id: format!("legacy_structured_{:04}", index + 1),
-                    provenance: None,
-                    edits: vec![PendingGroupEdit {
-                        span: suggestion.span.clone(),
-                        replacement: suggestion.replacement.clone(),
-                    }],
-                    safety: suggestion.applicability.to_fix_safety(),
-                }),
-        );
+        pending.extend(diagnostic.structured_suggestions.iter().enumerate().map(
+            |(index, suggestion)| PendingFixGroup {
+                source: FixSource::StructuredSuggestion,
+                group_id: format!("legacy_structured_{:04}", index + 1),
+                provenance: None,
+                edits: vec![PendingGroupEdit {
+                    span: suggestion.span.clone(),
+                    replacement: suggestion.replacement.clone(),
+                }],
+                safety: suggestion.applicability.to_fix_safety(),
+            },
+        ));
     }
 
     pending
