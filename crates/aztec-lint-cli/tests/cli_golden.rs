@@ -687,6 +687,77 @@ fn check_json_output_is_deterministic() {
 }
 
 #[test]
+fn check_sarif_output_is_deterministic() {
+    let fixture = fixture_dir("noir_core/minimal");
+
+    let mut first_cmd = cli_bin();
+    first_cmd.args([
+        "check",
+        fixture.to_string_lossy().as_ref(),
+        "--format",
+        "sarif",
+    ]);
+    let first = first_cmd.output().expect("first run should execute");
+    assert_eq!(
+        first.status.code(),
+        Some(1),
+        "first run should report findings"
+    );
+
+    let mut second_cmd = cli_bin();
+    second_cmd.args([
+        "check",
+        fixture.to_string_lossy().as_ref(),
+        "--format",
+        "sarif",
+    ]);
+    let second = second_cmd.output().expect("second run should execute");
+    assert_eq!(
+        second.status.code(),
+        Some(1),
+        "second run should report findings"
+    );
+
+    assert_eq!(
+        first.stdout, second.stdout,
+        "sarif output should be deterministic across runs"
+    );
+}
+
+#[test]
+fn check_text_output_is_deterministic() {
+    let fixture = fixture_dir("noir_core/minimal");
+    let fixture_display = fixture.to_string_lossy();
+
+    let mut first_cmd = cli_bin();
+    first_cmd.args(["check", fixture_display.as_ref()]);
+    let first = first_cmd.output().expect("first run should execute");
+    assert_eq!(
+        first.status.code(),
+        Some(1),
+        "first run should report findings"
+    );
+
+    let mut second_cmd = cli_bin();
+    second_cmd.args(["check", fixture_display.as_ref()]);
+    let second = second_cmd.output().expect("second run should execute");
+    assert_eq!(
+        second.status.code(),
+        Some(1),
+        "second run should report findings"
+    );
+
+    let first_normalized =
+        String::from_utf8_lossy(&first.stdout).replace(fixture_display.as_ref(), "<FIXTURE>");
+    let second_normalized =
+        String::from_utf8_lossy(&second.stdout).replace(fixture_display.as_ref(), "<FIXTURE>");
+    assert_eq!(
+        first_normalized, second_normalized,
+        "text output should be deterministic across runs"
+    );
+}
+
+#[test]
 fn check_text_output_matches_golden_snapshot_with_suggestions() {
     let fixture = fixture_dir("noir_core/minimal");
     let expected_path = fixture_dir("text/noir_core_minimal_with_suggestions.txt");
