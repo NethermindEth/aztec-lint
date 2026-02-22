@@ -17,9 +17,6 @@ Entries are grouped by released version.
 - Added regression coverage and fixture updates for the new `NOIR100`/`NOIR101` split, including explicit non-reporting of single local initializers and reporting of repeated initializer literals.
 - Added catalog-driven lint reference generation in `aztec-lint-core` and a synchronization test that fails when `docs/lints-reference.md` drifts from `crates/aztec-lint-core/src/lints/mod.rs`.
 - Updated lint catalog/docs confidence alignment (`NOIR100` high, `NOIR101` low) and refreshed CLI/text/SARIF golden outputs for deterministic snapshots.
-
-### 2026-02-21
-
 - Added a diagnostic invariant validation layer in `aztec-lint-core` (`validate_diagnostic` / `validate_diagnostics`) with deterministic violation types for empty metadata, invalid spans, missing suppression reasons, and overlapping implicit multipart suggestions.
 - Changed rule engine execution to validate diagnostics at the engine boundary and return structured `RuleEngineError::InvalidDiagnostics` failures instead of emitting invalid diagnostics.
 - Changed CLI check flow to surface diagnostic contract violations as runtime internal errors (exit code `2`) with actionable context including rule and span from the first violation.
