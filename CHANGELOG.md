@@ -33,6 +33,10 @@ Entries are grouped by released version.
 - Changed rule engine severity/suppression resolution to apply scoped directive levels per diagnostic span on top of profile/CLI baseline levels (`allow` suppresses; `warn`/`deny` override emitted severity).
 - Fixed scoped-level engine normalization to preserve pre-existing diagnostic suppression flags in non-`allow` paths so invariant validation still reports malformed suppressed diagnostics (for example missing suppression reasons) instead of masking them.
 - Added Step 5 regression coverage for scoped directive precedence and CLI behavior, including JSON suppression/severity visibility and error-threshold exit-code handling.
+- Changed JSON and SARIF grouped-suggestion ordering to include stable edit-span signatures in sort keys, hardening deterministic output when group metadata collides.
+- Changed text output to render explicit grouped suggestion details (group id, applicability, grouped edit count, and per-edit replacement spans) while keeping legacy compatibility lines.
+- Added Step 6 output regression coverage for grouped-suggestion ordering/determinism in `output::json`, `output::sarif`, and `output::text`.
+- Updated grouped-suggestion text golden snapshot to reflect the expanded grouped-suggestion rendering contract.
 
 ## [0.3.0]
 

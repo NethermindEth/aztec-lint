@@ -8,5 +8,7 @@ warning[NOIR100]: magic number `3` should be named
    |
    = note: confidence=high, policy=maintainability
    = help: extract this literal into a named constant for readability
+   = help: suggestion group sg0001 [maybe-incorrect; edits=1]: replace `3` with a named constant
+   = help:   edit src/main.nr:8:20..21 replace with `NAMED_CONSTANT`
 
 diagnostics=1 errors=0 warnings=1

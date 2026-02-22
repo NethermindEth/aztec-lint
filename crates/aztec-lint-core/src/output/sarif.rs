@@ -4,11 +4,20 @@ use std::path::{Path, PathBuf};
 use serde_json::{Map, Value, json};
 
 use crate::diagnostics::{
-    Diagnostic, Severity, diagnostic_fingerprint, diagnostic_sort_key, normalize_file_path,
+    Diagnostic, Severity, SuggestionGroup, diagnostic_fingerprint, diagnostic_sort_key,
+    normalize_file_path,
 };
 use crate::model::Span;
 
 const PARTIAL_FINGERPRINT_KEY: &str = "aztecLint/v1";
+type SuggestionGroupEditSortKey = (String, u32, u32, String);
+type SuggestionGroupSortKey = (
+    String,
+    Vec<SuggestionGroupEditSortKey>,
+    String,
+    String,
+    String,
+);
 
 pub fn render_diagnostics(
     repo_root: &Path,
@@ -131,15 +140,9 @@ fn normalize_for_sarif(mut diagnostic: Diagnostic) -> Diagnostic {
             )
         });
     }
-    diagnostic.suggestion_groups.sort_by_key(|group| {
-        (
-            group.id.clone(),
-            group.message.clone(),
-            group.applicability.as_str().to_string(),
-            group.provenance.clone().unwrap_or_default(),
-            group.edits.len(),
-        )
-    });
+    diagnostic
+        .suggestion_groups
+        .sort_by_key(suggestion_group_sort_key);
     diagnostic.fixes.sort_by_key(|fix| {
         (
             normalize_file_path(&fix.span.file),
@@ -253,15 +256,7 @@ fn sarif_fixes(
         let mut grouped_suggestion_keys =
             BTreeSet::<(String, u32, u32, String, String, String)>::new();
         let mut groups = diagnostic.suggestion_groups.clone();
-        groups.sort_by_key(|group| {
-            (
-                group.id.clone(),
-                group.message.clone(),
-                group.applicability.as_str().to_string(),
-                group.provenance.clone().unwrap_or_default(),
-                group.edits.len(),
-            )
-        });
+        groups.sort_by_key(suggestion_group_sort_key);
 
         for group in groups {
             for edit in &group.edits {
@@ -488,6 +483,33 @@ fn repository_relative_uri(repo_root: &Path, file: &str) -> String {
     normalize_file_path(&relative.to_string_lossy())
 }
 
+fn suggestion_group_sort_key(group: &SuggestionGroup) -> SuggestionGroupSortKey {
+    (
+        group.id.clone(),
+        suggestion_group_edits_sort_key(group),
+        group.message.clone(),
+        group.applicability.as_str().to_string(),
+        group.provenance.clone().unwrap_or_default(),
+    )
+}
+
+fn suggestion_group_edits_sort_key(group: &SuggestionGroup) -> Vec<SuggestionGroupEditSortKey> {
+    let mut edits = group
+        .edits
+        .iter()
+        .map(|edit| {
+            (
+                normalize_file_path(&edit.span.file),
+                edit.span.start,
+                edit.span.end,
+                edit.replacement.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    edits.sort();
+    edits
+}
+
 fn to_absolute_path(path: &Path) -> PathBuf {
     if path.is_absolute() {
         return path.to_path_buf();
@@ -709,5 +731,49 @@ mod tests {
         let helps = props["helps"].as_array().expect("helps should be an array");
         assert_eq!(helps[0]["message"].as_str(), Some("a help"));
         assert_eq!(helps[1]["message"].as_str(), Some("z help"));
+    }
+
+    #[test]
+    fn sarif_output_sorts_group_fixes_using_edit_spans() {
+        let root = Path::new("/repo");
+        let mut issue = diagnostic("NOIR100", "src/main.nr", 10, 2, "message");
+        issue.suggestion_groups = vec![
+            SuggestionGroup {
+                id: "sg0001".to_string(),
+                message: "replace literal".to_string(),
+                applicability: Applicability::MachineApplicable,
+                edits: vec![TextEdit {
+                    span: Span::new("src/main.nr", 20, 21, 3, 7),
+                    replacement: "B".to_string(),
+                }],
+                provenance: None,
+            },
+            SuggestionGroup {
+                id: "sg0001".to_string(),
+                message: "replace literal".to_string(),
+                applicability: Applicability::MachineApplicable,
+                edits: vec![TextEdit {
+                    span: Span::new("src/main.nr", 10, 11, 2, 2),
+                    replacement: "A".to_string(),
+                }],
+                provenance: None,
+            },
+        ];
+
+        let rendered = render_diagnostics(root, &[&issue]).expect("sarif render should succeed");
+        let value: Value = serde_json::from_str(&rendered).expect("sarif should parse");
+        let fixes = value["runs"][0]["results"][0]["fixes"]
+            .as_array()
+            .expect("fixes should be present");
+
+        assert_eq!(fixes.len(), 2);
+        assert_eq!(
+            fixes[0]["artifactChanges"][0]["replacements"][0]["insertedContent"]["text"].as_str(),
+            Some("A")
+        );
+        assert_eq!(
+            fixes[1]["artifactChanges"][0]["replacements"][0]["insertedContent"]["text"].as_str(),
+            Some("B")
+        );
     }
 }

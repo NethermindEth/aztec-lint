@@ -4,7 +4,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::diagnostics::{
-    Confidence, Diagnostic, Severity, StructuredMessage, StructuredSuggestion, diagnostic_sort_key,
+    Confidence, Diagnostic, Severity, StructuredMessage, StructuredSuggestion, SuggestionGroup,
+    diagnostic_sort_key,
 };
 use crate::model::Span;
 use crate::output::ansi::{Colorizer, Stream};
@@ -182,6 +183,30 @@ fn render_diagnostic(
     legacy_suggestions.sort();
     for suggestion in legacy_suggestions {
         let _ = writeln!(output, "   = {help_label}: {suggestion}");
+    }
+
+    for group in sorted_suggestion_groups(&diagnostic) {
+        let _ = writeln!(
+            output,
+            "   = {help_label}: suggestion group {} [{}; edits={}]: {}",
+            group.id,
+            group.applicability.as_str(),
+            group.edits.len(),
+            group.message
+        );
+        for edit in group.edits {
+            let width = edit.span.end.saturating_sub(edit.span.start);
+            let end_col = if width == 0 {
+                edit.span.col
+            } else {
+                edit.span.col.saturating_add(width)
+            };
+            let _ = writeln!(
+                output,
+                "   = {help_label}:   edit {}:{}:{}..{} replace with `{}`",
+                edit.span.file, edit.span.line, edit.span.col, end_col, edit.replacement
+            );
+        }
     }
 
     for suggestion in non_primary_span_suggestions(&diagnostic) {
@@ -377,6 +402,53 @@ fn non_primary_span_suggestions(diagnostic: &Diagnostic) -> Vec<StructuredSugges
         .into_iter()
         .filter(|suggestion| suggestion.span != diagnostic.primary_span)
         .collect()
+}
+
+fn sorted_suggestion_groups(diagnostic: &Diagnostic) -> Vec<SuggestionGroup> {
+    let mut groups = diagnostic.suggestion_groups.clone();
+    for group in &mut groups {
+        group.edits.sort_by_key(|edit| {
+            (
+                edit.span.file.clone(),
+                edit.span.line,
+                edit.span.col,
+                edit.span.start,
+                edit.span.end,
+                edit.replacement.clone(),
+            )
+        });
+    }
+    groups.sort_by_key(|group| {
+        (
+            group.id.clone(),
+            suggestion_group_edits_sort_key(group),
+            group.message.clone(),
+            group.applicability.as_str().to_string(),
+            group.provenance.clone().unwrap_or_default(),
+        )
+    });
+    groups
+}
+
+fn suggestion_group_edits_sort_key(
+    group: &SuggestionGroup,
+) -> Vec<(String, u32, u32, u32, u32, String)> {
+    let mut edits = group
+        .edits
+        .iter()
+        .map(|edit| {
+            (
+                edit.span.file.clone(),
+                edit.span.line,
+                edit.span.col,
+                edit.span.start,
+                edit.span.end,
+                edit.replacement.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    edits.sort();
+    edits
 }
 
 fn marker_line(line_text: &str, col: u32) -> String {
@@ -639,5 +711,60 @@ mod tests {
 
         let output = strip_ansi(&render_check_report(report));
         assert!(output.contains("help: replace literal; replace with `NAMED_CONST`"));
+        assert!(output.contains(
+            "help: suggestion group sg0001 [machine-applicable; edits=1]: replace literal"
+        ));
+    }
+
+    #[test]
+    fn check_text_output_sorts_grouped_suggestions_using_edit_spans() {
+        let temp = tempdir().expect("temp dir should be created");
+        let root = temp.path();
+        fs::create_dir_all(root.join("src")).expect("source directory should be created");
+        fs::write(root.join("src/main.nr"), "fn main() { let x = 7; }\n")
+            .expect("source file should be written");
+
+        let mut issue = diagnostic("src/main.nr", 1, 17, "NOIR100", "message");
+        issue.suggestion_groups = vec![
+            SuggestionGroup {
+                id: "sg0001".to_string(),
+                message: "replace literal".to_string(),
+                applicability: Applicability::MachineApplicable,
+                edits: vec![TextEdit {
+                    span: Span::new("src/main.nr", 20, 21, 1, 21),
+                    replacement: "B".to_string(),
+                }],
+                provenance: None,
+            },
+            SuggestionGroup {
+                id: "sg0001".to_string(),
+                message: "replace literal".to_string(),
+                applicability: Applicability::MachineApplicable,
+                edits: vec![TextEdit {
+                    span: Span::new("src/main.nr", 10, 11, 1, 11),
+                    replacement: "A".to_string(),
+                }],
+                provenance: None,
+            },
+        ];
+
+        let report = CheckTextReport {
+            path: root,
+            source_root: root,
+            show_run_header: false,
+            profile: "default",
+            changed_only: false,
+            active_rules: 1,
+            diagnostics: &[&issue],
+        };
+
+        let output = strip_ansi(&render_check_report(report));
+        let a_idx = output
+            .find("edit src/main.nr:1:11..12 replace with `A`")
+            .expect("A edit should be rendered");
+        let b_idx = output
+            .find("edit src/main.nr:1:21..22 replace with `B`")
+            .expect("B edit should be rendered");
+        assert!(a_idx < b_idx);
     }
 }

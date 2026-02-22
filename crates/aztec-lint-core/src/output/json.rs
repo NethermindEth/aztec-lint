@@ -1,4 +1,13 @@
-use crate::diagnostics::{Diagnostic, diagnostic_sort_key};
+use crate::diagnostics::{Diagnostic, SuggestionGroup, diagnostic_sort_key};
+
+type SuggestionGroupEditSortKey = (String, u32, u32, u32, u32, String);
+type SuggestionGroupSortKey = (
+    String,
+    Vec<SuggestionGroupEditSortKey>,
+    String,
+    String,
+    String,
+);
 
 pub fn render_diagnostics(diagnostics: &[&Diagnostic]) -> Result<String, serde_json::Error> {
     let mut sorted = diagnostics
@@ -85,15 +94,9 @@ fn normalize_for_json(mut diagnostic: Diagnostic) -> Diagnostic {
             )
         });
     }
-    diagnostic.suggestion_groups.sort_by_key(|group| {
-        (
-            group.id.clone(),
-            group.message.clone(),
-            group.applicability.as_str().to_string(),
-            group.provenance.clone().unwrap_or_default(),
-            group.edits.len(),
-        )
-    });
+    diagnostic
+        .suggestion_groups
+        .sort_by_key(suggestion_group_sort_key);
     diagnostic.fixes.sort_by_key(|fix| {
         (
             fix.span.file.clone(),
@@ -107,6 +110,35 @@ fn normalize_for_json(mut diagnostic: Diagnostic) -> Diagnostic {
         )
     });
     diagnostic
+}
+
+fn suggestion_group_sort_key(group: &SuggestionGroup) -> SuggestionGroupSortKey {
+    (
+        group.id.clone(),
+        suggestion_group_edits_sort_key(group),
+        group.message.clone(),
+        group.applicability.as_str().to_string(),
+        group.provenance.clone().unwrap_or_default(),
+    )
+}
+
+fn suggestion_group_edits_sort_key(group: &SuggestionGroup) -> Vec<SuggestionGroupEditSortKey> {
+    let mut edits = group
+        .edits
+        .iter()
+        .map(|edit| {
+            (
+                edit.span.file.clone(),
+                edit.span.line,
+                edit.span.col,
+                edit.span.start,
+                edit.span.end,
+                edit.replacement.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    edits.sort();
+    edits
 }
 
 #[cfg(test)]
@@ -198,5 +230,42 @@ mod tests {
             value[0].get("fixes").is_some(),
             "legacy fixes field must remain for compatibility"
         );
+    }
+
+    #[test]
+    fn json_output_sorts_suggestion_groups_using_edit_spans() {
+        let mut item = diagnostic("NOIR100", 2, "message");
+        item.suggestion_groups = vec![
+            SuggestionGroup {
+                id: "sg0001".to_string(),
+                message: "replace literal".to_string(),
+                applicability: Applicability::MachineApplicable,
+                edits: vec![TextEdit {
+                    span: Span::new("src/main.nr", 20, 21, 2, 20),
+                    replacement: "B".to_string(),
+                }],
+                provenance: None,
+            },
+            SuggestionGroup {
+                id: "sg0001".to_string(),
+                message: "replace literal".to_string(),
+                applicability: Applicability::MachineApplicable,
+                edits: vec![TextEdit {
+                    span: Span::new("src/main.nr", 10, 11, 2, 10),
+                    replacement: "A".to_string(),
+                }],
+                provenance: None,
+            },
+        ];
+
+        let rendered = render_diagnostics(&[&item]).expect("json rendering should pass");
+        let value: Value = serde_json::from_str(&rendered).expect("json output should parse");
+        let groups = value[0]["suggestion_groups"]
+            .as_array()
+            .expect("suggestion_groups should be an array");
+
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0]["edits"][0]["replacement"].as_str(), Some("A"));
+        assert_eq!(groups[1]["edits"][0]["replacement"].as_str(), Some("B"));
     }
 }

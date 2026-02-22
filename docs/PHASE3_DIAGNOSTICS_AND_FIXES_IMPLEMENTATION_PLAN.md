@@ -192,7 +192,7 @@ Failure modes to watch:
 - Precedence bugs silently downgrading critical diagnostics.
 - Module/file scope parser mismatching Noir syntax edge cases.
 
-## Step 6: Output contract and determinism hardening for grouped suggestions
+## Step 6: Output contract and determinism hardening for grouped suggestions **COMPLETED**
 
 Files:
 - `crates/aztec-lint-core/src/output/json.rs`
