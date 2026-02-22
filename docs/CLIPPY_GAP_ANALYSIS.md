@@ -227,7 +227,7 @@ Plugin API exists as draft skeleton but is not executed in `check/fix` pipeline.
 - Migrate current `noir_core` rules away from line-based heuristics.
 - Rebuild Aztec taint/soundness on AST/HIR + CFG/DFG dataflow instead of substring sink detection.
 
-## Phase 3: Diagnostics and fixes (medium-term)
+## Phase 3: Diagnostics and fixes (medium-term) **COMPLETED**
 - Introduce strict diagnostic/fix invariants and validation tests.
 - Add richer machine-applicable suggestion model and grouped edits.
 - Improve suppression scoping + lint-level semantics.
