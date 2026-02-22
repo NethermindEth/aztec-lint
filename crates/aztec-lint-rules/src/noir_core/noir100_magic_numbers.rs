@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use aztec_lint_core::diagnostics::normalize_file_path;
-use aztec_lint_core::diagnostics::{Applicability, Diagnostic};
+use aztec_lint_core::diagnostics::{Applicability, Diagnostic, SuggestionGroup, TextEdit};
 use aztec_lint_core::model::{ExpressionCategory, TypeCategory};
 use aztec_lint_core::policy::MAINTAINABILITY;
 
@@ -63,21 +63,25 @@ impl Noir100MagicNumbersRule {
                     continue;
                 }
                 let span = file.span_for_range(start, start + literal.len());
-                out.push(
-                    ctx.diagnostic(
+                let mut diagnostic = ctx
+                    .diagnostic(
                         self.id(),
                         MAINTAINABILITY,
                         format!("magic number `{literal}` should be named"),
                         span.clone(),
                     )
-                    .help("extract this literal into a named constant for readability")
-                    .span_suggestion(
+                    .help("extract this literal into a named constant for readability");
+                diagnostic.suggestion_groups.push(SuggestionGroup {
+                    id: "sg0001".to_string(),
+                    message: format!("replace `{literal}` with a named constant"),
+                    applicability: Applicability::MaybeIncorrect,
+                    edits: vec![TextEdit {
                         span,
-                        format!("replace `{literal}` with a named constant"),
-                        "NAMED_CONSTANT".to_string(),
-                        Applicability::MaybeIncorrect,
-                    ),
-                );
+                        replacement: "NAMED_CONSTANT".to_string(),
+                    }],
+                    provenance: None,
+                });
+                out.push(diagnostic);
             }
         }
     }
@@ -105,21 +109,25 @@ impl Noir100MagicNumbersRule {
                     }
 
                     let span = file.span_for_range(start, start + literal.len());
-                    out.push(
-                        ctx.diagnostic(
+                    let mut diagnostic = ctx
+                        .diagnostic(
                             self.id(),
                             MAINTAINABILITY,
                             format!("magic number `{literal}` should be named"),
                             span.clone(),
                         )
-                        .help("extract this literal into a named constant for readability")
-                        .span_suggestion(
+                        .help("extract this literal into a named constant for readability");
+                    diagnostic.suggestion_groups.push(SuggestionGroup {
+                        id: "sg0001".to_string(),
+                        message: format!("replace `{literal}` with a named constant"),
+                        applicability: Applicability::MaybeIncorrect,
+                        edits: vec![TextEdit {
                             span,
-                            format!("replace `{literal}` with a named constant"),
-                            "NAMED_CONSTANT".to_string(),
-                            Applicability::MaybeIncorrect,
-                        ),
-                    );
+                            replacement: "NAMED_CONSTANT".to_string(),
+                        }],
+                        provenance: None,
+                    });
+                    out.push(diagnostic);
                 }
 
                 offset += line.len() + 1;
@@ -527,9 +535,10 @@ mod tests {
         Noir100MagicNumbersRule.run(&context, &mut diagnostics);
 
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].structured_suggestions.len(), 1);
+        assert!(diagnostics[0].structured_suggestions.is_empty());
+        assert_eq!(diagnostics[0].suggestion_groups.len(), 1);
         assert_eq!(
-            diagnostics[0].structured_suggestions[0].applicability,
+            diagnostics[0].suggestion_groups[0].applicability,
             aztec_lint_core::diagnostics::Applicability::MaybeIncorrect
         );
     }

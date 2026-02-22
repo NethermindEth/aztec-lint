@@ -91,10 +91,10 @@ fn aztec021_fixture_pair_and_scoped_suppression() {
     assert!(
         positive
             .iter()
-            .all(|diagnostic| !diagnostic.structured_suggestions.is_empty())
+            .all(|diagnostic| !diagnostic.suggestion_groups.is_empty())
     );
     assert!(positive.iter().all(|diagnostic| {
-        diagnostic.structured_suggestions.iter().all(|suggestion| {
+        diagnostic.suggestion_groups.iter().all(|suggestion| {
             suggestion.applicability == aztec_lint_core::diagnostics::Applicability::MaybeIncorrect
         })
     }));

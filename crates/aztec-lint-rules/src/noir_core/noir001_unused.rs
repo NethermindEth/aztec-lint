@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use aztec_lint_core::diagnostics::{Applicability, Diagnostic, normalize_file_path};
+use aztec_lint_core::diagnostics::{
+    Applicability, Diagnostic, SuggestionGroup, TextEdit, normalize_file_path,
+};
 use aztec_lint_core::model::{ExpressionCategory, StatementCategory, SymbolKind};
 use aztec_lint_core::policy::CORRECTNESS;
 
@@ -99,8 +101,8 @@ impl Noir001UnusedRule {
                 }
                 let local_span =
                     file.span_for_range(declaration_offset, declaration_offset + name.len());
-                out.push(
-                    ctx.diagnostic(
+                let mut diagnostic = ctx
+                    .diagnostic(
                         self.id(),
                         CORRECTNESS,
                         format!("`{name}` is declared but never used"),
@@ -108,14 +110,18 @@ impl Noir001UnusedRule {
                     )
                     .help(
                         "prefix intentionally unused local bindings with `_` to silence this warning",
-                    )
-                    .span_suggestion(
-                        local_span,
-                        format!("prefix `{name}` with `_`"),
-                        format!("_{name}"),
-                        Applicability::MachineApplicable,
-                    ),
-                );
+                    );
+                diagnostic.suggestion_groups.push(SuggestionGroup {
+                    id: "sg0001".to_string(),
+                    message: format!("prefix `{name}` with `_`"),
+                    applicability: Applicability::MachineApplicable,
+                    edits: vec![TextEdit {
+                        span: local_span,
+                        replacement: format!("_{name}"),
+                    }],
+                    provenance: None,
+                });
+                out.push(diagnostic);
             }
         }
 
@@ -251,8 +257,8 @@ impl Noir001UnusedRule {
                     if count_identifier_occurrences(source, &name) <= 1 {
                         let span = file
                             .span_for_range(declaration_offset, declaration_offset + name.len());
-                        out.push(
-                            ctx.diagnostic(
+                        let mut diagnostic = ctx
+                            .diagnostic(
                                 self.id(),
                                 CORRECTNESS,
                                 format!("`{name}` is declared but never used"),
@@ -260,14 +266,18 @@ impl Noir001UnusedRule {
                             )
                             .help(
                                 "prefix intentionally unused local bindings with `_` to silence this warning",
-                            )
-                            .span_suggestion(
+                            );
+                        diagnostic.suggestion_groups.push(SuggestionGroup {
+                            id: "sg0001".to_string(),
+                            message: format!("prefix `{name}` with `_`"),
+                            applicability: Applicability::MachineApplicable,
+                            edits: vec![TextEdit {
                                 span,
-                                format!("prefix `{name}` with `_`"),
-                                format!("_{name}"),
-                                Applicability::MachineApplicable,
-                            ),
-                        );
+                                replacement: format!("_{name}"),
+                            }],
+                            provenance: None,
+                        });
+                        out.push(diagnostic);
                     }
                 }
 
@@ -1333,13 +1343,14 @@ mod tests {
         Noir001UnusedRule.run(&context, &mut diagnostics);
 
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].structured_suggestions.len(), 1);
+        assert!(diagnostics[0].structured_suggestions.is_empty());
+        assert_eq!(diagnostics[0].suggestion_groups.len(), 1);
         assert_eq!(
-            diagnostics[0].structured_suggestions[0].applicability,
+            diagnostics[0].suggestion_groups[0].applicability,
             aztec_lint_core::diagnostics::Applicability::MachineApplicable
         );
         assert_eq!(
-            diagnostics[0].structured_suggestions[0].replacement,
+            diagnostics[0].suggestion_groups[0].edits[0].replacement,
             "_value"
         );
     }
@@ -1359,6 +1370,7 @@ mod tests {
         Noir001UnusedRule.run(&context, &mut diagnostics);
 
         assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].suggestion_groups.is_empty());
         assert!(diagnostics[0].structured_suggestions.is_empty());
     }
 

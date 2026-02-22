@@ -2,7 +2,7 @@ use aztec_lint_aztec::SourceUnit;
 use aztec_lint_aztec::taint::{
     TaintSinkKind, TaintSourceKind, analyze_intra_procedural, build_def_use_graph_with_semantic,
 };
-use aztec_lint_core::diagnostics::{Applicability, Diagnostic};
+use aztec_lint_core::diagnostics::{Applicability, Diagnostic, SuggestionGroup, TextEdit};
 use aztec_lint_core::policy::SOUNDNESS;
 
 use crate::Rule;
@@ -46,8 +46,8 @@ impl Rule for Aztec021RangeBeforeHashRule {
 
             let variable = flow.variable;
             let sink_span = flow.sink_span;
-            out.push(
-                ctx.diagnostic(
+            let mut diagnostic = ctx
+                .diagnostic(
                     self.id(),
                     SOUNDNESS,
                     format!(
@@ -55,14 +55,20 @@ impl Rule for Aztec021RangeBeforeHashRule {
                     ),
                     sink_span.clone(),
                 )
-                .help("constrain secret-derived values before hashing or serialization")
-                .span_suggestion(
-                    sink_span,
-                    format!("add an explicit range check for `{variable}` before this operation"),
-                    format!("assert_max_bits({variable}, <BITS>);"),
-                    Applicability::MaybeIncorrect,
+                .help("constrain secret-derived values before hashing or serialization");
+            diagnostic.suggestion_groups.push(SuggestionGroup {
+                id: "sg0001".to_string(),
+                message: format!(
+                    "add an explicit range check for `{variable}` before this operation"
                 ),
-            );
+                applicability: Applicability::MaybeIncorrect,
+                edits: vec![TextEdit {
+                    span: sink_span,
+                    replacement: format!("assert_max_bits({variable}, <BITS>);"),
+                }],
+                provenance: None,
+            });
+            out.push(diagnostic);
         }
     }
 }

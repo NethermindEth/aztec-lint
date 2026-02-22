@@ -177,9 +177,10 @@ fn noir100_maybe_incorrect_suggestions_are_rendered_but_not_auto_applied() {
     let source = "fn main() { let fee = 42; }\n";
     let diagnostics = run_rule(&rule, source);
     assert_eq!(diagnostics.len(), 1);
-    assert_eq!(diagnostics[0].structured_suggestions.len(), 1);
+    assert!(diagnostics[0].structured_suggestions.is_empty());
+    assert_eq!(diagnostics[0].suggestion_groups.len(), 1);
     assert_eq!(
-        diagnostics[0].structured_suggestions[0].applicability,
+        diagnostics[0].suggestion_groups[0].applicability,
         aztec_lint_core::diagnostics::Applicability::MaybeIncorrect
     );
 
