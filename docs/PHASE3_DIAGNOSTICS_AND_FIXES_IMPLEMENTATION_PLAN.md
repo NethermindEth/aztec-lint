@@ -217,7 +217,7 @@ Failure modes to watch:
 - Snapshot churn from unstable ordering.
 - SARIF consumers misreading grouped replacement structure.
 
-## Step 7: Add Phase 3 regression gates and rollout criteria
+## Step 7: Add Phase 3 regression gates and rollout criteria **COMPLETED**
 
 Files:
 - `crates/aztec-lint-core/src/diagnostics/*tests*`
@@ -232,7 +232,7 @@ Changes:
 - grouped fix atomicity + conflict behavior
 - scoped lint-level precedence + suppression visibility
 2. Add deterministic round-trip checks for JSON/SARIF/text after grouped model migration.
-3. Add release checklist for compatibility window removal (legacy fields deprecation date).
+3. Document legacy-field migration guidance without fixed deprecation/removal dates.
 
 Validation:
 - `cargo test --workspace --locked`

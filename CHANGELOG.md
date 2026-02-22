@@ -37,6 +37,10 @@ Entries are grouped by released version.
 - Changed text output to render explicit grouped suggestion details (group id, applicability, grouped edit count, and per-edit replacement spans) while keeping legacy compatibility lines.
 - Added Step 6 output regression coverage for grouped-suggestion ordering/determinism in `output::json`, `output::sarif`, and `output::text`.
 - Updated grouped-suggestion text golden snapshot to reflect the expanded grouped-suggestion rendering contract.
+- Added dedicated Phase 3 regression gate suites: `crates/aztec-lint-core/tests/phase3_regression.rs` (invariants, grouped-fix atomicity/conflicts, output determinism) and `crates/aztec-lint-rules/tests/phase3_scoped_levels.rs` (scoped lint-level precedence and suppression visibility).
+- Added CLI determinism gates for SARIF and text output in `crates/aztec-lint-cli/tests/cli_golden.rs` (`check_sarif_output_is_deterministic`, `check_text_output_is_deterministic`) alongside existing JSON determinism coverage.
+- Changed CI test workflow to run explicit lockfile-enforced (`--locked`) Phase 3 regression gate commands in `.github/workflows/ci-test.yml`.
+- Updated Step 7 rollout documentation to keep legacy-field migration guidance without introducing a fixed compatibility-window removal schedule.
 
 ## [0.3.0]
 
