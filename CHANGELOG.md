@@ -7,6 +7,8 @@ Entries are grouped by released version.
 
 ## [Unreleased]
 
+## [0.4.0]
+
 ### 2026-02-22
 
 - Changed `NOIR100` magic-number detection to report only high-signal contexts (branching, assertions/constraints, range boundaries, hash/serialization/protocol-sensitive uses) and stop reporting one-off plain local initializer literals.
