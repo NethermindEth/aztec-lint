@@ -164,7 +164,7 @@ Failure modes to watch:
 - Semantic and text-fallback paths producing different edit sets for same finding.
 - Machine-applicable mislabeling causing unsafe auto-fix application.
 
-## Step 5: Implement scoped lint-level semantics (allow/warn/deny) and broader suppression scopes
+## Step 5: Implement scoped lint-level semantics (allow/warn/deny) and broader suppression scopes **COMPLETED**
 
 Files:
 - `crates/aztec-lint-rules/src/engine/context.rs`

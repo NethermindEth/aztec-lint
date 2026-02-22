@@ -573,6 +573,82 @@ fn check_text_show_suppressed_flag_controls_visibility() {
 }
 
 #[test]
+fn check_json_output_reflects_scoped_allow_directives() {
+    let source = r#"
+mod scoped {
+    #[allow(NOIR100)]
+    fn module_scope() {
+        let module_value = 42;
+        assert(module_value == 42);
+    }
+}
+
+fn main() {
+    let main_value = 9;
+    assert(main_value == 9);
+}
+"#;
+    let (_workspace, project) = create_git_project(source);
+
+    let mut cmd = cli_bin();
+    cmd.current_dir(&project);
+    cmd.args(["check", ".", "--format", "json", "--warn", "NOIR100"]);
+    let output = cmd.output().expect("command should execute");
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "unsuppressed warning-scoped NOIR100 should still be reported"
+    );
+
+    let diagnostics: Value =
+        serde_json::from_slice(&output.stdout).expect("json output should parse");
+    let diagnostics = diagnostics
+        .as_array()
+        .expect("json diagnostics should be an array");
+    let noir100 = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic["rule_id"] == Value::String("NOIR100".to_string()))
+        .collect::<Vec<_>>();
+    assert!(
+        !noir100.is_empty(),
+        "expected NOIR100 diagnostics in scoped-directive scenario"
+    );
+    assert!(noir100.iter().any(|diagnostic| {
+        diagnostic["suppressed"] == Value::Bool(true)
+            && diagnostic["suppression_reason"] == Value::String("allow(NOIR100)".to_string())
+    }));
+    assert!(noir100.iter().any(|diagnostic| {
+        diagnostic["suppressed"] == Value::Bool(false)
+            && diagnostic["severity"] == Value::String("warning".to_string())
+    }));
+}
+
+#[test]
+fn check_file_level_allow_is_non_blocking_with_error_threshold() {
+    let source = r#"
+#[allow(NOIR100)]
+pub global FILE_SCOPE_MARKER: u8 = 0;
+fn main() {
+    let file_value = 7;
+    assert(file_value == 7);
+}
+"#;
+    let (_workspace, project) = create_git_project(source);
+
+    let mut cmd = cli_bin();
+    cmd.current_dir(&project);
+    cmd.args([
+        "check",
+        ".",
+        "--warn",
+        "NOIR100",
+        "--severity-threshold",
+        "error",
+    ]);
+    cmd.assert().code(0);
+}
+
+#[test]
 fn check_json_output_is_deterministic() {
     let fixture = fixture_dir("noir_core/minimal");
 

@@ -29,6 +29,10 @@ Entries are grouped by released version.
 - Changed rule emitters `NOIR001`, `NOIR100`, and `AZTEC021` to emit group-backed suggestions directly via `suggestion_groups` as the primary suggestion contract.
 - Kept applicability discipline in migrated emitters: deterministic underscore-prefix local renames remain `MachineApplicable`, while exploratory constant/range guidance remains `MaybeIncorrect`.
 - Updated rule-level and integration tests to assert suggestion-group structure and applicability for migrated emitters (`crates/aztec-lint-rules/tests/noir_core_rules.rs` and `crates/aztec-lint-rules/tests/aztec_advanced_rules.rs`).
+- Added scoped lint directive resolution in `aztec-lint-rules` for `#[allow]`, `#[warn]`, and `#[deny]` with file/module/item scopes, nearest-scope precedence, and last-directive-wins behavior at equal scope.
+- Changed rule engine severity/suppression resolution to apply scoped directive levels per diagnostic span on top of profile/CLI baseline levels (`allow` suppresses; `warn`/`deny` override emitted severity).
+- Fixed scoped-level engine normalization to preserve pre-existing diagnostic suppression flags in non-`allow` paths so invariant validation still reports malformed suppressed diagnostics (for example missing suppression reasons) instead of masking them.
+- Added Step 5 regression coverage for scoped directive precedence and CLI behavior, including JSON suppression/severity visibility and error-threshold exit-code handling.
 
 ## [0.3.0]
 
