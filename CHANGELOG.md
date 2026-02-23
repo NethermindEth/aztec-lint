@@ -32,7 +32,14 @@ Entries are grouped by released version.
 - Added benchmark corpus fixtures under `fixtures/bench/` for note-consumption/nullifier, domain-separation hash tuple, and looped hash/Merkle verification stress domains.
 - Changed `cargo xtask perf-gate` from a file-alignment check into a scenario runner that executes benchmark fixtures, computes median/p95 timings, validates minimum taint-flow expectations, enforces budget thresholds, and supports explicit slowdown allowlisting via `[allowlist].scenario_ids`.
 - Changed `performance_smoke_stays_bounded` in `crates/aztec-lint-aztec/src/taint/propagate.rs` to use fixture-driven benchmark smoke scenarios instead of an ad hoc generated-chain timing assertion.
-- Changed CI test workflow to run the performance budget gate (`cargo xtask perf-gate --check --locked`) as a blocking regression check.
+- Added dedicated CI workflows for scale-and-quality gates:
+  - `.github/workflows/ci-matrix.yml` for diagnostics/fix regression + UI/fix/corpus matrix suites
+  - `.github/workflows/ci-perf.yml` for `cargo xtask perf-gate --check --locked`
+  - `.github/workflows/ci-docs.yml` for generated artifact drift checks (`xtask update-lints --check`, `xtask docs-portal --check`)
+- Changed `.github/workflows/ci-test.yml` to keep workspace test execution focused, while matrix/perf/docs enforcement runs in dedicated workflows.
+- Changed `.github/workflows/ci-quality.yml` to include an explicit `cargo check --workspace --all-targets --locked` gate.
+- Added local CI parity entrypoints in `Makefile`: `make matrix`, `make perf`, and `make generate`, and updated `make ci` to run the full gate set.
+- Added generated docs portal baseline artifacts under `docs/portal/` so docs drift checks can run as blocking CI gates.
 
 ## [0.4.0]
 

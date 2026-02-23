@@ -308,7 +308,7 @@ Failure modes to watch:
 1. Portal content diverging from canonical catalog because generation is optional.
 2. Broken links and stale pages when lint IDs are renamed or removed.
 
-## Step 7: Wire scale-and-quality CI gates
+## Step 7: Wire scale-and-quality CI gates **COMPLETED**
 
 Files:
 1. `.github/workflows/ci-test.yml`
@@ -344,7 +344,7 @@ Failure modes to watch:
 
 1. Milestone A (metadata + automation): Steps 0, 1, 5. **COMPLETED**
 2. Milestone B (matrix harness + first corpus): Step 3. **COMPLETED**
-3. Milestone C (perf gates): Step 4 and CI integration from Step 7.
+3. Milestone C (perf gates): Step 4 and CI integration from Step 7. **COMPLETED**
 4. Milestone D (docs portal + rule growth): Step 6 plus roadmap execution from Step 2.
 
 ## Immediate execution checklist
