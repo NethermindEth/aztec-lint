@@ -15,6 +15,14 @@ Entries are grouped by released version.
 - Changed `aztec-lint explain <RULE_ID>` output to include lint maturity.
 - Changed lint reference generation to use metadata-driven pack grouping instead of hardcoded pack iteration.
 - Regenerated `docs/lints-reference.md` to include maturity per lint and a policy alias note (`cost` roadmap shorthand maps to canonical `performance`).
+- Added `crates/xtask` as a workspace automation crate with command routing for `new-lint`, `update-lints`, `lint-intake`, `docs-portal`, and `perf-gate`.
+- Added `cargo xtask new-lint` scaffolding for rule source stubs, fixture triplets, test stubs, and canonical metadata/registry snippet files, with deterministic rule ID normalization and duplicate-ID rejection.
+- Added `cargo xtask update-lints` to validate canonical lint IDs, regenerate `docs/lints-reference.md`, run registry/catalog integrity checks, and fail on generated artifact drift.
+- Added `cargo xtask lint-intake` to import proposal intake statuses from `docs/NEW_LINTS.md` into `docs/rule-roadmap.md` with generated section markers and `--check` drift enforcement.
+- Added `cargo xtask docs-portal` to generate a lint docs portal at `docs/portal/` (`index.md`, per-lint pages, and `search-index.json`) with deterministic `--check` verification.
+- Added `cargo xtask perf-gate` with `--check` support to run the performance smoke gate and validate benchmark budget alignment when benchmark scenario/budget files are present.
+- Added lint scaffolding templates under `crates/xtask/templates/` for rule source and positive/negative/suppressed fixture generation.
+- Updated operator docs to reflect the implemented `new-lint` command contract (`--category`, `--tier`, optional `--policy`) and generated `docs/rule-roadmap.md` intake mapping.
 
 ## [0.4.0]
 
