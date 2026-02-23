@@ -130,6 +130,66 @@
     "summary": "Suspicious repeated nested storage key."
   },
   {
+    "category": "privacy",
+    "id": "AZTEC036",
+    "lifecycle": "active",
+    "maturity": "preview",
+    "pack": "aztec_pack",
+    "path": "lints/aztec036.md",
+    "policy": "privacy",
+    "summary": "Secret-dependent branch affects enqueue behavior."
+  },
+  {
+    "category": "privacy",
+    "id": "AZTEC037",
+    "lifecycle": "active",
+    "maturity": "preview",
+    "pack": "aztec_pack",
+    "path": "lints/aztec037.md",
+    "policy": "privacy",
+    "summary": "Secret-dependent branch affects delivery count."
+  },
+  {
+    "category": "correctness",
+    "id": "AZTEC038",
+    "lifecycle": "active",
+    "maturity": "preview",
+    "pack": "aztec_pack",
+    "path": "lints/aztec038.md",
+    "policy": "correctness",
+    "summary": "Change note appears to miss fresh randomness."
+  },
+  {
+    "category": "correctness",
+    "id": "AZTEC039",
+    "lifecycle": "active",
+    "maturity": "preview",
+    "pack": "aztec_pack",
+    "path": "lints/aztec039.md",
+    "policy": "correctness",
+    "summary": "Partial spend logic appears unbalanced."
+  },
+  {
+    "category": "protocol",
+    "id": "AZTEC040",
+    "lifecycle": "active",
+    "maturity": "preview",
+    "pack": "aztec_pack",
+    "path": "lints/aztec040.md",
+    "policy": "protocol",
+    "summary": "Initializer entrypoint missing #[only_self]."
+  },
+  {
+    "category": "correctness",
+    "id": "AZTEC041",
+    "lifecycle": "active",
+    "maturity": "preview",
+    "pack": "aztec_pack",
+    "path": "lints/aztec041.md",
+    "policy": "correctness",
+    "summary": "Field/integer cast may truncate or wrap unexpectedly."
+  },
+  {
     "category": "correctness",
     "id": "NOIR001",
     "lifecycle": "active",

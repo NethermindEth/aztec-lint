@@ -7,6 +7,9 @@ Generated from canonical lint metadata.
 ### Correctness
 
 - [AZTEC035](lints/aztec035.md) (`aztec_pack` / `preview` / `correctness` / `active`)
+- [AZTEC038](lints/aztec038.md) (`aztec_pack` / `preview` / `correctness` / `active`)
+- [AZTEC039](lints/aztec039.md) (`aztec_pack` / `preview` / `correctness` / `active`)
+- [AZTEC041](lints/aztec041.md) (`aztec_pack` / `preview` / `correctness` / `active`)
 - [NOIR001](lints/noir001.md) (`noir_core` / `stable` / `correctness` / `active`)
 - [NOIR002](lints/noir002.md) (`noir_core` / `stable` / `correctness` / `active`)
 - [NOIR010](lints/noir010.md) (`noir_core` / `stable` / `correctness` / `active`)
@@ -25,6 +28,8 @@ Generated from canonical lint metadata.
 - [AZTEC001](lints/aztec001.md) (`aztec_pack` / `stable` / `privacy` / `active`)
 - [AZTEC002](lints/aztec002.md) (`aztec_pack` / `preview` / `privacy` / `active`)
 - [AZTEC003](lints/aztec003.md) (`aztec_pack` / `stable` / `privacy` / `active`)
+- [AZTEC036](lints/aztec036.md) (`aztec_pack` / `preview` / `privacy` / `active`)
+- [AZTEC037](lints/aztec037.md) (`aztec_pack` / `preview` / `privacy` / `active`)
 
 ### Protocol
 
@@ -32,6 +37,7 @@ Generated from canonical lint metadata.
 - [AZTEC031](lints/aztec031.md) (`aztec_pack` / `preview` / `protocol` / `active`)
 - [AZTEC032](lints/aztec032.md) (`aztec_pack` / `preview` / `protocol` / `active`)
 - [AZTEC033](lints/aztec033.md) (`aztec_pack` / `preview` / `protocol` / `active`)
+- [AZTEC040](lints/aztec040.md) (`aztec_pack` / `preview` / `protocol` / `active`)
 
 ### Soundness
 
@@ -52,6 +58,12 @@ Generated from canonical lint metadata.
 - `AZTEC033` (aztec_pack, active)
 - `AZTEC034` (aztec_pack, active)
 - `AZTEC035` (aztec_pack, active)
+- `AZTEC036` (aztec_pack, active)
+- `AZTEC037` (aztec_pack, active)
+- `AZTEC038` (aztec_pack, active)
+- `AZTEC039` (aztec_pack, active)
+- `AZTEC040` (aztec_pack, active)
+- `AZTEC041` (aztec_pack, active)
 - `NOIR101` (noir_core, active)
 - `NOIR110` (noir_core, active)
 - `NOIR120` (noir_core, active)
@@ -88,6 +100,12 @@ Generated from canonical lint metadata.
 - `AZTEC033` (protocol, preview, active)
 - `AZTEC034` (soundness, preview, active)
 - `AZTEC035` (correctness, preview, active)
+- `AZTEC036` (privacy, preview, active)
+- `AZTEC037` (privacy, preview, active)
+- `AZTEC038` (correctness, preview, active)
+- `AZTEC039` (correctness, preview, active)
+- `AZTEC040` (protocol, preview, active)
+- `AZTEC041` (correctness, preview, active)
 
 ### Noir Core
 
