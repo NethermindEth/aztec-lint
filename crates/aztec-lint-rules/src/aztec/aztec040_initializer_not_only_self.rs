@@ -24,6 +24,9 @@ impl Rule for Aztec040InitializerNotOnlySelfRule {
             if entry.kind != EntrypointKind::Initializer {
                 continue;
             }
+            if is_constructor_style_initializer(&entry.function_symbol_id) {
+                continue;
+            }
 
             let key = (entry.contract_id.clone(), entry.function_symbol_id.clone());
             if !visited.insert(key) {
@@ -47,6 +50,14 @@ impl Rule for Aztec040InitializerNotOnlySelfRule {
             ));
         }
     }
+}
+
+fn is_constructor_style_initializer(function_symbol_id: &str) -> bool {
+    let Some((_, function_name)) = function_symbol_id.rsplit_once("::fn::") else {
+        return false;
+    };
+    let normalized = function_name.to_ascii_lowercase();
+    normalized == "constructor" || normalized.starts_with("constructor_")
 }
 
 #[cfg(test)]
@@ -98,6 +109,34 @@ pub contract C {
     #[external("public")]
     #[only_self]
     fn init(owner: Field) {
+        emit(owner);
+    }
+}
+"#;
+        let project = ProjectModel::default();
+        let mut context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), source.to_string())],
+        );
+        let model = build_aztec_model(
+            &[SourceUnit::new("src/main.nr", source)],
+            &AztecConfig::default(),
+        );
+        context.set_aztec_model(model);
+
+        let mut diagnostics = Vec::new();
+        Aztec040InitializerNotOnlySelfRule.run(&context, &mut diagnostics);
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn ignores_constructor_style_initializer_without_only_self() {
+        let source = r#"
+#[aztec]
+pub contract C {
+    #[initializer]
+    #[external("public")]
+    fn constructor_with_asset(owner: Field) {
         emit(owner);
     }
 }

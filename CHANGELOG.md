@@ -11,6 +11,8 @@ Entries are grouped by released version.
 - Fixed semantic local-binding mapping in `NOIR001` to preserve statement definition order (stable dedup without lexicographic reordering), preventing false positives on used tuple-destructure bindings when `def::*` ids are not text-order sortable.
 - Added `NOIR001` regression coverage for tuple-pattern binding order alignment to ensure used trailing bindings are not reported as unused.
 - Fixed the same semantic definition-order mapping issue in `NOIR010` and `NOIR030` to keep local binding/name correlation stable across tuple/structured patterns.
+- Fixed `AZTEC040` to ignore constructor-style initializer entrypoints (`constructor` / `constructor_*`) when evaluating missing `#[only_self]`, reducing false positives for standard deployment initializers while keeping checks for non-constructor initializer entrypoints.
+- Added `AZTEC040` regression coverage for constructor-style initializer exemptions in both unit tests and fixture matrix false-positive guard scenarios.
 
 ## [0.6.0]
 

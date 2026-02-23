@@ -1,7 +1,8 @@
 #[aztec]
 pub contract C {
+    #[initializer]
     #[external("public")]
-    fn rotate(owner: Field) {
+    fn constructor_with_asset(owner: Field) {
         emit(owner);
     }
 }
