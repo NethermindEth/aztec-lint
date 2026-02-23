@@ -7,10 +7,21 @@ Entries are grouped by released version.
 
 ## [Unreleased]
 
+### Rule Growth by Category
+
+- `correctness`: `+0`
+- `maintainability`: `+0`
+- `privacy`: `+0`
+- `protocol`: `+0`
+- `soundness`: `+0`
+
 - Added lint maturity metadata (`stable`, `preview`, `experimental`) to the canonical `LintSpec` model and catalog.
 - Changed catalog quality invariants to reject non-canonical `cost` policy naming (use `performance`) and to reject active `stable` lints with `low` confidence.
 - Added tier-aware ruleset selectors in config resolution: `tier:<tier>`, `maturity:<tier>`, and `<pack>@<tier>`.
 - Added builtin `aztec_strict` profile, extending `aztec` and enabling stricter tier-targeted Aztec rulesets.
+- Added a category x maturity rule roadmap matrix in `docs/rule-roadmap.md` with explicit rule IDs, owners, statuses, target releases, and first-wave (`AZTEC030`-`AZTEC035`) scheduling details.
+- Changed release-note roadmap policy to track net rule growth by category (not only raw total count) and to avoid placeholder catalog/registry IDs before implementation milestones and test plans exist.
+- Changed `docs/NEW_LINTS.md` intake guidance to defer accepted-lint execution scheduling and matrix obligations to `docs/rule-roadmap.md`.
 - Changed `aztec-lint rules` output contract to include `CATEGORY` and `MATURITY` columns.
 - Changed `aztec-lint explain <RULE_ID>` output to include lint maturity.
 - Changed lint reference generation to use metadata-driven pack grouping instead of hardcoded pack iteration.
