@@ -3695,6 +3695,7 @@ dependencies = [
 name = "xtask"
 version = "0.4.0"
 dependencies = [
+ "aztec-lint-aztec",
  "aztec-lint-core",
  "serde_json",
  "toml 1.0.3+spec-1.1.0",

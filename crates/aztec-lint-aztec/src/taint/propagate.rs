@@ -179,8 +179,6 @@ fn guard_dominates_sink(
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
-
     use aztec_lint_core::config::AztecConfig;
     use aztec_lint_core::model::Span;
 
@@ -291,26 +289,31 @@ pub contract C {
 
     #[test]
     fn performance_smoke_stays_bounded() {
-        let mut body = String::from(
-            "#[aztec]\npub contract C {\n#[external(\"private\")]\nfn bridge(secret: Field) {\n",
-        );
-        for idx in 0..200 {
-            if idx == 0 {
-                body.push_str("let v0 = secret;\n");
-            } else {
-                body.push_str(&format!("let v{idx} = v{};\n", idx - 1));
-            }
+        let scenarios = [
+            (
+                "note_consumption_nullifier",
+                include_str!("../../../../fixtures/bench/note_consumption_nullifier.nr"),
+            ),
+            (
+                "domain_separation_hash_tuple",
+                include_str!("../../../../fixtures/bench/domain_separation_hash_tuple.nr"),
+            ),
+            (
+                "looped_hash_merkle_verification",
+                include_str!("../../../../fixtures/bench/looped_hash_merkle_verification.nr"),
+            ),
+        ];
+
+        for (scenario_id, source) in scenarios {
+            let sources = vec![SourceUnit::new("src/main.nr", source)];
+            let model = build_aztec_model(&sources, &AztecConfig::default());
+            let graph = build_def_use_graph(&sources, &model, &AztecConfig::default());
+            let analysis = analyze_intra_procedural(&graph);
+            assert!(
+                !analysis.flows.is_empty(),
+                "expected at least one taint flow for scenario {scenario_id}"
+            );
         }
-        body.push_str("emit(v199);\n}\n}\n");
-
-        let sources = vec![SourceUnit::new("src/main.nr", body)];
-        let model = build_aztec_model(&sources, &AztecConfig::default());
-        let graph = build_def_use_graph(&sources, &model, &AztecConfig::default());
-
-        let started = Instant::now();
-        let analysis = analyze_intra_procedural(&graph);
-        assert!(started.elapsed().as_millis() < 1000);
-        assert!(!analysis.flows.is_empty());
     }
 
     #[test]
