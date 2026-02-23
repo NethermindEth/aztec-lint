@@ -94,7 +94,7 @@ Validation:
 Failure mode:
 - False positives from secret branches that do not alter enqueue shape.
 
-## Step 5: Implement `AZTEC037` End-to-End
+## Step 5: Implement `AZTEC037` End-to-End **COMPLETED**
 
 Action:
 - Add/extend taint sink coverage for delivery-count patterns (`deliver(...)` style).
