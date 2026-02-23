@@ -281,7 +281,7 @@ Failure modes to watch:
 3. Partial scaffold generation that compiles but misses required fixtures/tests.
 4. Intake tooling drifts from roadmap format and silently drops suggested lints.
 
-## Step 6: Generate and publish a docs portal from canonical metadata
+## Step 6: Generate and publish a docs portal from canonical metadata **COMPLETED**
 
 Files:
 1. New portal content root:
@@ -345,7 +345,7 @@ Failure modes to watch:
 1. Milestone A (metadata + automation): Steps 0, 1, 5. **COMPLETED**
 2. Milestone B (matrix harness + first corpus): Step 3. **COMPLETED**
 3. Milestone C (perf gates): Step 4 and CI integration from Step 7. **COMPLETED**
-4. Milestone D (docs portal + rule growth): Step 6 plus roadmap execution from Step 2.
+4. Milestone D (docs portal + rule growth): Step 6 plus roadmap execution from Step 2. **COMPLETED**
 
 ## Immediate execution checklist
 

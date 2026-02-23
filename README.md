@@ -220,6 +220,9 @@ cargo xtask new-lint --id <RULE_ID> --pack <PACK> --category <CATEGORY> --tier <
 # Regenerate derived lint artifacts and fail on drift
 cargo xtask update-lints
 
+# Regenerate docs portal artifacts and fail on drift
+cargo xtask docs-portal
+
 # Required regression suites for matrix coverage
 cargo test -p aztec-lint-cli --test ui_matrix --locked
 cargo test -p aztec-lint-cli --test fix_matrix --locked
@@ -228,7 +231,8 @@ cargo test -p aztec-lint-cli --test corpus_matrix --locked
 
 Operator expectations:
 
-- `cargo xtask update-lints` is the gate for generated lint metadata and docs portal content.
+- `cargo xtask update-lints` gates generated lint metadata and reference docs.
+- `cargo xtask docs-portal` gates generated portal content under `docs/portal/`.
 - Changes to lint definitions are incomplete until matrix tests pass and generated artifacts are up to date.
 - External lint proposals must be triaged through lint intake statuses (`covered`, `accepted`, `deferred`, `rejected`) in `docs/NEW_LINTS.md`.
 
