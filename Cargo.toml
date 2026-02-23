@@ -5,6 +5,7 @@ members = [
   "crates/aztec-lint-rules",
   "crates/aztec-lint-aztec",
   "crates/aztec-lint-sdk",
+  "crates/xtask",
 ]
 resolver = "2"
 

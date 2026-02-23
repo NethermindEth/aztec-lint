@@ -1,0 +1,15 @@
+use crate::Rule;
+use crate::engine::context::RuleContext;
+use aztec_lint_core::diagnostics::Diagnostic;
+
+pub struct {{struct_name}};
+
+impl Rule for {{struct_name}} {
+    fn id(&self) -> &'static str {
+        "{{rule_id}}"
+    }
+
+    fn run(&self, _ctx: &RuleContext<'_>, _out: &mut Vec<Diagnostic>) {
+        // TODO: implement detection logic for {{rule_id}}.
+    }
+}
