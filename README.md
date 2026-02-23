@@ -196,6 +196,31 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo fmt --all --check
 ```
 
+## Scale and Quality Operator Workflow
+
+Scale-and-quality execution adds required operator commands to keep rule metadata, test matrix assets, and docs synchronized.
+
+Required command contract (becomes mandatory as each command lands):
+
+```bash
+# Scaffold a new lint from canonical templates
+cargo xtask new-lint --id <RULE_ID> --pack <PACK> --policy <POLICY> --tier <stable|preview|experimental>
+
+# Regenerate derived lint artifacts and fail on drift
+cargo xtask update-lints
+
+# Required regression suites for matrix coverage
+cargo test -p aztec-lint-cli --test ui_matrix --locked
+cargo test -p aztec-lint-cli --test fix_matrix --locked
+cargo test -p aztec-lint-cli --test corpus_matrix --locked
+```
+
+Operator expectations:
+
+- `cargo xtask update-lints` is the gate for generated lint metadata and docs portal content.
+- Changes to lint definitions are incomplete until matrix tests pass and generated artifacts are up to date.
+- External lint proposals must be triaged through lint intake statuses (`covered`, `accepted`, `deferred`, `rejected`) in `docs/NEW_LINTS.md`.
+
 ## Additional Docs
 
 - Architecture baseline: [`docs/architecture.md`](docs/architecture.md)

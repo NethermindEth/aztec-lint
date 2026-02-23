@@ -17,6 +17,12 @@ Use `ctx.diagnostic(...)` to create base diagnostics.
 
 ## 2. Register Metadata
 
+Scale-and-quality transition contract:
+
+- Current fallback path (while `xtask` scaffolding is not landed): edit `crates/aztec-lint-rules/src/engine/registry.rs` manually.
+- Default path (once `xtask` lands): use `cargo xtask new-lint` for scaffolding and `cargo xtask update-lints` to regenerate derived artifacts.
+- Manual registry edits are no longer the default path once `xtask` is available; direct edits are exception-only and must be followed by regeneration checks.
+
 Add the rule in `crates/aztec-lint-rules/src/engine/registry.rs` with:
 
 - canonical `id`
@@ -26,6 +32,7 @@ Add the rule in `crates/aztec-lint-rules/src/engine/registry.rs` with:
 - deterministic `Confidence`
 
 Engine metadata is authoritative for severity/confidence/policy assignment.
+Generated docs and docs portal artifacts are expected to come from the same canonical metadata via `cargo xtask update-lints`.
 
 ## 3. Directive/Suppression Contract
 
