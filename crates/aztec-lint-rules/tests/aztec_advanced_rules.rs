@@ -263,3 +263,19 @@ fn aztec038_fixture_matrix() {
     let suppressed = run_rule("AZTEC038", &fixture_source("aztec038_suppressed.nr"));
     assert_single_suppressed_with_reason(&suppressed, "AZTEC038");
 }
+
+#[test]
+fn aztec039_fixture_matrix() {
+    assert!(!run_rule("AZTEC039", &fixture_source("aztec039_positive.nr")).is_empty());
+    assert!(run_rule("AZTEC039", &fixture_source("aztec039_negative.nr")).is_empty());
+    assert!(
+        run_rule(
+            "AZTEC039",
+            &fixture_source("aztec039_false_positive_guard.nr")
+        )
+        .is_empty()
+    );
+
+    let suppressed = run_rule("AZTEC039", &fixture_source("aztec039_suppressed.nr"));
+    assert_single_suppressed_with_reason(&suppressed, "AZTEC039");
+}

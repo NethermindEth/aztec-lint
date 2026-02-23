@@ -150,7 +150,7 @@ Validation:
 Failure mode:
 - Noise due to constructor naming variance.
 
-## Step 7: Implement `AZTEC039` End-to-End
+## Step 7: Implement `AZTEC039` End-to-End **COMPLETED**
 
 Action:
 - Implement partial-spend balance invariant checks.
