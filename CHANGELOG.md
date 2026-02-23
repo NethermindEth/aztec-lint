@@ -36,6 +36,9 @@ Entries are grouped by released version.
 - Implemented `AZTEC039` rule logic (`partial spend not balanced`) using conservative partial-spend arithmetic heuristics for unguarded subtraction and missing reconciliation assertions.
 - Added `AZTEC039` rule-case fixture matrix in `fixtures/aztec/rule_cases/` (`positive`, `negative`, `suppressed`, `false_positive_guard`) and integrated `aztec039_fixture_matrix` in `crates/aztec-lint-rules/tests/aztec_advanced_rules.rs`.
 - Replaced scaffolded accepted UI fixtures for `AZTEC039` in `fixtures/ui/accepted/AZTEC039/` with concrete matrix scenarios.
+- Implemented `AZTEC040` rule logic (`initializer entrypoint missing #[only_self]`) using semantic Aztec entrypoint kinds (`Initializer` and `OnlySelf`).
+- Added `AZTEC040` rule-case fixture matrix in `fixtures/aztec/rule_cases/` (`positive`, `negative`, `suppressed`, `false_positive_guard`) and integrated `aztec040_fixture_matrix` in `crates/aztec-lint-rules/tests/aztec_advanced_rules.rs`.
+- Replaced scaffolded accepted UI fixtures for `AZTEC040` in `fixtures/ui/accepted/AZTEC040/` with concrete matrix scenarios.
 - Updated generated lint reference and CLI/snapshot baselines to reflect the expanded aztec profile rule set (`active_rules=28`).
 - Added `docs/SECOND_WAVE_IMPLEMENTATION_PLAN.md` with sequential implementation and validation gates for the second-wave backlog.
 
