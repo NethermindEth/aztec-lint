@@ -9,6 +9,18 @@ Entries are grouped by released version.
 
 ### Rule Growth by Category
 
+- `correctness`: `+0`
+- `maintainability`: `+0`
+- `privacy`: `+0`
+- `protocol`: `+0`
+- `soundness`: `+0`
+
+## [0.5.0]
+
+### 2026-02-23
+
+### Rule Growth by Category
+
 - `correctness`: `+1`
 - `maintainability`: `+0`
 - `privacy`: `+0`
