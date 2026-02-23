@@ -9,11 +9,11 @@ const GENERATED_START: &str = "<!-- generated:lint-intake:start -->";
 const GENERATED_END: &str = "<!-- generated:lint-intake:end -->";
 
 #[derive(Clone)]
-struct IntakeEntry {
-    proposal: String,
-    status: String,
-    canonical_mapping: String,
-    notes: String,
+pub(crate) struct IntakeEntry {
+    pub(crate) proposal: String,
+    pub(crate) status: String,
+    pub(crate) canonical_mapping: String,
+    pub(crate) notes: String,
 }
 
 pub fn run(args: &[String]) -> Result<(), DynError> {
@@ -55,7 +55,7 @@ pub fn run(args: &[String]) -> Result<(), DynError> {
     Ok(())
 }
 
-fn parse_intake_table(source: &str) -> Result<Vec<IntakeEntry>, DynError> {
+pub(crate) fn parse_intake_table(source: &str) -> Result<Vec<IntakeEntry>, DynError> {
     let mut lines = source.lines();
     let header = "| Proposal | Status | Canonical mapping | Notes |";
 
@@ -98,7 +98,7 @@ fn parse_intake_table(source: &str) -> Result<Vec<IntakeEntry>, DynError> {
     Err("could not find lint intake table in source markdown".into())
 }
 
-fn validate_entries(entries: &[IntakeEntry]) -> Result<(), DynError> {
+pub(crate) fn validate_entries(entries: &[IntakeEntry]) -> Result<(), DynError> {
     let allowed = ["`covered`", "`accepted`", "`deferred`", "`rejected`"];
     let mut seen = BTreeSet::<String>::new();
     for entry in entries {

@@ -83,3 +83,13 @@ Generated from canonical lint metadata.
 - `NOIR110` (maintainability, preview)
 - `NOIR120` (maintainability, preview)
 
+## Roadmap Intake Views
+
+Generated from intake decisions in `docs/NEW_LINTS.md`.
+
+- [Covered](roadmap/covered.md): `4` proposal(s)
+- [Accepted](roadmap/accepted.md): `12` proposal(s)
+- [Deferred](roadmap/deferred.md): `2` proposal(s)
+- [Rejected](roadmap/rejected.md): `1` proposal(s)
+
+- [All intake statuses](roadmap/index.md)

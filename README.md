@@ -128,6 +128,7 @@ Active enforced lints are defined in the canonical catalog and executed by the r
 Detailed reference for each lint (metadata, rationale, limitations, and fixes):
 
 - [`docs/lints-reference.md`](docs/lints-reference.md)
+- [`docs/portal/index.md`](docs/portal/index.md) (generated portal with category, maturity, pack, and intake-status views)
 
 ## Configuration
 

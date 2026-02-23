@@ -29,6 +29,22 @@ Single local initializer literals are intentionally skipped to reduce noise.
 
 Extract the repeated literal into a named constant and reuse it.
 
+## Config Knobs
+
+- Enable this lint via ruleset selector `profile.<name>.ruleset = ["noir_core"]`.
+- Target this maturity in-pack via `profile.<name>.ruleset = ["noir_core@preview"]`.
+- Target this maturity across packs via `profile.<name>.ruleset = ["tier:preview"]` (alias `maturity:preview`).
+- Override this lint level in config with `profile.<name>.deny|warn|allow = ["NOIR101"]`.
+- Override this lint level in CLI with `--deny NOIR101`, `--warn NOIR101`, or `--allow NOIR101`.
+
+## Fix Safety Notes
+
+- `aztec-lint fix` applies only safe fixes for `NOIR101` and skips edits marked as needing review.
+- Suggestion applicability `machine-applicable` maps to safe fixes.
+- Suggestion applicability `maybe-incorrect`, `has-placeholders`, and `unspecified` maps to `needs_review` and is not auto-applied.
+- Run `aztec-lint fix --dry-run` to inspect candidate edits before writing files.
+
+
 ## Examples
 
 - Replace repeated `let fee = 42; let limit = 42;` with a shared constant.

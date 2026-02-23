@@ -10,6 +10,9 @@ use crate::common::{
     DynError, ensure_no_unknown_options, parse_flags_and_options, read_text_file, workspace_root,
     write_text_file,
 };
+use crate::lint_intake::{IntakeEntry, parse_intake_table, validate_entries};
+
+const INTAKE_STATUSES: [&str; 4] = ["covered", "accepted", "deferred", "rejected"];
 
 pub fn run(args: &[String]) -> Result<(), DynError> {
     let (mut flags, options) = parse_flags_and_options(args)?;
@@ -19,7 +22,7 @@ pub fn run(args: &[String]) -> Result<(), DynError> {
     let root = workspace_root()?;
     let portal_root = root.join("docs/portal");
 
-    let generated = build_generated_files(&portal_root);
+    let generated = build_generated_files(&root, &portal_root)?;
 
     if check {
         verify_generated_files(&portal_root, &generated)?;
@@ -35,18 +38,35 @@ pub fn run(args: &[String]) -> Result<(), DynError> {
     Ok(())
 }
 
-fn build_generated_files(portal_root: &Path) -> BTreeMap<PathBuf, String> {
+fn build_generated_files(
+    workspace_root: &Path,
+    portal_root: &Path,
+) -> Result<BTreeMap<PathBuf, String>, DynError> {
     let mut files = BTreeMap::<PathBuf, String>::new();
     let active = all_lints()
         .iter()
         .filter(|lint| lint.lifecycle.is_active())
         .collect::<Vec<_>>();
+    let intake_entries = load_intake_entries(workspace_root)?;
 
-    files.insert(portal_root.join("index.md"), render_index(&active));
+    files.insert(
+        portal_root.join("index.md"),
+        render_index(&active, &intake_entries),
+    );
     files.insert(
         portal_root.join("search-index.json"),
         render_search_index(&active),
     );
+    files.insert(
+        portal_root.join("roadmap/index.md"),
+        render_roadmap_index(&intake_entries),
+    );
+    for status in INTAKE_STATUSES {
+        files.insert(
+            portal_root.join("roadmap").join(format!("{status}.md")),
+            render_roadmap_status_page(status, &intake_entries),
+        );
+    }
 
     for lint in active {
         let page = portal_root
@@ -54,7 +74,15 @@ fn build_generated_files(portal_root: &Path) -> BTreeMap<PathBuf, String> {
             .join(format!("{}.md", lint.id.to_ascii_lowercase()));
         files.insert(page, render_lint_page(lint));
     }
-    files
+    Ok(files)
+}
+
+fn load_intake_entries(workspace_root: &Path) -> Result<Vec<IntakeEntry>, DynError> {
+    let source_path = workspace_root.join("docs/NEW_LINTS.md");
+    let source_text = read_text_file(&source_path)?;
+    let entries = parse_intake_table(&source_text)?;
+    validate_entries(&entries)?;
+    Ok(entries)
 }
 
 fn verify_generated_files(
@@ -136,11 +164,22 @@ fn list_generated_files(portal_root: &Path) -> Result<Vec<PathBuf>, DynError> {
         }
     }
 
+    let roadmap_dir = portal_root.join("roadmap");
+    if roadmap_dir.is_dir() {
+        for entry in fs::read_dir(roadmap_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().and_then(|value| value.to_str()) == Some("md") {
+                files.push(path);
+            }
+        }
+    }
+
     files.sort();
     Ok(files)
 }
 
-fn render_index(lints: &[&LintSpec]) -> String {
+fn render_index(lints: &[&LintSpec], intake_entries: &[IntakeEntry]) -> String {
     let mut out = String::new();
     out.push_str("# Lint Portal\n\n");
     out.push_str("Generated from canonical lint metadata.\n\n");
@@ -153,7 +192,8 @@ fn render_index(lints: &[&LintSpec]) -> String {
             .or_default()
             .push(*lint);
     }
-    for (category, items) in by_category {
+    for (category, mut items) in by_category {
+        items.sort_unstable_by_key(|lint| lint.id);
         out.push_str(&format!("### {}\n\n", title_case(category)));
         for lint in items {
             out.push_str(&format!(
@@ -176,7 +216,8 @@ fn render_index(lints: &[&LintSpec]) -> String {
             .or_default()
             .push(*lint);
     }
-    for (maturity, items) in by_maturity {
+    for (maturity, mut items) in by_maturity {
+        items.sort_unstable_by_key(|lint| lint.id);
         out.push_str(&format!("### {}\n\n", title_case(maturity)));
         for lint in items {
             out.push_str(&format!("- `{}` ({})\n", lint.id, lint.pack));
@@ -189,7 +230,8 @@ fn render_index(lints: &[&LintSpec]) -> String {
     for lint in lints {
         by_pack.entry(lint.pack).or_default().push(*lint);
     }
-    for (pack, items) in by_pack {
+    for (pack, mut items) in by_pack {
+        items.sort_unstable_by_key(|lint| lint.id);
         out.push_str(&format!("### {}\n\n", title_case(pack)));
         for lint in items {
             out.push_str(&format!(
@@ -201,6 +243,20 @@ fn render_index(lints: &[&LintSpec]) -> String {
         }
         out.push('\n');
     }
+
+    out.push_str("## Roadmap Intake Views\n\n");
+    out.push_str("Generated from intake decisions in `docs/NEW_LINTS.md`.\n\n");
+    let counts = intake_counts(intake_entries);
+    for status in INTAKE_STATUSES {
+        out.push_str(&format!(
+            "- [{}](roadmap/{}.md): `{}` proposal(s)\n",
+            title_case(status),
+            status,
+            counts.get(status).copied().unwrap_or(0usize)
+        ));
+    }
+    out.push('\n');
+    out.push_str("- [All intake statuses](roadmap/index.md)\n");
 
     out
 }
@@ -233,6 +289,14 @@ fn render_lint_page(lint: &LintSpec) -> String {
     out.push_str(lint.docs.known_limitations);
     out.push_str("\n\n## How To Fix\n\n");
     out.push_str(lint.docs.how_to_fix);
+    out.push_str("\n\n## Config Knobs\n\n");
+    for knob in config_knobs(lint) {
+        out.push_str(&format!("- {knob}\n"));
+    }
+    out.push_str("\n## Fix Safety Notes\n\n");
+    for note in fix_safety_notes(lint) {
+        out.push_str(&format!("- {note}\n"));
+    }
     out.push_str("\n\n## Examples\n\n");
     for example in lint.docs.examples {
         out.push_str(&format!("- {}\n", example));
@@ -243,6 +307,110 @@ fn render_lint_page(lint: &LintSpec) -> String {
     }
 
     out
+}
+
+fn config_knobs(lint: &LintSpec) -> Vec<String> {
+    let mut knobs = vec![
+        format!(
+            "Enable this lint via ruleset selector `profile.<name>.ruleset = [\"{}\"]`.",
+            lint.pack
+        ),
+        format!(
+            "Target this maturity in-pack via `profile.<name>.ruleset = [\"{}@{}\"]`.",
+            lint.pack,
+            lint.maturity.as_str()
+        ),
+        format!(
+            "Target this maturity across packs via `profile.<name>.ruleset = [\"tier:{}\"]` (alias `maturity:{}`).",
+            lint.maturity.as_str(),
+            lint.maturity.as_str()
+        ),
+        format!(
+            "Override this lint level in config with `profile.<name>.deny|warn|allow = [\"{}\"]`.",
+            lint.id
+        ),
+        format!(
+            "Override this lint level in CLI with `--deny {0}`, `--warn {0}`, or `--allow {0}`.",
+            lint.id
+        ),
+    ];
+
+    if lint.pack == "aztec_pack" {
+        knobs.push(
+            "Aztec semantic-name knobs that can affect detection: `[aztec].external_attribute`, `[aztec].external_kinds`, `[aztec].only_self_attribute`, `[aztec].initializer_attribute`, `[aztec].enqueue_fn`, `[aztec].nullifier_fns`, and `[aztec.domain_separation].*`.".to_string(),
+        );
+    }
+
+    knobs
+}
+
+fn fix_safety_notes(lint: &LintSpec) -> Vec<String> {
+    vec![
+        format!(
+            "`aztec-lint fix` applies only safe fixes for `{}` and skips edits marked as needing review.",
+            lint.id
+        ),
+        "Suggestion applicability `machine-applicable` maps to safe fixes.".to_string(),
+        "Suggestion applicability `maybe-incorrect`, `has-placeholders`, and `unspecified` maps to `needs_review` and is not auto-applied.".to_string(),
+        "Run `aztec-lint fix --dry-run` to inspect candidate edits before writing files.".to_string(),
+    ]
+}
+
+fn render_roadmap_index(entries: &[IntakeEntry]) -> String {
+    let mut out = String::new();
+    out.push_str("# Roadmap Intake Views\n\n");
+    out.push_str("Generated from intake decisions in `docs/NEW_LINTS.md`.\n\n");
+
+    let counts = intake_counts(entries);
+    for status in INTAKE_STATUSES {
+        out.push_str(&format!(
+            "- [{}]({}.md): `{}` proposal(s)\n",
+            title_case(status),
+            status,
+            counts.get(status).copied().unwrap_or(0usize)
+        ));
+    }
+
+    out
+}
+
+fn render_roadmap_status_page(status: &str, entries: &[IntakeEntry]) -> String {
+    let filtered = entries
+        .iter()
+        .filter(|entry| intake_status_key(&entry.status) == status)
+        .collect::<Vec<_>>();
+
+    let mut out = String::new();
+    out.push_str(&format!("# Intake Status: {}\n\n", title_case(status)));
+    out.push_str("Generated from intake decisions in `docs/NEW_LINTS.md`.\n\n");
+    out.push_str(&format!("- Status: `{status}`\n"));
+    out.push_str(&format!("- Proposal count: `{}`\n\n", filtered.len()));
+
+    out.push_str("| Proposal | Canonical mapping | Notes |\n");
+    out.push_str("|---|---|---|\n");
+    for entry in filtered {
+        out.push_str(&format!(
+            "| {} | {} | {} |\n",
+            entry.proposal, entry.canonical_mapping, entry.notes
+        ));
+    }
+    out.push('\n');
+    out.push_str("[Back to intake index](index.md)\n");
+
+    out
+}
+
+fn intake_counts(entries: &[IntakeEntry]) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::<String, usize>::new();
+    for entry in entries {
+        let status = intake_status_key(&entry.status);
+        *counts.entry(status).or_insert(0usize) += 1;
+    }
+    counts
+}
+
+fn intake_status_key(raw: &str) -> String {
+    raw.trim().trim_matches('`').to_ascii_lowercase()
 }
 
 fn render_search_index(lints: &[&LintSpec]) -> String {

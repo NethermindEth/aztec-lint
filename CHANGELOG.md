@@ -51,6 +51,9 @@ Entries are grouped by released version.
 - Changed `.github/workflows/ci-quality.yml` to include an explicit `cargo check --workspace --all-targets --locked` gate.
 - Added local CI parity entrypoints in `Makefile`: `make matrix`, `make perf`, and `make generate`, and updated `make ci` to run the full gate set.
 - Added generated docs portal baseline artifacts under `docs/portal/` so docs drift checks can run as blocking CI gates.
+- Changed `cargo xtask docs-portal` to generate intake roadmap pages at `docs/portal/roadmap/` (`covered`, `accepted`, `deferred`, `rejected`, plus index) sourced from `docs/NEW_LINTS.md`.
+- Changed per-lint portal pages to include explicit `Config Knobs` and `Fix Safety Notes` sections.
+- Added CI docs artifact publication (`docs/portal`) in `.github/workflows/ci-docs.yml` and linked the portal entrypoint in `README.md`.
 
 ## [0.4.0]
 
