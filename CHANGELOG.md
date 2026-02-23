@@ -39,6 +39,9 @@ Entries are grouped by released version.
 - Implemented `AZTEC040` rule logic (`initializer entrypoint missing #[only_self]`) using semantic Aztec entrypoint kinds (`Initializer` and `OnlySelf`).
 - Added `AZTEC040` rule-case fixture matrix in `fixtures/aztec/rule_cases/` (`positive`, `negative`, `suppressed`, `false_positive_guard`) and integrated `aztec040_fixture_matrix` in `crates/aztec-lint-rules/tests/aztec_advanced_rules.rs`.
 - Replaced scaffolded accepted UI fixtures for `AZTEC040` in `fixtures/ui/accepted/AZTEC040/` with concrete matrix scenarios.
+- Implemented `AZTEC041` rule logic (`cast truncation risk`) with Field/integer cast checks and range-guard reuse from `AZTEC034`.
+- Added `AZTEC041` rule-case fixture matrix in `fixtures/aztec/rule_cases/` (`positive`, `negative`, `suppressed`, `false_positive_guard`) and integrated `aztec041_fixture_matrix` in `crates/aztec-lint-rules/tests/aztec_advanced_rules.rs`.
+- Replaced scaffolded accepted UI fixtures for `AZTEC041` in `fixtures/ui/accepted/AZTEC041/` with concrete matrix scenarios.
 - Updated generated lint reference and CLI/snapshot baselines to reflect the expanded aztec profile rule set (`active_rules=28`).
 - Added `docs/SECOND_WAVE_IMPLEMENTATION_PLAN.md` with sequential implementation and validation gates for the second-wave backlog.
 
