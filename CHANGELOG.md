@@ -23,6 +23,11 @@ Entries are grouped by released version.
 - Added `cargo xtask perf-gate` with `--check` support to run the performance smoke gate and validate benchmark budget alignment when benchmark scenario/budget files are present.
 - Added lint scaffolding templates under `crates/xtask/templates/` for rule source and positive/negative/suppressed fixture generation.
 - Updated operator docs to reflect the implemented `new-lint` command contract (`--category`, `--tier`, optional `--policy`) and generated `docs/rule-roadmap.md` intake mapping.
+- Added CLI matrix harness suites in `crates/aztec-lint-cli/tests/` (`ui_matrix.rs`, `fix_matrix.rs`, `corpus_matrix.rs`) with deterministic fixture discovery and strict file-contract validation.
+- Added shared matrix test utilities in `crates/aztec-lint-cli/tests/support/mod.rs` for stable CLI invocation, temp project setup, sorted fixture traversal, and path-normalized output comparison.
+- Added UI matrix fixtures under `fixtures/ui/`, including version-keyed text/json/SARIF snapshots for `noir100_magic_array_len` and accepted-lint fixture-pack scaffolds (`positive`, `negative`, `suppressed`, `false_positive_guard`) for `AZTEC030` through `AZTEC041`.
+- Added fix matrix fixtures under `fixtures/fix/cases/noir001_prefix_unused/` with `before.nr`/`after.nr` source contracts and version-keyed expected fix-report metrics.
+- Added corpus matrix fixtures under `fixtures/corpus/projects/` with version-keyed expected summary/golden diagnostic contracts for a clean project and a warning-producing project.
 
 ## [0.4.0]
 

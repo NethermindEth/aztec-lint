@@ -169,7 +169,7 @@ Failure modes to watch:
 2. Rule count growth concentrated in one category fails scale-and-quality coverage intent.
 3. New lint ideas are implemented ad hoc without de-dup mapping, creating overlapping noisy diagnostics.
 
-## Step 3: Build Clippy-style UI/regression/fix/corpus matrix harness
+## Step 3: Build Clippy-style UI/regression/fix/corpus matrix harness **COMPLETED**
 
 Files:
 1. New: `crates/aztec-lint-cli/tests/ui_matrix.rs`
@@ -343,7 +343,7 @@ Failure modes to watch:
 ## Rollout milestones (recommended)
 
 1. Milestone A (metadata + automation): Steps 0, 1, 5. **COMPLETED**
-2. Milestone B (matrix harness + first corpus): Step 3.
+2. Milestone B (matrix harness + first corpus): Step 3. **COMPLETED**
 3. Milestone C (perf gates): Step 4 and CI integration from Step 7.
 4. Milestone D (docs portal + rule growth): Step 6 plus roadmap execution from Step 2.
 
