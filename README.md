@@ -129,6 +129,7 @@ Detailed reference for each lint (metadata, rationale, limitations, and fixes):
 
 - [`docs/lints-reference.md`](docs/lints-reference.md)
 - [`docs/portal/index.md`](docs/portal/index.md) (generated portal with category, maturity, pack, and intake-status views)
+- [`docs/configuration.md`](docs/configuration.md) (complete TOML configuration reference)
 
 ## Configuration
 
@@ -136,6 +137,10 @@ Config files are discovered from target root:
 
 - Primary: `aztec-lint.toml`
 - Fallback: `noir-lint.toml`
+
+Complete config schema and defaults:
+
+- [`docs/configuration.md`](docs/configuration.md)
 
 Minimal example:
 
