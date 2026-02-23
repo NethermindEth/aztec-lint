@@ -19,6 +19,8 @@ Entries are grouped by released version.
 - Fixed `NOIR002` lexical shadowing analysis to distinguish sibling branch scopes (`if` / `else`) so same-name bindings in mutually exclusive branches are not reported as shadowing.
 - Fixed `NOIR002` binding activation timing so `let` bindings are treated as in-scope only after initializer evaluation, preventing false positives for name reuse inside `let` initializer branch bodies.
 - Added `NOIR002` regression coverage for sibling-branch reuse and initializer-branch reuse in both fallback and semantic analysis paths.
+- Fixed `AZTEC033` to restrict storage-write heuristics to storage fields declared with private state-variable types (for example `PrivateSet`/`PrivateMutable`) instead of all `self.storage.*.write/set` calls, reducing false positives on public mutable storage updates.
+- Added `AZTEC033` regression coverage for public mutable storage writes in false-positive guard fixtures and rule unit tests.
 
 ## [0.6.0]
 
