@@ -230,7 +230,7 @@ Validation:
 Failure mode:
 - Safe helper conversions not recognized, causing false positives.
 
-## Step 10: Update Rule Test Matrix Aggregation
+## Step 10: Update Rule Test Matrix Aggregation **COMPLETED**
 
 Action:
 - Ensure `aztec_advanced_rules` includes fixture matrix tests for all six new rules.
@@ -239,12 +239,12 @@ Files touched:
 - `crates/aztec-lint-rules/tests/aztec_advanced_rules.rs`
 
 Validation:
-1. `cargo test -p aztec-lint-rules aztec_advanced_rules --locked`
+1. `cargo test -p aztec-lint-rules --test aztec_advanced_rules --locked`
 
 Failure mode:
 - Missing per-rule matrix test allows regressions to ship.
 
-## Step 11: Update CLI Golden Contracts and Rule Counts
+## Step 11: Update CLI Golden Contracts and Rule Counts **COMPLETED**
 
 Action:
 - Update hardcoded `rules` output golden to include `AZTEC036`..`AZTEC041`.
@@ -266,7 +266,7 @@ Validation:
 Failure mode:
 - Snapshot/header drift because rule count changes were not propagated.
 
-## Step 12: Regenerate and Verify Lint Docs Artifacts
+## Step 12: Regenerate and Verify Lint Docs Artifacts **COMPLETED**
 
 Action:
 - Sync generated lint docs from canonical catalog.
