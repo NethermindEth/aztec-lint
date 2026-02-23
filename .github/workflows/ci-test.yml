@@ -3,9 +3,9 @@ name: CI - Test
 on:
   push:
     branches:
-      - '**'
+      - "**"
     tags-ignore:
-      - 'v*.*.*'
+      - "v*.*.*"
   pull_request:
 
 permissions:
@@ -33,10 +33,16 @@ jobs:
       - name: Run tests
         run: cargo test --workspace --all-targets --locked
 
-      - name: Run Phase 3 regression gates
+      - name: Run regression gates
         run: |
           cargo test -p aztec-lint-core phase3_ --locked
           cargo test -p aztec-lint-rules phase3_ --locked
           cargo test -p aztec-lint-cli --test cli_golden check_json_output_is_deterministic --locked
           cargo test -p aztec-lint-cli --test cli_golden check_sarif_output_is_deterministic --locked
           cargo test -p aztec-lint-cli --test cli_golden check_text_output_is_deterministic --locked
+
+      - name: Run matrix regression gates
+        run: |
+          cargo test -p aztec-lint-cli --test ui_matrix --locked
+          cargo test -p aztec-lint-cli --test fix_matrix --locked
+          cargo test -p aztec-lint-cli --test corpus_matrix --locked
