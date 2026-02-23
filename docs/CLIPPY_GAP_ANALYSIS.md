@@ -1,249 +1,225 @@
 # aztec-lint vs rust-clippy: Gap Analysis
 
-Date: 2026-02-20
+Date: 2026-02-23  
 Compared repos:
 - `aztec-lint`: `/home/ametel/source/aztec-lint`
 - `rust-clippy`: `/home/ametel/source/rust-clippy`
 
 ## Executive summary
-`aztec-lint` already has a solid baseline (workspace split, deterministic sorting, SARIF/JSON/text output, suppression, fix pipeline, Noir frontend adapter), but it is still far from Clippy-equivalent in scale, semantic depth, lint metadata lifecycle, diagnostic sophistication, and test rigor.
 
-If the goal is “logically equivalent to Clippy,” the biggest work is not adding a few more rules; it is building a full lint platform: compiler-integrated semantic analysis, rich lint metadata + groups + lifecycle management, robust diagnostics/fixes, and a large UI/regression suite.
+`aztec-lint` has materially improved since the previous analysis. Several foundational parity gaps are now closed: canonical lint metadata is enforced at runtime, unknown-rule overrides fail fast with replacement hints, explain output is rich, suppression supports file/module/item scope, diagnostic invariants are validated, and authoring/update `xtask` flows exist.
 
-## Snapshot metrics
+Remaining distance to Clippy is now concentrated in four areas:
 
-### Lint inventory and scale
-- Clippy declared lints: **804** (`clippy_lints/src/declared_lints.rs`, counted from `_INFO` entries)
-- aztec-lint implemented rules in engine registry: **15** (`crates/aztec-lint-rules/src/engine/registry.rs:37`)
-- aztec-lint catalog entries exposed to users: **20** (`crates/aztec-lint-cli/src/commands/catalog.rs:10`)
-
-### Testing scale
-- Clippy UI tests: **1185** Rust files in `tests/ui`
-- Clippy config-focused tests: **122** Rust files in `tests/ui-toml`
-- Clippy cargo-project tests: **45** manifests in `tests/ui-cargo`
-- aztec-lint test files under `crates/*/tests`: **6**
-- aztec-lint Noir fixtures (`*.nr`): **39**
-
-### Config surface
-- Clippy config keys: **95** (`clippy_config/src/conf.rs`, `define_Conf!` block)
-- aztec-lint config is small and rule-pack based (`crates/aztec-lint-core/src/config/types.rs:8`)
+1. **Scale** (22 active rules vs 806 declared Clippy lints).
+2. **Semantic depth** (many checks still depend on source-text heuristics/fallbacks).
+3. **Config + group sophistication** (no Clippy-style lint groups/per-lint config surface).
+4. **Toolchain/test ecosystem parity** (`cargo clippy`/`clippy-driver` integration model and compile-test scale are still far ahead).
 
 ---
 
-## Gap list and required work
+## Snapshot metrics (current)
 
-## 1) Lint coverage scale gap
-### Gap
-`aztec-lint` has 15 implemented rules, while Clippy has 800+ and broad category coverage.
+- Clippy declared lints (`_INFO` entries): **806** (`clippy_lints/src/declared_lints.rs`)
+- aztec-lint active catalog lints: **22** (`crates/aztec-lint-core/src/lints/mod.rs`)
+- aztec-lint runtime registry rules: **22** (`crates/aztec-lint-rules/src/engine/registry.rs:33`)
 
-### Evidence
-- aztec registry only includes `NOIR001/2/10/20/30/100/110/120` + `AZTEC001/2/3/10/20/21/22` (`crates/aztec-lint-rules/src/engine/registry.rs:37`)
-- Clippy tracks 800+ lints (`README.md:7`)
+- Clippy UI tests (`tests/ui/*.rs`): **1187**
+- Clippy config UI tests (`tests/ui-toml/*.rs`): **124**
+- Clippy cargo-project tests (`tests/ui-cargo/**/Cargo.toml`): **45**
+- aztec-lint Noir fixtures (`fixtures/**/*.nr`): **141**
+- aztec-lint test files under `crates/*/tests`: **12**
 
-### What to do
-- Create a multi-release rule roadmap by category (correctness, suspicious, style, complexity, perf, security/privacy/soundness for Noir/Aztec).
-- Target >100 rules before claiming Clippy-like utility.
-- Add per-rule maturity states similar to nursery/pedantic/restriction semantics.
-
-## 2) Implemented-rules vs exposed-rules inconsistency
-### Gap
-User-facing catalog/config include rules that are not implemented in the runtime registry.
-
-### Evidence
-- Catalog/config include `AZTEC011`, `AZTEC012`, `AZTEC040`, `AZTEC041`, `NOIR200` (`crates/aztec-lint-cli/src/commands/catalog.rs:40`, `crates/aztec-lint-core/src/config/types.rs:17`)
-- Engine registry does not register those IDs (`crates/aztec-lint-rules/src/engine/registry.rs:37`)
-
-### What to do
-- Add startup validation: `catalog_ids == config_ids == registry_ids`.
-- Fail CI if any catalog/config rule is missing from registry.
-- Either implement missing rules or remove them from catalog/config until ready.
-
-## 3) Semantic analysis depth gap (typed-HIR/MIR equivalent)
-### Gap
-Clippy lints are deeply integrated with typed HIR/MIR and compiler internals; many aztec-lint rules are still line/text-pattern driven.
-
-### Evidence
-- Clippy registers large sets of early and late lint passes over compiler internals (`clippy_lints/src/lib.rs:440`)
-- Clippy driver configures rustc callbacks and lint store directly (`src/driver.rs:137`)
-- Noir core rules in aztec-lint mostly iterate raw file lines (`crates/aztec-lint-rules/src/noir_core/noir020_bounds.rs:22`)
-- Aztec model/taint uses many string heuristics (`crates/aztec-lint-aztec/src/model_builder.rs:89`, `crates/aztec-lint-aztec/src/taint/graph.rs:444`)
-- Rule code does not consume `ctx.project()` semantic model (`crates/aztec-lint-rules/src/engine/context.rs:135`)
-
-### What to do
-- Build typed query APIs in `RuleContext` (symbol resolution, type predicates, CFG/DFG queries, callgraph traversal).
-- Port existing rules from string matching to typed AST/HIR operations.
-- Add a MIR/IR-like analysis layer for dataflow-heavy rules (influence/taint/soundness).
-- Keep text heuristics only as fallback, never as primary for correctness/soundness rules.
-
-## 4) Driver/invocation parity gap
-### Gap
-Clippy behaves like a first-class compiler companion (`cargo clippy`, `clippy-driver`); aztec-lint is standalone and not deeply toolchain-integrated.
-
-### Evidence
-- Clippy cargo wrapper and rustc wrapper logic (`src/main.rs:56`, `src/driver.rs:196`)
-- `aztec-lint` CLI supports `check/fix/rules/explain/aztec scan` only (`crates/aztec-lint-cli/src/cli.rs:93`)
-
-### What to do
-- Ship a `nargo`/Aztec-integrated wrapper command analogous to `cargo clippy`.
-- Add package/workspace targeting semantics equivalent to package-manager UX.
-- Add wrapper-mode behavior for CI and editor integration (stable machine-readable diagnostics stream).
-
-## 5) Lint grouping and lifecycle metadata gap
-### Gap
-Clippy has first-class lint categories/groups and lifecycle metadata (including renamed/removed lint handling and version tags). aztec-lint currently has lightweight pack/policy metadata.
-
-### Evidence
-- Clippy registers groups (`clippy::all`, `clippy::correctness`, etc.) (`declare_clippy_lint/src/lib.rs:49`)
-- Clippy handles renamed/removed lints at registration (`clippy_lints/src/lib.rs:441`)
-- Clippy lint info includes explanation/location/version (`declare_clippy_lint/src/lib.rs:103`)
-- aztec-lint rule metadata is limited to id/pack/policy/default/confidence (`crates/aztec-lint-rules/src/engine/registry.rs:40`)
-
-### What to do
-- Introduce lint categories and group-level CLI/config control.
-- Add lint lifecycle metadata: introduced version, deprecated/renamed/replaced-by.
-- Add compatibility layer that warns on renamed rules and maps them automatically.
-
-## 6) Explain/documentation parity gap
-### Gap
-Clippy’s `--explain` returns full lint docs + config info; aztec-lint `explain` prints only a short summary block.
-
-### Evidence
-- aztec-lint explain is summary-only (`crates/aztec-lint-cli/src/commands/explain.rs:14`)
-- Clippy explain prints full explanation and matching config metadata (`clippy_lints/src/lib.rs:420`)
-
-### What to do
-- Store full per-lint docs in source-of-truth metadata.
-- Extend `aztec-lint explain RULE_ID` to include: rationale, examples, false-positive boundaries, fix safety notes, related config keys.
-- Generate lint reference docs website (Clippy-style index).
-
-## 7) Config sophistication gap
-### Gap
-Clippy has extensive lint-tunable configuration and validation discipline; aztec-lint has basic profiles/rulesets and Aztec naming knobs.
-
-### Evidence
-- Clippy `Conf` metadata and generated config docs (`clippy_config/src/conf.rs:314`)
-- Clippy enforces that every config variable has tests (`clippy_config/src/conf.rs:1239`)
-- aztec-lint config focuses on profile inheritance + rule levels + Aztec naming (`crates/aztec-lint-core/src/config/types.rs:8`)
-
-### What to do
-- Add per-lint configuration schema and binding.
-- Add strict unknown-config and unknown-rule diagnostics.
-- Add a test contract: every config key must have positive+negative tests.
-- Add MSRV/min-version-aware lint gating equivalent for Noir/Aztec compiler versions.
-
-## 8) Unknown lint/rule behavior gap
-### Gap
-Clippy/rustc tooling provides strong unknown-lint behavior; aztec-lint accepts overrides without validating that rule IDs are implemented.
-
-### Evidence
-- aztec-lint override registration only checks conflicts, not existence (`crates/aztec-lint-core/src/config/types.rs:286`)
-- Effective levels can include IDs missing from engine registry (`crates/aztec-lint-cli/src/commands/check.rs:90`, `crates/aztec-lint-rules/src/engine/registry.rs:37`)
-
-### What to do
-- Validate all configured/CLI rule IDs against registry at run start.
-- Emit actionable errors for unknown or unimplemented rules.
-- Add `--list-unimplemented` for transparent roadmap visibility.
-
-## 9) Diagnostic ergonomics parity gap
-### Gap
-Clippy diagnostics use rich rustc mechanisms (multi-span, applicability discipline, docs links, precise lint-level scoping via HIR IDs). aztec-lint diagnostics are improving but still less integrated and less constrained.
-
-### Evidence
-- Clippy diagnostic wrappers and validation (`clippy_utils/src/diagnostics.rs:1`, `clippy_utils/src/diagnostics.rs:37`)
-- Clippy provides HIR-id-aware emission for correct allow/expect semantics (`clippy_utils/src/diagnostics.rs:82`)
-- aztec-lint suppression is custom and item-local only (`docs/suppression.md:23`)
-
-### What to do
-- Introduce richer structured diagnostics contract (primary + labeled secondary spans + machine-fix diagnostics metadata with stronger guarantees).
-- Add diagnostic quality gates (no overlapping replacements, stable spans, applicability correctness).
-- Expand suppression semantics to parity with module/file scopes where appropriate.
-
-## 10) Fix application parity gap
-### Gap
-Clippy uses rustfix through compiler diagnostics/applicability ecosystem; aztec-lint has an internal fix engine that only applies explicitly safe edits.
-
-### Evidence
-- aztec fix engine applies only `FixSafety::Safe` and skips unsafe candidates (`crates/aztec-lint-core/src/fix/apply.rs:145`)
-- Clippy fix workflow is integrated in standard command path (`README.md:93`, `src/main.rs:73`)
-
-### What to do
-- Add end-to-end applicability model and rustfix-style provenance for each suggestion.
-- Support grouped multipart fixes with transaction semantics and better conflict resolution policy.
-- Add “fix confidence report” and “why not fixed” diagnostics compatible with CI/editor flows.
-
-## 11) Test rigor and regression protection gap
-### Gap
-Clippy has massive UI/regression, rustfix, cargo and config suites; aztec-lint test surface is currently small.
-
-### Evidence
-- Clippy compile-test harness is extensive (`tests/compile-test.rs:1`)
-- aztec-lint has a small number of crate tests and fixture pairs (`crates/aztec-lint-rules/tests/noir_core_rules.rs:1`)
-
-### What to do
-- Build UI-style golden tests for every lint with:
-  - true positive / false positive / false negative guard cases
-  - macro/attribute edge cases
-  - fix `.fixed` expectations
-  - cross-version snapshot tests
-- Add large-project benchmark corpus and performance regression CI.
-
-## 12) Lint authoring toolchain gap
-### Gap
-Clippy has dedicated developer tooling to scaffold, register, and regenerate lint metadata/docs/tests. aztec-lint authoring is currently manual.
-
-### Evidence
-- Clippy `cargo dev new_lint` and `update_lints` workflows (`clippy_dev/src/new_lint.rs:1`, `clippy_dev/src/update_lints.rs:15`)
-- aztec-lint rule metadata is hand-maintained in registry and catalog (`crates/aztec-lint-rules/src/engine/registry.rs:37`, `crates/aztec-lint-cli/src/commands/catalog.rs:10`)
-
-### What to do
-- Add `cargo xtask new-lint` and `cargo xtask update-lints` for aztec-lint.
-- Generate registry/catalog/docs from a single metadata source.
-- Enforce generation in CI to prevent drift.
-
-## 13) Plugin/runtime extensibility gap (relative to Clippy-like maturity)
-### Gap
-Plugin API exists as draft skeleton but is not executed in `check/fix` pipeline.
-
-### Evidence
-- Plugin API doc explicitly says execution is not wired yet (`docs/plugin-api-v0.md:66`, `docs/plugin-api-v0.md:71`)
-
-### What to do
-- Decide whether external lint plugins are in-scope for Clippy equivalence target.
-- If yes: wire plugin diagnostics into rule engine ordering, config, suppression, fixes, and output determinism.
-- If no: remove from near-term critical path and focus on core lint platform parity first.
+- Clippy config keys (estimated from `define_Conf!`): **94** (`clippy_config/src/conf.rs:344`)
+- aztec-lint ruleset selectors: pack + tier (`pack`, `tier:*`, `pack@tier`) (`crates/aztec-lint-core/src/config/types.rs:472`)
 
 ---
 
-## Priority implementation plan to reach Clippy-like parity
+## Closed since previous revision (removed from active gap backlog)
 
-## Track 1: Integrity and metadata foundation (short-term) **COMPLETED**
-- Unify rule source of truth (registry/catalog/config generation).
-- Add unknown-rule validation and fail-fast behavior.
-- Add lint metadata model: category, introduced version, lifecycle state, docs content.
-- Expand `explain` to full lint docs.
+### 1) Catalog/config/registry drift safeguards
+- Runtime registry now panics if a rule is missing from canonical metadata (`crates/aztec-lint-rules/src/engine/registry.rs:60`).
+- Engine validates full runtime/catalog integrity both directions (`crates/aztec-lint-rules/src/engine/mod.rs:199`).
 
-## Track 2: Semantic engine upgrade (medium-term) **COMPLETED**
-- Add typed query API in `RuleContext` backed by Noir semantic model.
-- Migrate current `noir_core` rules away from line-based heuristics.
-- Rebuild Aztec taint/soundness on AST/HIR + CFG/DFG dataflow instead of substring sink detection.
+### 2) Unknown rule ID validation and replacement hints
+- CLI/profile overrides now validate rule IDs and return `UnknownRuleId` with optional replacement suggestions (`crates/aztec-lint-core/src/config/types.rs:406`, `crates/aztec-lint-core/src/config/mod.rs:93`).
 
-## Track 3: Diagnostics and fixes (medium-term) **COMPLETED**
-- Introduce strict diagnostic/fix invariants and validation tests.
-- Add richer machine-applicable suggestion model and grouped edits.
-- Improve suppression scoping + lint-level semantics.
+### 3) Rich lint metadata + lifecycle model
+- Canonical `LintSpec` includes category, maturity, introduced version, lifecycle, and docs (`crates/aztec-lint-core/src/lints/types.rs:118`).
+- Catalog integrity checks enforce lifecycle and docs invariants (`crates/aztec-lint-core/src/lints/mod.rs:596`).
 
-## Track 4: Scale and quality bar (long-term)
-- Expand rule count aggressively by category and maturity tier.
-- Build Clippy-style UI/regression/fix/corpus test matrix.
-- Add benchmark and performance gates.
-- Add lint-authoring automation (`xtask`) and generated docs portal.
-- Lock the scale-and-quality contract before rule expansion in `docs/decisions/0006-scale-quality-contract.md` (maturity tiers, test matrix obligations, perf budget variance, and lint intake states).
+### 4) Explain output depth
+- `aztec-lint explain` now prints lifecycle, full rationale sections, examples, and references (`crates/aztec-lint-cli/src/commands/explain.rs:19`).
 
-## Track 5: Toolchain integration (long-term)
-- Provide package-manager-native UX analogous to `cargo clippy`.
-- Improve CI/editor integration contracts and stable machine output.
+### 5) Suppression semantics scope parity improvements
+- File/module/item scope and deterministic precedence are documented and implemented (`docs/suppression.md:31`, `crates/aztec-lint-rules/src/engine/context.rs`).
+
+### 6) Diagnostics + grouped suggestion validation baseline
+- Engine validates diagnostics post-run (`crates/aztec-lint-rules/src/engine/mod.rs:142`).
+- Validation covers grouped edits overlap/span constraints (`crates/aztec-lint-core/src/diagnostics/validate.rs:256`).
+
+### 7) Authoring/update automation exists
+- `cargo xtask new-lint` scaffolding exists (`crates/xtask/src/new_lint.rs:13`).
+- `cargo xtask update-lints` checks docs/registry sync (`crates/xtask/src/update_lints.rs:12`).
+- Performance budget gate exists (`crates/xtask/src/perf_gate.rs:54`).
+
+---
+
+## Remaining parity gaps (re-audited)
+
+## 1) Coverage scale gap
+### Gap
+Clippy-scale utility is still dominated by rule-count and surface-area differences.
+
+### Evidence
+- aztec-lint active rule corpus is 22 (`crates/aztec-lint-rules/src/engine/registry.rs:33`).
+- Clippy has 806 declared lints (`clippy_lints/src/declared_lints.rs`).
+- `AZTEC036`..`AZTEC041` are accepted/planned but not active yet (`docs/rule-roadmap.md`, `docs/NEW_LINTS.md`).
+
+### Needed work
+- Land second-wave accepted rules first (`AZTEC036`..`AZTEC041`).
+- Expand into deferred performance lints (`AZTEC050`, `AZTEC051`) as opt-in tier.
+- Set explicit medium-term corpus target (for example 60-100 active lints).
+
+## 2) Semantic precision gap (typed queries vs heuristic/text dependence)
+### Gap
+Semantic model extraction exists, but many rules still rely on source slicing and fallback string heuristics.
+
+### Evidence
+- Semantic extraction from Noir compiler HIR exists (`crates/aztec-lint-core/src/noir/semantic_builder.rs:35`).
+- Rule query API exists but is not currently used by rules (`crates/aztec-lint-rules/src/engine/query.rs:27`; `rg ctx.query` = 0 hits).
+- Noir rules retain `run_text_fallback` paths broadly (`crates/aztec-lint-rules/src/noir_core/noir001_unused.rs:239`, `crates/aztec-lint-rules/src/noir_core/noir020_bounds.rs:241`, and peers).
+- Aztec model builder still accumulates fallback sink detections (`crates/aztec-lint-aztec/src/model_builder.rs:49`, `crates/aztec-lint-aztec/src/model_builder.rs:156`).
+
+### Needed work
+- Make semantic path mandatory in normal mode; move text fallback behind explicit degraded mode.
+- Port high-impact rules to typed `RuleQuery` and semantic IDs end-to-end.
+- Reduce string pattern matching in Aztec model construction for critical protocol/soundness rules.
+
+## 3) Lint group model gap
+### Gap
+Clippy exposes first-class lint groups (`clippy::all`, `clippy::style`, `clippy::perf`, etc.); aztec-lint currently exposes pack/tier selectors only.
+
+### Evidence
+- Clippy group registration is explicit (`declare_clippy_lint/src/lib.rs:51`).
+- aztec-lint ruleset selectors are limited to pack and maturity tier (`crates/aztec-lint-core/src/config/types.rs:485`).
+
+### Needed work
+- Add category-based rulesets (correctness/soundness/protocol/privacy/maintainability/performance).
+- Add named composite groups akin `all`, `pedantic`, `nursery`, `restriction`.
+- Allow group-level allow/warn/deny in config and CLI.
+
+## 4) Config sophistication gap
+### Gap
+aztec-lint lacks Clippy-scale per-lint configurable knobs and unknown-field UX.
+
+### Evidence
+- Clippy central config surface is large (`clippy_config/src/conf.rs:344`) and unknown fields are diagnosed with suggestions (`clippy_config/src/conf.rs:1157`).
+- Clippy enforces config-test coverage in `ui-toml` (`clippy_config/src/conf.rs:1232`).
+- aztec-lint config is profile/ruleset/override + Aztec naming/domain knobs, with no per-lint schema layer (`crates/aztec-lint-core/src/config/types.rs`).
+- Config file parsing currently deserializes `RawConfig` directly (`crates/aztec-lint-core/src/config/loader.rs:51`), without Clippy-style unknown-key suggestion handling.
+
+### Needed work
+- Introduce per-lint typed config schema and validation.
+- Add unknown-config-key diagnostics with nearest-key suggestion.
+- Add config-contract tests mirroring Clippy’s “every config key is tested” discipline.
+
+## 5) Toolchain integration parity gap
+### Gap
+Clippy behaves as both `cargo clippy` wrapper and `clippy-driver`; aztec-lint remains standalone CLI.
+
+### Evidence
+- Clippy cargo wrapper behavior and `RUSTC_WORKSPACE_WRAPPER` pathing (`src/main.rs:112`, `src/main.rs:122`).
+- Clippy rustc callback integration and lint-pass registration (`src/driver.rs:137`, `src/driver.rs:166`).
+- aztec-lint runs its own check/fix pipeline (`crates/aztec-lint-cli/src/commands/check.rs:137`) without a package-manager-native wrapper mode analogous to `cargo clippy`.
+
+### Needed work
+- Add `nargo`-native wrapper UX (`nargo lint`/`nargo clippy`-style entrypoint).
+- Support workspace/package target semantics with parity to package-manager workflows.
+- Stabilize machine-output contracts for CI/editor tooling in wrapper mode.
+
+## 6) Diagnostics/fix applicability parity gap
+### Gap
+Diagnostic invariants are solid, but auto-fix remains intentionally conservative (safe-only).
+
+### Evidence
+- aztec-lint skips non-safe fixes (`crates/aztec-lint-core/src/fix/apply.rs:388`).
+- Clippy compile-test harness tracks rustfix/applicability modes broadly (`tests/compile-test.rs:195`, `tests/compile-test.rs:540`).
+
+### Needed work
+- Add configurable fix modes (safe-only default, optional assisted mode for lower applicability).
+- Add stronger per-rule applicability contracts and coverage checks.
+- Add richer “why not fixed” structured output for editors/CI bots.
+
+## 7) Test ecosystem parity gap
+### Gap
+aztec-lint has meaningful matrix coverage, but Clippy’s compile-test ecosystem remains much larger and more automated.
+
+### Evidence
+- aztec-lint has deterministic UI/corpus/fix matrix tests (`crates/aztec-lint-cli/tests/ui_matrix.rs`, `crates/aztec-lint-cli/tests/corpus_matrix.rs`, `crates/aztec-lint-cli/tests/fix_matrix.rs`).
+- Clippy runs large compile-test suites with dedicated `ui`, `ui-toml`, `ui-cargo`, and rustfix validation (`tests/compile-test.rs:234`, `tests/compile-test.rs:271`, `tests/compile-test.rs:300`).
+
+### Needed work
+- Expand project-level fixture corpus and edge-case density, especially for semantic false-positive boundaries.
+- Add compile-test style harness features: applicability summary gates, per-lint config coverage, and cargo-workspace scenario breadth.
+
+## 8) Plugin runtime integration gap
+### Gap
+Plugin API exists but is not executed in `check`/`fix`.
+
+### Evidence
+- Plugin API doc explicitly states non-execution in command flow (`docs/plugin-api-v0.md:71`).
+
+### Needed work
+- Decide scope: either fully integrate plugin execution (ordering/config/suppression/fix/output), or keep explicitly out-of-scope for Clippy parity target.
+
+---
+
+## Improvement roadmap (toward Clippy-closest state)
+
+## Phase A: 0.6.0 parity consolidation (short-term)
+- Ship planned second-wave rules (`AZTEC036`..`AZTEC041`) and close accepted backlog.
+- Add category group selectors and CLI controls.
+- Add strict config-key validation with suggestion diagnostics.
+- Exit criteria:
+  - Active lint count >= 28.
+  - Accepted roadmap IDs have runtime implementations (not only fixture placeholders).
+
+## Phase B: Semantic-first engine hardening (short/medium)
+- Require semantic model in normal mode; gate text fallback behind explicit degraded option.
+- Refactor top noisy rules to typed query flow; target `NOIR001/2/10/20/30` and `AZTEC020/21/22/30/31/32/33/34` first.
+- Exit criteria:
+  - `ctx.query()` adopted by core rule set.
+  - Substantial reduction of source-slice parsing in semantic path.
+
+## Phase C: Config and lifecycle maturity (medium)
+- Introduce per-lint config schema.
+- Add unknown-field diagnostics with typo suggestions.
+- Add compiler-version-aware rule gating equivalent to MSRV strategy.
+- Exit criteria:
+  - Per-lint config keys documented and tested.
+  - Unknown config keys fail with actionable suggestions.
+
+## Phase D: Toolchain + fix UX parity (medium)
+- Build `nargo` wrapper integration analogous to `cargo clippy`.
+- Add fix modes beyond safe-only while preserving deterministic default.
+- Exit criteria:
+  - Wrapper command supports workspace/package targeting.
+  - CI/editor consumers can rely on stable structured output for diagnostics and fix decisions.
+
+## Phase E: Scale + compile-test growth (long-term)
+- Grow toward 60-100 active lints with clear group semantics.
+- Expand compile-test style suites (ui/config/cargo-like scenarios) and performance baselines.
+- Exit criteria:
+  - Rule corpus and test breadth support “Clippy-like” utility claims for Noir/Aztec ecosystems.
 
 ---
 
 ## Bottom line
-To become Clippy-equivalent, `aztec-lint` needs to evolve from “good linter implementation” into a “lint platform”: larger rule corpus, compiler-semantic-driven analyses, hardened diagnostics/fixes, strong metadata lifecycle, and broad regression tooling. The highest-leverage immediate work is fixing metadata drift + unknown-rule validation, then migrating heuristic rules to typed semantic queries.
+
+`aztec-lint` has moved from “foundational platform gap” to “scale + semantic precision + ecosystem parity” gap.  
+The highest leverage next steps are:
+
+1. Implement accepted second-wave rules (`AZTEC036`..`AZTEC041`).
+2. Shift remaining heuristic-heavy checks to semantic-first query execution.
+3. Add Clippy-style config/group UX and wrapper integration.
