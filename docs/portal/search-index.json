@@ -1,0 +1,146 @@
+[
+  {
+    "category": "privacy",
+    "id": "AZTEC001",
+    "maturity": "stable",
+    "pack": "aztec_pack",
+    "path": "lints/aztec001.md",
+    "policy": "privacy",
+    "summary": "Private data reaches a public sink."
+  },
+  {
+    "category": "privacy",
+    "id": "AZTEC002",
+    "maturity": "preview",
+    "pack": "aztec_pack",
+    "path": "lints/aztec002.md",
+    "policy": "privacy",
+    "summary": "Secret-dependent branching affects public state."
+  },
+  {
+    "category": "privacy",
+    "id": "AZTEC003",
+    "maturity": "stable",
+    "pack": "aztec_pack",
+    "path": "lints/aztec003.md",
+    "policy": "privacy",
+    "summary": "Private entrypoint uses debug logging."
+  },
+  {
+    "category": "protocol",
+    "id": "AZTEC010",
+    "maturity": "stable",
+    "pack": "aztec_pack",
+    "path": "lints/aztec010.md",
+    "policy": "protocol",
+    "summary": "Private to public bridge requires #[only_self]."
+  },
+  {
+    "category": "soundness",
+    "id": "AZTEC020",
+    "maturity": "stable",
+    "pack": "aztec_pack",
+    "path": "lints/aztec020.md",
+    "policy": "soundness",
+    "summary": "Unconstrained influence reaches commitments, storage, or nullifiers."
+  },
+  {
+    "category": "soundness",
+    "id": "AZTEC021",
+    "maturity": "stable",
+    "pack": "aztec_pack",
+    "path": "lints/aztec021.md",
+    "policy": "soundness",
+    "summary": "Missing range constraints before hashing or serialization."
+  },
+  {
+    "category": "soundness",
+    "id": "AZTEC022",
+    "maturity": "stable",
+    "pack": "aztec_pack",
+    "path": "lints/aztec022.md",
+    "policy": "soundness",
+    "summary": "Suspicious Merkle witness usage."
+  },
+  {
+    "category": "correctness",
+    "id": "NOIR001",
+    "maturity": "stable",
+    "pack": "noir_core",
+    "path": "lints/noir001.md",
+    "policy": "correctness",
+    "summary": "Unused variable or import."
+  },
+  {
+    "category": "correctness",
+    "id": "NOIR002",
+    "maturity": "stable",
+    "pack": "noir_core",
+    "path": "lints/noir002.md",
+    "policy": "correctness",
+    "summary": "Suspicious shadowing."
+  },
+  {
+    "category": "correctness",
+    "id": "NOIR010",
+    "maturity": "stable",
+    "pack": "noir_core",
+    "path": "lints/noir010.md",
+    "policy": "correctness",
+    "summary": "Boolean computed but not asserted."
+  },
+  {
+    "category": "correctness",
+    "id": "NOIR020",
+    "maturity": "stable",
+    "pack": "noir_core",
+    "path": "lints/noir020.md",
+    "policy": "correctness",
+    "summary": "Array indexing without bounds validation."
+  },
+  {
+    "category": "correctness",
+    "id": "NOIR030",
+    "maturity": "stable",
+    "pack": "noir_core",
+    "path": "lints/noir030.md",
+    "policy": "correctness",
+    "summary": "Unconstrained value influences constrained logic."
+  },
+  {
+    "category": "maintainability",
+    "id": "NOIR100",
+    "maturity": "stable",
+    "pack": "noir_core",
+    "path": "lints/noir100.md",
+    "policy": "maintainability",
+    "summary": "Magic number literal should be named."
+  },
+  {
+    "category": "maintainability",
+    "id": "NOIR101",
+    "maturity": "preview",
+    "pack": "noir_core",
+    "path": "lints/noir101.md",
+    "policy": "maintainability",
+    "summary": "Repeated local initializer magic number should be named."
+  },
+  {
+    "category": "maintainability",
+    "id": "NOIR110",
+    "maturity": "preview",
+    "pack": "noir_core",
+    "path": "lints/noir110.md",
+    "policy": "maintainability",
+    "summary": "Function complexity exceeds threshold."
+  },
+  {
+    "category": "maintainability",
+    "id": "NOIR120",
+    "maturity": "preview",
+    "pack": "noir_core",
+    "path": "lints/noir120.md",
+    "policy": "maintainability",
+    "summary": "Function nesting depth exceeds threshold."
+  }
+]
