@@ -23,6 +23,8 @@ The following ADRs define core behavior constraints:
 - `docs/decisions/0002-suppression-semantics.md`
 - `docs/decisions/0003-confidence-model.md`
 - `docs/decisions/0004-fix-safety-policy.md`
+- `docs/decisions/0005-diagnostic-invariants-and-suggestion-groups.md`
+- `docs/decisions/0006-scale-quality-contract.md`
 
 Contributors should keep implementation aligned with accepted ADR decisions.
 

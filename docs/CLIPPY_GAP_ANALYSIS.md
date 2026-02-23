@@ -216,29 +216,30 @@ Plugin API exists as draft skeleton but is not executed in `check/fix` pipeline.
 
 ## Priority implementation plan to reach Clippy-like parity
 
-## Phase 1: Integrity and metadata foundation (short-term) **COMPLETED**
+## Track 1: Integrity and metadata foundation (short-term) **COMPLETED**
 - Unify rule source of truth (registry/catalog/config generation).
 - Add unknown-rule validation and fail-fast behavior.
 - Add lint metadata model: category, introduced version, lifecycle state, docs content.
 - Expand `explain` to full lint docs.
 
-## Phase 2: Semantic engine upgrade (medium-term) **COMPLETED**
+## Track 2: Semantic engine upgrade (medium-term) **COMPLETED**
 - Add typed query API in `RuleContext` backed by Noir semantic model.
 - Migrate current `noir_core` rules away from line-based heuristics.
 - Rebuild Aztec taint/soundness on AST/HIR + CFG/DFG dataflow instead of substring sink detection.
 
-## Phase 3: Diagnostics and fixes (medium-term) **COMPLETED**
+## Track 3: Diagnostics and fixes (medium-term) **COMPLETED**
 - Introduce strict diagnostic/fix invariants and validation tests.
 - Add richer machine-applicable suggestion model and grouped edits.
 - Improve suppression scoping + lint-level semantics.
 
-## Phase 4: Scale and quality bar (long-term)
+## Track 4: Scale and quality bar (long-term)
 - Expand rule count aggressively by category and maturity tier.
 - Build Clippy-style UI/regression/fix/corpus test matrix.
 - Add benchmark and performance gates.
 - Add lint-authoring automation (`xtask`) and generated docs portal.
+- Lock the scale-and-quality contract before rule expansion in `docs/decisions/0006-scale-quality-contract.md` (maturity tiers, test matrix obligations, perf budget variance, and lint intake states).
 
-## Phase 5: Toolchain integration (long-term)
+## Track 5: Toolchain integration (long-term)
 - Provide package-manager-native UX analogous to `cargo clippy`.
 - Improve CI/editor integration contracts and stable machine output.
 
