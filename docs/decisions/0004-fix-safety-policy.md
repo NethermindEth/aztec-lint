@@ -7,7 +7,7 @@ Owners: aztec-lint maintainers
 ## Context
 
 The spec defines `aztec-lint fix [path]` and excludes auto-refactoring beyond safe edits.
-Phase 3 requires allowing grouped, same-file multi-location fixes while preserving deterministic and safe behavior.
+The diagnostics-and-fixes track requires allowing grouped, same-file multi-location fixes while preserving deterministic and safe behavior.
 
 ## Decision
 
@@ -90,4 +90,4 @@ Negative:
 
 Sign-off:
 
-- 2026-02-21: Updated for Phase 3 grouped fix transaction semantics.
+- 2026-02-21: Updated for grouped fix transaction semantics.

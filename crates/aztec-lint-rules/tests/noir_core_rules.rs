@@ -146,7 +146,7 @@ fn noir020_range_guard_edge_cases_are_covered() {
 }
 
 #[test]
-fn noir_core_phase2_rules_support_suppression() {
+fn noir_core_rules_support_suppression() {
     let cases = [
         ("NOIR001", "noir001_suppressed.nr"),
         ("NOIR002", "noir002_suppressed.nr"),

@@ -52,7 +52,7 @@ fn run_marker_engine(source: &str, baseline: RuleLevel) -> Vec<Diagnostic> {
 }
 
 #[test]
-fn phase3_scoped_level_precedence_and_suppression_visibility_are_preserved() {
+fn scoped_level_precedence_and_suppression_visibility_are_preserved() {
     let source = r#"
 #[allow(NOIR100)]
 use dep::foo;
@@ -99,7 +99,7 @@ fn file_scope() {
 }
 
 #[test]
-fn phase3_scoped_non_allow_overrides_global_allow() {
+fn scoped_non_allow_overrides_global_allow() {
     let source = r#"
 #[deny(NOIR100)]
 fn item_scope() {

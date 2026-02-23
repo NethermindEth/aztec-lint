@@ -35,8 +35,8 @@ jobs:
 
       - name: Run regression gates
         run: |
-          cargo test -p aztec-lint-core phase3_ --locked
-          cargo test -p aztec-lint-rules phase3_ --locked
+          cargo test -p aztec-lint-core regression_ --locked
+          cargo test -p aztec-lint-rules scoped_ --locked
           cargo test -p aztec-lint-cli --test cli_golden check_json_output_is_deterministic --locked
           cargo test -p aztec-lint-cli --test cli_golden check_sarif_output_is_deterministic --locked
           cargo test -p aztec-lint-cli --test cli_golden check_text_output_is_deterministic --locked

@@ -6,7 +6,7 @@ Owners: aztec-lint maintainers
 
 ## Context
 
-Phase 3 requires stronger diagnostic contracts, richer machine-applicable suggestions, and compatibility-safe output evolution for JSON/SARIF consumers.
+The diagnostics-and-fixes track requires stronger diagnostic contracts, richer machine-applicable suggestions, and compatibility-safe output evolution for JSON/SARIF consumers.
 
 Current behavior allows flattened suggestions and per-edit fix handling without a first-class grouped model or explicit invariant gate.
 
@@ -71,4 +71,4 @@ Negative:
 
 Sign-off:
 
-- 2026-02-21: Accepted for Phase 3 diagnostics and grouped suggestions.
+- 2026-02-21: Accepted for diagnostics and grouped suggestions.

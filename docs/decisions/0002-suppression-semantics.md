@@ -7,7 +7,7 @@ Owners: aztec-lint maintainers
 ## Context
 
 `SPEC.md` requires suppression support with explicit rule ids and visibility in output.
-Phase 3 requires broadening the contract from item-local `allow` to scoped lint-level directives (`allow`, `warn`, `deny`) with deterministic precedence.
+The diagnostics-and-fixes track requires broadening the contract from item-local `allow` to scoped lint-level directives (`allow`, `warn`, `deny`) with deterministic precedence.
 
 Required directive forms:
 
@@ -99,4 +99,4 @@ Negative:
 
 Sign-off:
 
-- 2026-02-21: Updated for Phase 3 scoped lint-level semantics.
+- 2026-02-21: Updated for scoped lint-level semantics.

@@ -1,7 +1,7 @@
-# Phase 3 Implementation Plan: Diagnostics and Fixes
+# Diagnostics and Fixes Implementation Plan
 
 Date: 2026-02-21
-Scope: `## Phase 3: Diagnostics and fixes (medium-term)` from `docs/CLIPPY_GAP_ANALYSIS.md`
+Scope: `## Diagnostics and fixes (medium-term)` from `docs/CLIPPY_GAP_ANALYSIS.md`
 
 ## Required outcomes (source of truth)
 
@@ -217,7 +217,7 @@ Failure modes to watch:
 - Snapshot churn from unstable ordering.
 - SARIF consumers misreading grouped replacement structure.
 
-## Step 7: Add Phase 3 regression gates and rollout criteria **COMPLETED**
+## Step 7: Add regression gates and rollout criteria **COMPLETED**
 
 Files:
 - `crates/aztec-lint-core/src/diagnostics/*tests*`
@@ -243,7 +243,7 @@ Failure modes to watch:
 - Partial rollout where model changes land without output/fixer updates.
 - Legacy-field removal before downstream tooling migrates.
 
-## Definition of done for Phase 3
+## Definition of done for diagnostics and fixes track
 
 1. Diagnostics/fixes have enforced invariant checks with failing tests for bad inputs.
 2. Grouped machine-applicable suggestions are represented and applied atomically.

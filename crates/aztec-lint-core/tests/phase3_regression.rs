@@ -44,7 +44,7 @@ fn grouped_diagnostic(file: &str, message: &str, edits: Vec<(u32, u32, &str)>) -
                 replacement: replacement.to_string(),
             })
             .collect(),
-        provenance: Some("phase3-gate".to_string()),
+        provenance: Some("regression-gate".to_string()),
     }];
     item
 }
@@ -58,7 +58,7 @@ fn write_source(root: &Path, contents: &str) -> String {
 }
 
 #[test]
-fn phase3_invariants_accept_valid_grouped_diagnostic() {
+fn regression_invariants_accept_valid_grouped_diagnostic() {
     let item = grouped_diagnostic(
         "src/main.nr",
         "valid grouped diagnostic",
@@ -69,7 +69,7 @@ fn phase3_invariants_accept_valid_grouped_diagnostic() {
 }
 
 #[test]
-fn phase3_invariants_reject_invalid_group_span_and_missing_suppression_reason() {
+fn regression_invariants_reject_invalid_group_span_and_missing_suppression_reason() {
     let mut item = grouped_diagnostic(
         "src/main.nr",
         "invalid grouped diagnostic",
@@ -91,7 +91,7 @@ fn phase3_invariants_reject_invalid_group_span_and_missing_suppression_reason() 
 }
 
 #[test]
-fn phase3_grouped_fix_rejects_entire_group_when_any_edit_span_is_invalid() {
+fn regression_grouped_fix_rejects_entire_group_when_any_edit_span_is_invalid() {
     let temp = tempdir().expect("temp dir should be created");
     let root = temp.path();
     let file = write_source(root, "fn main() {\n    let lhs = 1;\n    let rhs = 2;\n}\n");
@@ -121,7 +121,7 @@ fn phase3_grouped_fix_rejects_entire_group_when_any_edit_span_is_invalid() {
 }
 
 #[test]
-fn phase3_grouped_fix_overlap_winner_is_deterministic_across_input_order() {
+fn regression_grouped_fix_overlap_winner_is_deterministic_across_input_order() {
     let source = "fn main() { let value = 10; }\n";
     let literal_start =
         u32::try_from(source.find("10").expect("literal must exist")).expect("index must fit u32");
@@ -180,7 +180,7 @@ fn phase3_grouped_fix_overlap_winner_is_deterministic_across_input_order() {
 }
 
 #[test]
-fn phase3_json_grouped_round_trip_is_deterministic() {
+fn regression_json_grouped_round_trip_is_deterministic() {
     let item = grouped_diagnostic(
         "src/main.nr",
         "round trip",
@@ -198,7 +198,7 @@ fn phase3_json_grouped_round_trip_is_deterministic() {
 }
 
 #[test]
-fn phase3_sarif_grouped_render_is_deterministic() {
+fn regression_sarif_grouped_render_is_deterministic() {
     let item = grouped_diagnostic("src/main.nr", "sarif deterministic", vec![(10, 11, "A")]);
     let first = sarif::render_diagnostics(Path::new("/repo"), &[&item])
         .expect("sarif rendering should pass");
@@ -208,7 +208,7 @@ fn phase3_sarif_grouped_render_is_deterministic() {
 }
 
 #[test]
-fn phase3_text_grouped_render_is_deterministic() {
+fn regression_text_grouped_render_is_deterministic() {
     let temp = tempdir().expect("temp dir should be created");
     let root = temp.path();
     let file = write_source(root, "fn main() { let x = 7; }\n");
