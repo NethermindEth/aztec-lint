@@ -20,12 +20,12 @@ aztec-lint-core = { version = "0.6.0", path = "crates/aztec-lint-core" }
 aztec-lint-rules = { version = "0.6.0", path = "crates/aztec-lint-rules" }
 aztec-lint-aztec = { version = "0.6.0", path = "crates/aztec-lint-aztec" }
 aztec-lint-sdk = { version = "0.6.0", path = "crates/aztec-lint-sdk" }
-fm = { version = "1.0.0-beta.19", git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "fm" }
-noirc_driver = { version = "1.0.0-beta.19", git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "noirc_driver" }
-noirc_frontend = { version = "1.0.0-beta.19", git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "noirc_frontend" }
-noirc_errors = { version = "1.0.0-beta.19", git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "noirc_errors" }
-nargo = { version = "1.0.0-beta.19", git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "nargo" }
-nargo_toml = { version = "1.0.0-beta.19", git = "https://github.com/noir-lang/noir.git", rev = "12ecac9917f95d6896cfa79fcaad98cef3487f0f", package = "nargo_toml" }
+fm = { version = "1.0.0-beta.18", git = "https://github.com/noir-lang/noir.git", rev = "2db78f8894936db05c53430f364360ac9cc5c61f", package = "fm" }
+noirc_driver = { version = "1.0.0-beta.18", git = "https://github.com/noir-lang/noir.git", rev = "2db78f8894936db05c53430f364360ac9cc5c61f", package = "noirc_driver" }
+noirc_frontend = { version = "1.0.0-beta.18", git = "https://github.com/noir-lang/noir.git", rev = "2db78f8894936db05c53430f364360ac9cc5c61f", package = "noirc_frontend" }
+noirc_errors = { version = "1.0.0-beta.18", git = "https://github.com/noir-lang/noir.git", rev = "2db78f8894936db05c53430f364360ac9cc5c61f", package = "noirc_errors" }
+nargo = { version = "1.0.0-beta.18", git = "https://github.com/noir-lang/noir.git", rev = "2db78f8894936db05c53430f364360ac9cc5c61f", package = "nargo" }
+nargo_toml = { version = "1.0.0-beta.18", git = "https://github.com/noir-lang/noir.git", rev = "2db78f8894936db05c53430f364360ac9cc5c61f", package = "nargo_toml" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 blake3 = "1.8"
