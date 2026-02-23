@@ -1,16 +1,10 @@
 {
-  "exit_code": 1,
+  "exit_code": 0,
   "summary": {
-    "total": 1,
+    "total": 0,
     "errors": 0,
-    "warnings": 1,
+    "warnings": 0,
     "suppressed": 0
   },
-  "golden": [
-    {
-      "rule_id": "NOIR100",
-      "file": "src/main.nr",
-      "severity": "warning"
-    }
-  ]
+  "golden": []
 }

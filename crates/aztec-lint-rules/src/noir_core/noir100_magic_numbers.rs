@@ -251,6 +251,9 @@ fn magic_literal_signal(
     if is_byte_packing_context(source, offset, literal_len) {
         return MagicLiteralSignal::Ignore;
     }
+    if is_array_type_length_annotation_context(source, offset, literal_len) {
+        return MagicLiteralSignal::Ignore;
+    }
     if is_zero_or_one_literal(literal) {
         return MagicLiteralSignal::Ignore;
     }
@@ -734,6 +737,88 @@ fn is_range_boundary_literal(source: &str, offset: usize, literal_len: usize) ->
     before.ends_with("..") || after.starts_with("..")
 }
 
+fn is_array_type_length_annotation_context(
+    source: &str,
+    offset: usize,
+    literal_len: usize,
+) -> bool {
+    if offset + literal_len > source.len() {
+        return false;
+    }
+    let start = statement_start(source, offset);
+    let end = statement_end(source, offset);
+    let Some(statement) = source.get(start..end) else {
+        return false;
+    };
+    let relative = offset.saturating_sub(start);
+    if relative >= statement.len() {
+        return false;
+    }
+
+    let bytes = statement.as_bytes();
+    let mut bracket_stack = Vec::<usize>::new();
+    for (index, byte) in bytes.iter().copied().enumerate() {
+        if index >= relative {
+            break;
+        }
+        match byte {
+            b'[' => bracket_stack.push(index),
+            b']' => {
+                bracket_stack.pop();
+            }
+            _ => {}
+        }
+    }
+    let Some(open_bracket) = bracket_stack.last().copied() else {
+        return false;
+    };
+    let Some(close_bracket) = find_matching(statement, open_bracket, b'[', b']') else {
+        return false;
+    };
+    if relative + literal_len > close_bracket {
+        return false;
+    }
+    if !has_top_level_semicolon(
+        &statement[open_bracket + 1..relative],
+        open_bracket + 1,
+        relative,
+    ) {
+        return false;
+    }
+
+    let prefix = statement[..open_bracket].trim_end();
+    prefix.ends_with(':')
+        || prefix.ends_with("->")
+        || prefix.ends_with(" as")
+        || prefix.starts_with("type ")
+        || prefix.starts_with("pub type ")
+}
+
+fn has_top_level_semicolon(segment: &str, segment_start: usize, literal_relative: usize) -> bool {
+    let bytes = segment.as_bytes();
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut brace_depth = 0usize;
+    for (index, byte) in bytes.iter().copied().enumerate() {
+        match byte {
+            b'(' => paren_depth += 1,
+            b')' => paren_depth = paren_depth.saturating_sub(1),
+            b'[' => bracket_depth += 1,
+            b']' => bracket_depth = bracket_depth.saturating_sub(1),
+            b'{' => brace_depth += 1,
+            b'}' => brace_depth = brace_depth.saturating_sub(1),
+            b';' if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => {
+                let absolute = segment_start + index;
+                if absolute < literal_relative {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 fn statement_start(source: &str, offset: usize) -> usize {
     source[..offset]
         .rfind([';', '{', '}'])
@@ -748,11 +833,17 @@ fn statement_end(source: &str, offset: usize) -> usize {
     let mut brace_depth = 0usize;
     while cursor < bytes.len() {
         match bytes[cursor] {
+            b'{' if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => {
+                return cursor;
+            }
             b'(' => paren_depth += 1,
             b')' => paren_depth = paren_depth.saturating_sub(1),
             b'[' => bracket_depth += 1,
             b']' => bracket_depth = bracket_depth.saturating_sub(1),
             b'{' => brace_depth += 1,
+            b'}' if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => {
+                return cursor;
+            }
             b'}' => brace_depth = brace_depth.saturating_sub(1),
             b';' if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => {
                 return cursor + 1;
@@ -968,6 +1059,24 @@ mod tests {
     }
 
     #[test]
+    fn ignores_array_length_literals_in_function_signature_type_annotations() {
+        let project = ProjectModel::default();
+        let context = RuleContext::from_sources(
+            &project,
+            vec![(
+                "src/main.nr".to_string(),
+                "fn compute(arr: [Field; 4], token_id: Field) -> [Field; 2] {\n    let commitment = token_id;\n    assert(commitment > 0);\n    [commitment, token_id]\n}"
+                    .to_string(),
+            )],
+        );
+
+        let mut diagnostics = Vec::new();
+        Noir100MagicNumbersRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
     fn still_reports_non_domain_poseidon_literal() {
         let project = ProjectModel::default();
         let context = RuleContext::from_sources(
@@ -1054,6 +1163,72 @@ mod tests {
                 u32::try_from(const_literal_start + 2).unwrap_or(u32::MAX),
                 1,
                 18,
+            ),
+        });
+        project.normalize();
+
+        let context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), source.to_string())],
+        );
+        let mut diagnostics = Vec::new();
+        Noir100MagicNumbersRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn semantic_literals_in_signature_array_types_are_ignored() {
+        let source = "fn compute(arr: [Field; 4], token_id: Field) -> [Field; 2] { let commitment = token_id; assert(commitment > 0); [commitment, token_id] }";
+        let mut project = ProjectModel::default();
+        project.semantic.functions.push(SemanticFunction {
+            symbol_id: "fn::compute".to_string(),
+            name: "compute".to_string(),
+            module_symbol_id: "module::main".to_string(),
+            return_type_repr: "[Field; 2]".to_string(),
+            return_type_category: TypeCategory::Unknown,
+            parameter_types: vec!["[Field; 4]".to_string(), "Field".to_string()],
+            is_entrypoint: false,
+            is_unconstrained: false,
+            span: Span::new(
+                "src/main.nr",
+                0,
+                u32::try_from(source.len()).unwrap_or(u32::MAX),
+                1,
+                1,
+            ),
+        });
+        let param_len_start = source.find("[Field; 4]").expect("param type should exist") + 8;
+        project.semantic.expressions.push(SemanticExpression {
+            expr_id: "expr::param_len".to_string(),
+            function_symbol_id: "fn::compute".to_string(),
+            category: ExpressionCategory::Literal,
+            type_category: TypeCategory::Integer,
+            type_repr: "u32".to_string(),
+            span: Span::new(
+                "src/main.nr",
+                u32::try_from(param_len_start).unwrap_or(u32::MAX),
+                u32::try_from(param_len_start + 1).unwrap_or(u32::MAX),
+                1,
+                25,
+            ),
+        });
+        let return_len_start = source
+            .find("-> [Field; 2]")
+            .expect("return type should exist")
+            + 11;
+        project.semantic.expressions.push(SemanticExpression {
+            expr_id: "expr::return_len".to_string(),
+            function_symbol_id: "fn::compute".to_string(),
+            category: ExpressionCategory::Literal,
+            type_category: TypeCategory::Integer,
+            type_repr: "u32".to_string(),
+            span: Span::new(
+                "src/main.nr",
+                u32::try_from(return_len_start).unwrap_or(u32::MAX),
+                u32::try_from(return_len_start + 1).unwrap_or(u32::MAX),
+                1,
+                59,
             ),
         });
         project.normalize();

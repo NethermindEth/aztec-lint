@@ -1,14 +1,2 @@
 checked=. profile=aztec changed_only=false active_rules=28
-warning[NOIR100]: magic number `4` should be named
-  --> src/main.nr:1:22
-   |
- 1 | fn main(arr: [Field; 4], idx: u32) {
-   |                      ^
-   |                      ^ help: replace `4` with a named constant; replace with `NAMED_CONSTANT`
-   |
-   = note: confidence=high, policy=maintainability
-   = help: extract this literal into a named constant for readability
-   = help: suggestion group sg0001 [maybe-incorrect; edits=1]: replace `4` with a named constant
-   = help:   edit src/main.nr:1:22..23 replace with `NAMED_CONSTANT`
-
-diagnostics=1 errors=0 warnings=1
+No diagnostics.
