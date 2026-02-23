@@ -9,20 +9,22 @@ Entries are grouped by released version.
 
 ### Rule Growth by Category
 
-- `correctness`: `+0`
+- `correctness`: `+3`
 - `maintainability`: `+0`
-- `privacy`: `+0`
-- `protocol`: `+0`
+- `privacy`: `+2`
+- `protocol`: `+1`
 - `soundness`: `+0`
 
-- Started second-wave rule scaffolding for `AZTEC036` through `AZTEC041` by wiring new Aztec rule modules and runtime registry entries in `aztec-lint-rules`.
-- Added placeholder rule implementations for:
-  - `AZTEC036` secret-branch affects enqueue
-  - `AZTEC037` secret-branch affects delivery count
-  - `AZTEC038` change-note missing fresh randomness
-  - `AZTEC039` partial spend not balanced
-  - `AZTEC040` initializer not only-self
-  - `AZTEC041` cast truncation risk
+- Added six second-wave preview Aztec lints to the active canonical catalog and runtime registry:
+  - `AZTEC036` (`privacy`): secret-dependent branch affects enqueue behavior.
+  - `AZTEC037` (`privacy`): secret-dependent branch affects delivery count.
+  - `AZTEC038` (`correctness`): change note appears to miss fresh randomness.
+  - `AZTEC039` (`correctness`): partial spend logic appears unbalanced.
+  - `AZTEC040` (`protocol`): initializer entrypoint missing `#[only_self]`.
+  - `AZTEC041` (`correctness`): Field/integer cast may truncate or wrap unexpectedly.
+- Added second-wave rule module and registry scaffolding in `aztec-lint-rules` for `AZTEC036` through `AZTEC041`.
+- Updated generated lint reference and CLI/snapshot baselines to reflect the expanded aztec profile rule set (`active_rules=28`).
+- Added `docs/SECOND_WAVE_IMPLEMENTATION_PLAN.md` with sequential implementation and validation gates for the second-wave backlog.
 
 ## [0.5.0]
 
