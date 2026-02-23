@@ -108,7 +108,7 @@ Failure modes to watch:
 1. Starting rule expansion before maturity/test/perf contracts are explicit causes inconsistent quality bars between new rules.
 2. Suggestion intake decisions are undocumented, creating repeated churn and duplicate lint proposals.
 
-## Step 1: Extend canonical lint metadata for maturity-tier planning
+## Step 1: Extend canonical lint metadata for maturity-tier planning **COMPLETED**
 
 Files:
 1. `crates/aztec-lint-core/src/lints/types.rs`
