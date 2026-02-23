@@ -123,8 +123,8 @@ Generated from canonical lint metadata.
 
 Generated from intake decisions in `docs/NEW_LINTS.md`.
 
-- [Covered](roadmap/covered.md): `10` proposal(s)
-- [Accepted](roadmap/accepted.md): `6` proposal(s)
+- [Covered](roadmap/covered.md): `16` proposal(s)
+- [Accepted](roadmap/accepted.md): `0` proposal(s)
 - [Deferred](roadmap/deferred.md): `2` proposal(s)
 - [Rejected](roadmap/rejected.md): `1` proposal(s)
 
