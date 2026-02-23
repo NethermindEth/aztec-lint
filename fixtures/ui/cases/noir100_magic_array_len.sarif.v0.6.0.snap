@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "runs": [
+    {
+      "artifacts": [
+        {
+          "location": {
+            "uri": "src/main.nr"
+          }
+        }
+      ],
+      "results": [
+        {
+          "fixes": [
+            {
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "index": 0,
+                    "uri": "src/main.nr"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "endColumn": 23,
+                        "endLine": 1,
+                        "startColumn": 22,
+                        "startLine": 1
+                      },
+                      "insertedContent": {
+                        "text": "NAMED_CONSTANT"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "description": {
+                "text": "replace `4` with a named constant"
+              },
+              "properties": {
+                "applicability": "maybe_incorrect",
+                "groupId": "sg0001",
+                "provenance": null,
+                "source": "suggestion_group"
+              }
+            }
+          ],
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "index": 0,
+                  "uri": "src/main.nr"
+                },
+                "region": {
+                  "endColumn": 23,
+                  "endLine": 1,
+                  "startColumn": 22,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "magic number `4` should be named"
+          },
+          "partialFingerprints": {
+            "aztecLint/v1": "32d6d62f6603636fd9169577907c47d20f27f6359b4a4c713ce41454734f9570"
+          },
+          "properties": {
+            "confidence": "high",
+            "helps": [
+              {
+                "message": "extract this literal into a named constant for readability"
+              }
+            ],
+            "legacyFixes": [],
+            "legacySuggestions": [],
+            "notes": [],
+            "policy": "maintainability",
+            "structuredSuggestions": [
+              {
+                "applicability": "maybe_incorrect",
+                "message": "replace `4` with a named constant",
+                "replacement": "NAMED_CONSTANT",
+                "span": {
+                  "col": 22,
+                  "end": 22,
+                  "file": "src/main.nr",
+                  "line": 1,
+                  "start": 21
+                }
+              }
+            ],
+            "suppressed": false,
+            "suppressionReason": null
+          },
+          "ruleId": "NOIR100"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "name": "aztec-lint",
+          "rules": [
+            {
+              "id": "NOIR100",
+              "name": "NOIR100",
+              "shortDescription": {
+                "text": "magic number `4` should be named"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

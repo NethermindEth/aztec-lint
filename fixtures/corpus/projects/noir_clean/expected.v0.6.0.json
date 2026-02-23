@@ -1,0 +1,10 @@
+{
+  "exit_code": 0,
+  "summary": {
+    "total": 0,
+    "errors": 0,
+    "warnings": 0,
+    "suppressed": 0
+  },
+  "golden": []
+}

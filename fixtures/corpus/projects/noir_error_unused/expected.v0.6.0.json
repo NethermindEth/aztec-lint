@@ -1,0 +1,16 @@
+{
+  "exit_code": 1,
+  "summary": {
+    "total": 1,
+    "errors": 1,
+    "warnings": 0,
+    "suppressed": 0
+  },
+  "golden": [
+    {
+      "rule_id": "NOIR001",
+      "file": "src/main.nr",
+      "severity": "error"
+    }
+  ]
+}
