@@ -50,7 +50,7 @@ Validation:
 Failure mode:
 - Registry panic or unresolved imports means wiring is incomplete.
 
-## Step 3: Add Canonical Catalog Entries (`AZTEC036`..`AZTEC041`)
+## Step 3: Add Canonical Catalog Entries (`AZTEC036`..`AZTEC041`) **COMPLETED**
 
 Action:
 - Add six `LintSpec` entries with full docs fields.
