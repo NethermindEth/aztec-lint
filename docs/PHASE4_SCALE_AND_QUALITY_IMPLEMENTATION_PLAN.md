@@ -209,7 +209,7 @@ Failure modes to watch:
 2. Matrix runtime blow-up without fixture sharding and selective execution strategy.
 3. Corpus fixtures depending on network or non-reproducible toolchain state.
 
-## Step 4: Add benchmark corpus and enforce performance budgets
+## Step 4: Add benchmark corpus and enforce performance budgets **COMPLETED**
 
 Files:
 1. New: `benchmarks/scenarios.toml`

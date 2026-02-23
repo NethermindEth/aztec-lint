@@ -28,6 +28,11 @@ Entries are grouped by released version.
 - Added UI matrix fixtures under `fixtures/ui/`, including version-keyed text/json/SARIF snapshots for `noir100_magic_array_len` and accepted-lint fixture-pack scaffolds (`positive`, `negative`, `suppressed`, `false_positive_guard`) for `AZTEC030` through `AZTEC041`.
 - Added fix matrix fixtures under `fixtures/fix/cases/noir001_prefix_unused/` with `before.nr`/`after.nr` source contracts and version-keyed expected fix-report metrics.
 - Added corpus matrix fixtures under `fixtures/corpus/projects/` with version-keyed expected summary/golden diagnostic contracts for a clean project and a warning-producing project.
+- Added benchmark scenario and budget configuration files (`benchmarks/scenarios.toml`, `benchmarks/budgets.toml`) with warmup/sample runner settings and per-scenario median/p95 regression thresholds.
+- Added benchmark corpus fixtures under `fixtures/bench/` for note-consumption/nullifier, domain-separation hash tuple, and looped hash/Merkle verification stress domains.
+- Changed `cargo xtask perf-gate` from a file-alignment check into a scenario runner that executes benchmark fixtures, computes median/p95 timings, validates minimum taint-flow expectations, enforces budget thresholds, and supports explicit slowdown allowlisting via `[allowlist].scenario_ids`.
+- Changed `performance_smoke_stays_bounded` in `crates/aztec-lint-aztec/src/taint/propagate.rs` to use fixture-driven benchmark smoke scenarios instead of an ad hoc generated-chain timing assertion.
+- Changed CI test workflow to run the performance budget gate (`cargo xtask perf-gate --check --locked`) as a blocking regression check.
 
 ## [0.4.0]
 
