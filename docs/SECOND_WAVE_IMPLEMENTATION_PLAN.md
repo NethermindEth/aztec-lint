@@ -177,7 +177,7 @@ Validation:
 Failure mode:
 - Missed equivalent arithmetic forms or noisy detections on safe code.
 
-## Step 8: Implement `AZTEC040` End-to-End
+## Step 8: Implement `AZTEC040` End-to-End **COMPLETED**
 
 Action:
 - Implement initializer misuse check: initializer without `#[only_self]`.
