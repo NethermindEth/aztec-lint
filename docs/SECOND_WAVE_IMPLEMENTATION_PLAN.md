@@ -67,7 +67,7 @@ Validation:
 Failure mode:
 - Catalog invariant errors (missing docs, bad policy, bad semver, registry/catalog divergence).
 
-## Step 4: Implement `AZTEC036` End-to-End
+## Step 4: Implement `AZTEC036` End-to-End **COMPLETED**
 
 Action:
 - Implement `AZTEC036` rule logic based on `AZTEC002` with stricter sink scope.

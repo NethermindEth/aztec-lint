@@ -23,6 +23,9 @@ Entries are grouped by released version.
   - `AZTEC040` (`protocol`): initializer entrypoint missing `#[only_self]`.
   - `AZTEC041` (`correctness`): Field/integer cast may truncate or wrap unexpectedly.
 - Added second-wave rule module and registry scaffolding in `aztec-lint-rules` for `AZTEC036` through `AZTEC041`.
+- Implemented `AZTEC036` rule logic (`secret branch affects enqueue behavior`) using taint-flow filtering for secret branch conditions plus enqueue taint in the same function.
+- Added `AZTEC036` rule-case fixture matrix in `fixtures/aztec/rule_cases/` (`positive`, `negative`, `suppressed`, `false_positive_guard`) and integrated `aztec036_fixture_matrix` in `crates/aztec-lint-rules/tests/aztec_advanced_rules.rs`.
+- Replaced scaffolded accepted UI fixtures for `AZTEC036` in `fixtures/ui/accepted/AZTEC036/` with concrete matrix scenarios.
 - Updated generated lint reference and CLI/snapshot baselines to reflect the expanded aztec profile rule set (`active_rules=28`).
 - Added `docs/SECOND_WAVE_IMPLEMENTATION_PLAN.md` with sequential implementation and validation gates for the second-wave backlog.
 
