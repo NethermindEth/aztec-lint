@@ -1,8 +1,7 @@
-use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
 use aztec_lint_core::diagnostics::{Diagnostic, normalize_file_path};
-use aztec_lint_core::model::{ExpressionCategory, StatementCategory};
+use aztec_lint_core::model::StatementCategory;
 use aztec_lint_core::policy::CORRECTNESS;
 
 use crate::Rule;
@@ -38,18 +37,18 @@ impl Noir002ShadowingRule {
                 continue;
             };
 
-            let scopes = scopes_for_function(semantic, &function.symbol_id, &normalized_file);
-            let bindings = bindings_for_function(semantic, &function.symbol_id, file, &scopes);
+            let bindings = bindings_for_function(semantic, &function.symbol_id, file);
 
-            let mut declared = Vec::<SemanticBinding>::new();
+            let mut declared = Vec::<DeclaredBinding>::new();
             for binding in bindings {
                 if binding.name.starts_with('_') {
                     continue;
                 }
+                let scope_path = scope_path_for_offset(file.text(), binding.start);
                 if declared.iter().any(|prior| {
                     prior.name == binding.name
-                        && prior.scope_start <= binding.start
-                        && binding.start < prior.scope_end
+                        && prior.active_from <= binding.start
+                        && scope_path_is_prefix(&prior.scope_path, &scope_path)
                 }) {
                     out.push(ctx.diagnostic(
                         self.id(),
@@ -58,7 +57,11 @@ impl Noir002ShadowingRule {
                         file.span_for_range(binding.start, binding.start + binding.name.len()),
                     ));
                 }
-                declared.push(binding);
+                declared.push(DeclaredBinding {
+                    name: binding.name,
+                    active_from: binding.active_from,
+                    scope_path,
+                });
             }
         }
     }
@@ -72,14 +75,14 @@ impl Noir002ShadowingRule {
                     continue;
                 }
                 let body = &file.text()[body_start..body_end];
-                let bindings = let_bindings_with_depth(body, body_start);
-
-                let mut depth = 0usize;
-                let mut active = Vec::<(String, usize)>::new();
+                let bindings = let_bindings_with_scope_paths(body, body_start);
+                let mut active = Vec::<Binding>::new();
                 for binding in bindings {
-                    active.retain(|(_, declared_depth)| *declared_depth <= binding.depth);
-
-                    if active.iter().any(|(existing, _)| existing == &binding.name) {
+                    if active.iter().any(|existing| {
+                        existing.name == binding.name
+                            && existing.active_from <= binding.start
+                            && scope_path_is_prefix(&existing.scope_path, &binding.scope_path)
+                    }) {
                         out.push(ctx.diagnostic(
                             self.id(),
                             CORRECTNESS,
@@ -88,28 +91,25 @@ impl Noir002ShadowingRule {
                         ));
                     }
 
-                    active.push((binding.name, binding.depth));
-                    depth = binding.depth;
+                    active.push(binding);
                 }
-
-                active.retain(|(_, declared_depth)| *declared_depth <= depth);
             }
         }
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct SemanticScope {
-    start: usize,
-    end: usize,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 struct SemanticBinding {
     name: String,
     start: usize,
-    scope_start: usize,
-    scope_end: usize,
+    active_from: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DeclaredBinding {
+    name: String,
+    active_from: usize,
+    scope_path: Vec<usize>,
 }
 
 fn semantic_available(ctx: &RuleContext<'_>) -> bool {
@@ -133,61 +133,10 @@ fn source_slice(source: &str, start: u32, end: u32) -> Option<&str> {
     source.get(start..end)
 }
 
-fn scopes_for_function(
-    semantic: &aztec_lint_core::model::SemanticModel,
-    function_symbol_id: &str,
-    normalized_file: &str,
-) -> Vec<SemanticScope> {
-    let mut scopes = semantic
-        .functions
-        .iter()
-        .filter(|function| function.symbol_id == function_symbol_id)
-        .filter_map(|function| {
-            let file = normalize_file_path(&function.span.file);
-            if file != normalized_file {
-                return None;
-            }
-            let start = usize::try_from(function.span.start).ok()?;
-            let end = usize::try_from(function.span.end).ok()?;
-            if start >= end {
-                return None;
-            }
-            Some(SemanticScope { start, end })
-        })
-        .collect::<Vec<_>>();
-
-    for block in semantic
-        .expressions
-        .iter()
-        .filter(|expression| expression.function_symbol_id == function_symbol_id)
-        .filter(|expression| expression.category == ExpressionCategory::Block)
-    {
-        let file = normalize_file_path(&block.span.file);
-        if file != normalized_file {
-            continue;
-        }
-        let Some(start) = usize::try_from(block.span.start).ok() else {
-            continue;
-        };
-        let Some(end) = usize::try_from(block.span.end).ok() else {
-            continue;
-        };
-        if start >= end {
-            continue;
-        }
-        scopes.push(SemanticScope { start, end });
-    }
-
-    scopes.sort_by_key(|scope| (scope.start, Reverse(scope.end)));
-    scopes.dedup();
-    scopes
-}
-
 fn bindings_for_function(
     semantic: &aztec_lint_core::model::SemanticModel,
     function_symbol_id: &str,
     file: &SourceFile,
-    scopes: &[SemanticScope],
 ) -> Vec<SemanticBinding> {
     let normalized_file = normalize_file_path(file.path());
     let mut bindings = Vec::<SemanticBinding>::new();
@@ -212,16 +161,16 @@ fn bindings_for_function(
         let Some(statement_start) = usize::try_from(statement.span.start).ok() else {
             continue;
         };
+        let Some(statement_end) = usize::try_from(statement.span.end).ok() else {
+            continue;
+        };
         for (name, relative_start) in text_fallback_statement_bindings(statement_source) {
             let binding_start = statement_start.saturating_add(relative_start);
-            let Some(scope) = innermost_scope(scopes, binding_start) else {
-                continue;
-            };
             bindings.push(SemanticBinding {
                 name,
                 start: binding_start,
-                scope_start: scope.start,
-                scope_end: scope.end,
+                // Let bindings become visible only after initializer evaluation.
+                active_from: statement_end.max(binding_start),
             });
         }
     }
@@ -230,36 +179,33 @@ fn bindings_for_function(
     bindings
 }
 
-fn innermost_scope(scopes: &[SemanticScope], offset: usize) -> Option<SemanticScope> {
-    scopes
-        .iter()
-        .filter(|scope| scope.start <= offset && offset < scope.end)
-        .min_by_key(|scope| scope.end.saturating_sub(scope.start))
-        .cloned()
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Binding {
     name: String,
     start: usize,
-    depth: usize,
+    active_from: usize,
+    scope_path: Vec<usize>,
 }
 
-fn let_bindings_with_depth(source: &str, offset: usize) -> Vec<Binding> {
+fn let_bindings_with_scope_paths(source: &str, offset: usize) -> Vec<Binding> {
     let bytes = source.as_bytes();
-    let mut depth = 0usize;
+    let mut scope_stack = vec![0usize];
+    let mut next_scope_id = 1usize;
     let mut idx = 0usize;
     let mut out = Vec::<Binding>::new();
 
     while idx < bytes.len() {
         match bytes[idx] {
             b'{' => {
-                depth += 1;
+                scope_stack.push(next_scope_id);
+                next_scope_id += 1;
                 idx += 1;
                 continue;
             }
             b'}' => {
-                depth = depth.saturating_sub(1);
+                if scope_stack.len() > 1 {
+                    scope_stack.pop();
+                }
                 idx += 1;
                 continue;
             }
@@ -276,15 +222,115 @@ fn let_bindings_with_depth(source: &str, offset: usize) -> Vec<Binding> {
             idx += 1;
             continue;
         };
+        let active_from = statement_end_offset(source, idx)
+            .unwrap_or(next_idx)
+            .max(name_start + 1);
         out.push(Binding {
             name,
             start: offset + name_start,
-            depth,
+            active_from: offset + active_from,
+            scope_path: scope_stack.clone(),
         });
         idx = next_idx;
     }
 
     out
+}
+
+fn scope_path_is_prefix(prefix: &[usize], candidate: &[usize]) -> bool {
+    prefix.len() <= candidate.len() && prefix == &candidate[..prefix.len()]
+}
+
+fn scope_path_for_offset(source: &str, offset: usize) -> Vec<usize> {
+    let bytes = source.as_bytes();
+    let limit = offset.min(bytes.len());
+    let mut scope_stack = vec![0usize];
+    let mut next_scope_id = 1usize;
+    let mut idx = 0usize;
+
+    while idx < limit {
+        match bytes[idx] {
+            b'/' if bytes.get(idx + 1) == Some(&b'/') => {
+                while idx < limit && bytes[idx] != b'\n' {
+                    idx += 1;
+                }
+                continue;
+            }
+            b'"' | b'\'' => {
+                idx = skip_quoted_literal(bytes, idx, limit);
+                continue;
+            }
+            b'{' => {
+                scope_stack.push(next_scope_id);
+                next_scope_id += 1;
+            }
+            b'}' => {
+                if scope_stack.len() > 1 {
+                    scope_stack.pop();
+                }
+            }
+            _ => {}
+        }
+        idx += 1;
+    }
+
+    scope_stack
+}
+
+fn skip_quoted_literal(bytes: &[u8], start: usize, limit: usize) -> usize {
+    let quote = bytes[start];
+    let mut idx = start + 1;
+    while idx < limit {
+        if bytes[idx] == b'\\' {
+            idx = idx.saturating_add(2);
+            continue;
+        }
+        if bytes[idx] == quote {
+            return idx + 1;
+        }
+        idx += 1;
+    }
+    limit
+}
+
+fn statement_end_offset(source: &str, start_idx: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    if start_idx >= bytes.len() {
+        return None;
+    }
+
+    let mut paren_depth = 0usize;
+    let mut brace_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut idx = start_idx;
+
+    while idx < bytes.len() {
+        match bytes[idx] {
+            b'/' if bytes.get(idx + 1) == Some(&b'/') => {
+                while idx < bytes.len() && bytes[idx] != b'\n' {
+                    idx += 1;
+                }
+                continue;
+            }
+            b'"' | b'\'' => {
+                idx = skip_quoted_literal(bytes, idx, bytes.len());
+                continue;
+            }
+            b'(' => paren_depth += 1,
+            b')' => paren_depth = paren_depth.saturating_sub(1),
+            b'{' => brace_depth += 1,
+            b'}' => brace_depth = brace_depth.saturating_sub(1),
+            b'[' => bracket_depth += 1,
+            b']' => bracket_depth = bracket_depth.saturating_sub(1),
+            b';' if paren_depth == 0 && brace_depth == 0 && bracket_depth == 0 => {
+                return Some(idx + 1);
+            }
+            _ => {}
+        }
+        idx += 1;
+    }
+
+    None
 }
 
 fn parse_let_binding(source: &str, start_idx: usize) -> Option<(String, usize, usize)> {
@@ -374,6 +420,40 @@ mod tests {
             vec![(
                 "src/main.nr".to_string(),
                 "fn main() { let left = 1; let right = 2; }".to_string(),
+            )],
+        );
+
+        let mut diagnostics = Vec::new();
+        Noir002ShadowingRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn ignores_same_name_bindings_in_if_else_siblings() {
+        let project = ProjectModel::default();
+        let context = RuleContext::from_sources(
+            &project,
+            vec![(
+                "src/main.nr".to_string(),
+                "fn main(flag: bool) { let value = if flag { let owner = 1; owner } else { let owner = 2; owner }; assert(value > 0); }".to_string(),
+            )],
+        );
+
+        let mut diagnostics = Vec::new();
+        Noir002ShadowingRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn ignores_binding_name_reuse_inside_let_initializer_branches() {
+        let project = ProjectModel::default();
+        let context = RuleContext::from_sources(
+            &project,
+            vec![(
+                "src/main.nr".to_string(),
+                "fn main(flag: bool) { let owner = if flag { let owner = 1; owner } else { let owner = 2; owner }; assert(owner > 0); }".to_string(),
             )],
         );
 
@@ -484,6 +564,102 @@ mod tests {
 
         assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics[0].message.contains("shadows"));
+    }
+
+    #[test]
+    fn semantic_scope_analysis_ignores_if_else_sibling_bindings() {
+        let source = "fn main(flag: bool) { let value = if flag { let owner = 1; owner } else { let owner = 2; owner }; assert(value > 0); }";
+        let (function_start, function_end) = span_range(source, source);
+        let (let_then_start, let_then_end) = nth_span_range(source, "let owner = 1;", 0);
+        let (let_else_start, let_else_end) = nth_span_range(source, "let owner = 2;", 0);
+
+        let mut project = ProjectModel::default();
+        project.semantic.functions.push(SemanticFunction {
+            symbol_id: "fn::main".to_string(),
+            name: "main".to_string(),
+            module_symbol_id: "module::main".to_string(),
+            return_type_repr: "()".to_string(),
+            return_type_category: TypeCategory::Unknown,
+            parameter_types: vec!["bool".to_string()],
+            is_entrypoint: true,
+            is_unconstrained: false,
+            span: Span::new("src/main.nr", function_start, function_end, 1, 1),
+        });
+        project.semantic.statements.push(SemanticStatement {
+            stmt_id: "stmt::then".to_string(),
+            function_symbol_id: "fn::main".to_string(),
+            category: StatementCategory::Let,
+            span: Span::new("src/main.nr", let_then_start, let_then_end, 1, 1),
+        });
+        project.semantic.statements.push(SemanticStatement {
+            stmt_id: "stmt::else".to_string(),
+            function_symbol_id: "fn::main".to_string(),
+            category: StatementCategory::Let,
+            span: Span::new("src/main.nr", let_else_start, let_else_end, 1, 1),
+        });
+        project.normalize();
+
+        let context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), source.to_string())],
+        );
+        let mut diagnostics = Vec::new();
+        Noir002ShadowingRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn semantic_scope_analysis_ignores_initializer_branch_reuse() {
+        let source = "fn main(flag: bool) { let owner = if flag { let owner = 1; owner } else { let owner = 2; owner }; assert(owner > 0); }";
+        let (function_start, function_end) = span_range(source, source);
+        let (outer_let_start, outer_let_end) = span_range(
+            source,
+            "let owner = if flag { let owner = 1; owner } else { let owner = 2; owner };",
+        );
+        let (inner_then_start, inner_then_end) = nth_span_range(source, "let owner = 1;", 0);
+        let (inner_else_start, inner_else_end) = nth_span_range(source, "let owner = 2;", 0);
+
+        let mut project = ProjectModel::default();
+        project.semantic.functions.push(SemanticFunction {
+            symbol_id: "fn::main".to_string(),
+            name: "main".to_string(),
+            module_symbol_id: "module::main".to_string(),
+            return_type_repr: "()".to_string(),
+            return_type_category: TypeCategory::Unknown,
+            parameter_types: vec!["bool".to_string()],
+            is_entrypoint: true,
+            is_unconstrained: false,
+            span: Span::new("src/main.nr", function_start, function_end, 1, 1),
+        });
+        project.semantic.statements.push(SemanticStatement {
+            stmt_id: "stmt::outer".to_string(),
+            function_symbol_id: "fn::main".to_string(),
+            category: StatementCategory::Let,
+            span: Span::new("src/main.nr", outer_let_start, outer_let_end, 1, 1),
+        });
+        project.semantic.statements.push(SemanticStatement {
+            stmt_id: "stmt::then".to_string(),
+            function_symbol_id: "fn::main".to_string(),
+            category: StatementCategory::Let,
+            span: Span::new("src/main.nr", inner_then_start, inner_then_end, 1, 1),
+        });
+        project.semantic.statements.push(SemanticStatement {
+            stmt_id: "stmt::else".to_string(),
+            function_symbol_id: "fn::main".to_string(),
+            category: StatementCategory::Let,
+            span: Span::new("src/main.nr", inner_else_start, inner_else_end, 1, 1),
+        });
+        project.normalize();
+
+        let context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), source.to_string())],
+        );
+        let mut diagnostics = Vec::new();
+        Noir002ShadowingRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
     }
 
     #[test]

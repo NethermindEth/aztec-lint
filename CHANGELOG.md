@@ -16,6 +16,9 @@ Entries are grouped by released version.
 - Fixed `NOIR030` to skip reporting flows rooted in unconstrained caller functions, avoiding noisy diagnostics in unconstrained test harness routines.
 - Fixed `NOIR030` to skip `src/test/**`/`*_test.nr`/`*_tests.nr` paths by default, reducing protocol-irrelevant noise from test helper call/assert flows.
 - Added `NOIR030` regression coverage for unconstrained-caller suppression and test-path suppression in the semantic analysis path.
+- Fixed `NOIR002` lexical shadowing analysis to distinguish sibling branch scopes (`if` / `else`) so same-name bindings in mutually exclusive branches are not reported as shadowing.
+- Fixed `NOIR002` binding activation timing so `let` bindings are treated as in-scope only after initializer evaluation, preventing false positives for name reuse inside `let` initializer branch bodies.
+- Added `NOIR002` regression coverage for sibling-branch reuse and initializer-branch reuse in both fallback and semantic analysis paths.
 
 ## [0.6.0]
 
