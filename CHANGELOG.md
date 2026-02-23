@@ -7,6 +7,15 @@ Entries are grouped by released version.
 
 ## [Unreleased]
 
+- Added lint maturity metadata (`stable`, `preview`, `experimental`) to the canonical `LintSpec` model and catalog.
+- Changed catalog quality invariants to reject non-canonical `cost` policy naming (use `performance`) and to reject active `stable` lints with `low` confidence.
+- Added tier-aware ruleset selectors in config resolution: `tier:<tier>`, `maturity:<tier>`, and `<pack>@<tier>`.
+- Added builtin `aztec_strict` profile, extending `aztec` and enabling stricter tier-targeted Aztec rulesets.
+- Changed `aztec-lint rules` output contract to include `CATEGORY` and `MATURITY` columns.
+- Changed `aztec-lint explain <RULE_ID>` output to include lint maturity.
+- Changed lint reference generation to use metadata-driven pack grouping instead of hardcoded pack iteration.
+- Regenerated `docs/lints-reference.md` to include maturity per lint and a policy alias note (`cost` roadmap shorthand maps to canonical `performance`).
+
 ## [0.4.0]
 
 ### 2026-02-22
