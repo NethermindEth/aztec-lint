@@ -119,3 +119,99 @@ fn aztec022_fixture_pair() {
     let suppressed = run_rule("AZTEC022", &fixture_source("aztec022_suppressed.nr"));
     assert_single_suppressed_with_reason(&suppressed, "AZTEC022");
 }
+
+#[test]
+fn aztec030_fixture_matrix() {
+    assert!(!run_rule("AZTEC030", &fixture_source("aztec030_positive.nr")).is_empty());
+    assert!(run_rule("AZTEC030", &fixture_source("aztec030_negative.nr")).is_empty());
+    assert!(
+        run_rule(
+            "AZTEC030",
+            &fixture_source("aztec030_false_positive_guard.nr")
+        )
+        .is_empty()
+    );
+
+    let suppressed = run_rule("AZTEC030", &fixture_source("aztec030_suppressed.nr"));
+    assert_single_suppressed_with_reason(&suppressed, "AZTEC030");
+}
+
+#[test]
+fn aztec031_fixture_matrix() {
+    assert!(!run_rule("AZTEC031", &fixture_source("aztec031_positive.nr")).is_empty());
+    assert!(run_rule("AZTEC031", &fixture_source("aztec031_negative.nr")).is_empty());
+    assert!(
+        run_rule(
+            "AZTEC031",
+            &fixture_source("aztec031_false_positive_guard.nr")
+        )
+        .is_empty()
+    );
+
+    let suppressed = run_rule("AZTEC031", &fixture_source("aztec031_suppressed.nr"));
+    assert_single_suppressed_with_reason(&suppressed, "AZTEC031");
+}
+
+#[test]
+fn aztec032_fixture_matrix() {
+    assert!(!run_rule("AZTEC032", &fixture_source("aztec032_positive.nr")).is_empty());
+    assert!(run_rule("AZTEC032", &fixture_source("aztec032_negative.nr")).is_empty());
+    assert!(
+        run_rule(
+            "AZTEC032",
+            &fixture_source("aztec032_false_positive_guard.nr")
+        )
+        .is_empty()
+    );
+
+    let suppressed = run_rule("AZTEC032", &fixture_source("aztec032_suppressed.nr"));
+    assert_single_suppressed_with_reason(&suppressed, "AZTEC032");
+}
+
+#[test]
+fn aztec033_fixture_matrix() {
+    assert!(!run_rule("AZTEC033", &fixture_source("aztec033_positive.nr")).is_empty());
+    assert!(run_rule("AZTEC033", &fixture_source("aztec033_negative.nr")).is_empty());
+    assert!(
+        run_rule(
+            "AZTEC033",
+            &fixture_source("aztec033_false_positive_guard.nr")
+        )
+        .is_empty()
+    );
+
+    let suppressed = run_rule("AZTEC033", &fixture_source("aztec033_suppressed.nr"));
+    assert_single_suppressed_with_reason(&suppressed, "AZTEC033");
+}
+
+#[test]
+fn aztec034_fixture_matrix() {
+    assert!(!run_rule("AZTEC034", &fixture_source("aztec034_positive.nr")).is_empty());
+    assert!(run_rule("AZTEC034", &fixture_source("aztec034_negative.nr")).is_empty());
+    assert!(
+        run_rule(
+            "AZTEC034",
+            &fixture_source("aztec034_false_positive_guard.nr")
+        )
+        .is_empty()
+    );
+
+    let suppressed = run_rule("AZTEC034", &fixture_source("aztec034_suppressed.nr"));
+    assert_single_suppressed_with_reason(&suppressed, "AZTEC034");
+}
+
+#[test]
+fn aztec035_fixture_matrix() {
+    assert!(!run_rule("AZTEC035", &fixture_source("aztec035_positive.nr")).is_empty());
+    assert!(run_rule("AZTEC035", &fixture_source("aztec035_negative.nr")).is_empty());
+    assert!(
+        run_rule(
+            "AZTEC035",
+            &fixture_source("aztec035_false_positive_guard.nr")
+        )
+        .is_empty()
+    );
+
+    let suppressed = run_rule("AZTEC035", &fixture_source("aztec035_suppressed.nr"));
+    assert_single_suppressed_with_reason(&suppressed, "AZTEC035");
+}

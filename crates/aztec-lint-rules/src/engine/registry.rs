@@ -9,6 +9,12 @@ use crate::aztec::{
     aztec020_unconstrained_influence::Aztec020UnconstrainedInfluenceRule,
     aztec021_range_before_hash::Aztec021RangeBeforeHashRule,
     aztec022_merkle_witness::Aztec022MerkleWitnessRule,
+    aztec030_note_consumed_without_nullifier::Aztec030NoteConsumedWithoutNullifierRule,
+    aztec031_domain_sep_nullifier::Aztec031DomainSepNullifierRule,
+    aztec032_domain_sep_commitment::Aztec032DomainSepCommitmentRule,
+    aztec033_public_mutates_private_without_only_self::Aztec033PublicMutatesPrivateWithoutOnlySelfRule,
+    aztec034_hash_input_not_range_constrained::Aztec034HashInputNotRangeConstrainedRule,
+    aztec035_storage_key_suspicious::Aztec035StorageKeySuspiciousRule,
 };
 use crate::noir_core::{
     noir001_unused::Noir001UnusedRule, noir002_shadowing::Noir002ShadowingRule,
@@ -42,6 +48,12 @@ pub fn full_registry() -> Vec<RuleRegistration> {
         register(Box::new(Aztec020UnconstrainedInfluenceRule)),
         register(Box::new(Aztec021RangeBeforeHashRule)),
         register(Box::new(Aztec022MerkleWitnessRule)),
+        register(Box::new(Aztec030NoteConsumedWithoutNullifierRule)),
+        register(Box::new(Aztec031DomainSepNullifierRule)),
+        register(Box::new(Aztec032DomainSepCommitmentRule)),
+        register(Box::new(Aztec033PublicMutatesPrivateWithoutOnlySelfRule)),
+        register(Box::new(Aztec034HashInputNotRangeConstrainedRule)),
+        register(Box::new(Aztec035StorageKeySuspiciousRule)),
     ]
 }
 

@@ -100,6 +100,12 @@ AZTEC010\taztec_pack\tprotocol\tstable\tprotocol\thigh\tPrivate to public bridge
 AZTEC020\taztec_pack\tsoundness\tstable\tsoundness\thigh\tUnconstrained influence reaches commitments, storage, or nullifiers.\n\
 AZTEC021\taztec_pack\tsoundness\tstable\tsoundness\tmedium\tMissing range constraints before hashing or serialization.\n\
 AZTEC022\taztec_pack\tsoundness\tstable\tsoundness\tmedium\tSuspicious Merkle witness usage.\n\
+AZTEC030\taztec_pack\tsoundness\tpreview\tsoundness\thigh\tNote consumption without nullifier emission.\n\
+AZTEC031\taztec_pack\tprotocol\tpreview\tprotocol\tmedium\tNullifier hash appears missing domain separation inputs.\n\
+AZTEC032\taztec_pack\tprotocol\tpreview\tprotocol\tmedium\tCommitment hash appears missing domain separation inputs.\n\
+AZTEC033\taztec_pack\tprotocol\tpreview\tprotocol\thigh\tPublic entrypoint mutates private state without #[only_self].\n\
+AZTEC034\taztec_pack\tsoundness\tpreview\tsoundness\tmedium\tHash input cast to Field without prior range guard.\n\
+AZTEC035\taztec_pack\tcorrectness\tpreview\tcorrectness\tmedium\tSuspicious repeated nested storage key.\n\
 NOIR001\tnoir_core\tcorrectness\tstable\tcorrectness\thigh\tUnused variable or import.\n\
 NOIR002\tnoir_core\tcorrectness\tstable\tcorrectness\tmedium\tSuspicious shadowing.\n\
 NOIR010\tnoir_core\tcorrectness\tstable\tcorrectness\thigh\tBoolean computed but not asserted.\n\
@@ -325,7 +331,7 @@ fn check_loads_config_from_target_path() {
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("active_rules=7"), "stdout was: {stdout}");
+    assert!(stdout.contains("active_rules=13"), "stdout was: {stdout}");
 }
 
 #[test]
@@ -415,7 +421,7 @@ fn profile_aztec_includes_default_and_aztec_pack() {
 
     let output = cmd.output().expect("command should execute");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("active_rules=16"), "stdout was: {stdout}");
+    assert!(stdout.contains("active_rules=22"), "stdout was: {stdout}");
 }
 
 #[test]
@@ -428,7 +434,7 @@ fn bare_invocation_runs_check_with_aztec_profile_by_default() {
     assert_eq!(output.status.code(), Some(1), "run should report findings");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("active_rules=16"),
+        stdout.contains("active_rules=22"),
         "bare invocation should default to aztec profile: {stdout}"
     );
 }
