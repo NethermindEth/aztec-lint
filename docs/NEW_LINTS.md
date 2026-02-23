@@ -2,6 +2,9 @@ Below is a set of **Aztec-specific lints** that tend to have high practical valu
 
 ## Intake status snapshot (2026-02-23)
 
+Execution scheduling (owner, target release, and matrix test obligations) is tracked in `docs/rule-roadmap.md`.
+Accepted lint IDs remain roadmap items until the backlog includes implementation milestones and explicit test coverage plans.
+
 Status meanings for lint intake:
 
 - `covered`: already handled by an existing lint ID (possibly with follow-up precision work).
@@ -198,7 +201,7 @@ If you already have AZTEC001/002/003/010/020-ish:
 1. `AZTEC_NOTE_CONSUMED_WITHOUT_NULLIFIER`
 2. `AZTEC_DOMAIN_SEP_NULLIFIER`
 3. `AZTEC_DOMAIN_SEP_COMMITMENT`
-4. `AZTEC_PUBLIC_FN_MUTATES_PRIVATE_STATE_WITHOUT_ONLY_SELF`
+4. `AZTEC033_PUBLIC_MUTATES_PRIVATE_WITHOUT_ONLY_SELF`
 5. `AZTEC_HASH_INPUT_NOT_RANGE_CONSTRAINED`
 6. `AZTEC_STORAGE_KEY_SUSPICIOUS`
 

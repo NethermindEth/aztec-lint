@@ -140,7 +140,7 @@ Failure modes to watch:
 2. Output schema drift breaks existing automation consuming rules/explain output.
 3. Policy taxonomy drift (`cost` vs `performance`) makes filters and docs inconsistent.
 
-## Step 2: Add rule expansion roadmap and backlog structure
+## Step 2: Add rule expansion roadmap and backlog structure **COMPLETED**
 
 Files:
 1. New: `docs/rule-roadmap.md`
