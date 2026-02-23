@@ -203,7 +203,7 @@ Validation:
 Failure mode:
 - Framework-level initializer guards not expressed as `#[only_self]`.
 
-## Step 9: Implement `AZTEC041` End-to-End
+## Step 9: Implement `AZTEC041` End-to-End **COMPLETED**
 
 Action:
 - Implement cast truncation risk checks for Field<->integer conversions.

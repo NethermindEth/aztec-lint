@@ -58,7 +58,7 @@ impl Rule for Aztec034HashInputNotRangeConstrainedRule {
     }
 }
 
-fn looks_like_range_guard(line: &str) -> bool {
+pub(crate) fn looks_like_range_guard(line: &str) -> bool {
     let lower = line.to_ascii_lowercase();
     (lower.contains("assert(") || lower.contains("constrain(") || lower.contains("assert_max_bits"))
         && (lower.contains('<')
