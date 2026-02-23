@@ -26,6 +26,7 @@ pub enum TaintSinkKind {
     PublicOutput,
     PublicStorageWrite,
     EnqueuePublicCall,
+    DeliveryCall,
     OracleArgument,
     LogEvent,
     NullifierOrCommitment,
@@ -684,6 +685,9 @@ fn sink_kinds_for_call_name(name: &str, config: &AztecConfig) -> Vec<TaintSinkKi
     if is_enqueue_call_name(name, config) {
         kinds.push(TaintSinkKind::EnqueuePublicCall);
     }
+    if lower.contains("deliver") {
+        kinds.push(TaintSinkKind::DeliveryCall);
+    }
     if lower == "debug_log" {
         kinds.push(TaintSinkKind::DebugLog);
         kinds.push(TaintSinkKind::LogEvent);
@@ -1210,6 +1214,9 @@ fn detect_sink_kinds(line: &str) -> Vec<TaintSinkKind> {
     if line.contains("enqueue(") || line.contains("enqueue_self") {
         sinks.push(TaintSinkKind::EnqueuePublicCall);
     }
+    if line.contains("deliver(") {
+        sinks.push(TaintSinkKind::DeliveryCall);
+    }
     if line.contains("oracle") && line.contains('(') {
         sinks.push(TaintSinkKind::OracleArgument);
     }
@@ -1343,6 +1350,7 @@ mod tests {
 
     use super::{
         TaintSinkKind, TaintSourceKind, build_def_use_graph, build_def_use_graph_with_semantic,
+        detect_sink_kinds, sink_kinds_for_call_name,
     };
 
     fn span_for(source: &str, needle: &str) -> Span {
@@ -1414,6 +1422,18 @@ pub contract C {
         assert!(function.sources.iter().any(|item| {
             item.kind == TaintSourceKind::PrivateEntrypointParam && item.variable == "secret"
         }));
+    }
+
+    #[test]
+    fn fallback_sink_detection_captures_deliver_calls() {
+        let sinks = detect_sink_kinds("self.storage.notes.insert(secret).deliver(0);");
+        assert!(sinks.contains(&TaintSinkKind::DeliveryCall));
+    }
+
+    #[test]
+    fn semantic_sink_detection_captures_deliver_call_names() {
+        let sinks = sink_kinds_for_call_name("deliver_notes", &AztecConfig::default());
+        assert!(sinks.contains(&TaintSinkKind::DeliveryCall));
     }
 
     #[test]
