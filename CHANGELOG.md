@@ -7,6 +7,12 @@ Entries are grouped by released version.
 
 ## [Unreleased]
 
+- No unreleased changes yet.
+
+## [0.6.0]
+
+### 2026-02-23
+
 ### Rule Growth by Category
 
 - `correctness`: `+3`
