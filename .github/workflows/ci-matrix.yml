@@ -1,0 +1,45 @@
+name: CI - Matrix
+
+on:
+  push:
+    branches:
+      - "**"
+    tags-ignore:
+      - "v*.*.*"
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.1
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run diagnostics and fix regression gates
+        run: |
+          cargo test -p aztec-lint-core regression_ --locked
+          cargo test -p aztec-lint-rules scoped_ --locked
+          cargo test -p aztec-lint-cli --test cli_golden check_json_output_is_deterministic --locked
+          cargo test -p aztec-lint-cli --test cli_golden check_sarif_output_is_deterministic --locked
+          cargo test -p aztec-lint-cli --test cli_golden check_text_output_is_deterministic --locked
+
+      - name: Run matrix harness suites
+        run: |
+          cargo test -p aztec-lint-cli --test ui_matrix --locked
+          cargo test -p aztec-lint-cli --test fix_matrix --locked
+          cargo test -p aztec-lint-cli --test corpus_matrix --locked

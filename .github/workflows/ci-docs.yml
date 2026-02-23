@@ -1,4 +1,4 @@
-name: CI - Test
+name: CI - Docs
 
 on:
   push:
@@ -12,11 +12,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-test-${{ github.ref }}
+  group: ci-docs-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test:
+  generated-docs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -30,8 +30,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Run non-CLI workspace tests
-        run: cargo test --workspace --all-targets --locked --exclude aztec-lint-cli
-
-      - name: Run CLI unit tests
-        run: cargo test -p aztec-lint-cli --bins --locked
+      - name: Check generated artifacts
+        run: |
+          cargo xtask update-lints --check --locked
+          cargo xtask docs-portal --check
