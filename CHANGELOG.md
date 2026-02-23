@@ -30,6 +30,9 @@ Entries are grouped by released version.
 - Implemented `AZTEC037` rule logic (`secret branch affects delivery count`) using taint-flow filtering for secret branch conditions plus delivery-call taint in the same function.
 - Added `AZTEC037` rule-case fixture matrix in `fixtures/aztec/rule_cases/` (`positive`, `negative`, `suppressed`, `false_positive_guard`) and integrated `aztec037_fixture_matrix` in `crates/aztec-lint-rules/tests/aztec_advanced_rules.rs`.
 - Replaced scaffolded accepted UI fixtures for `AZTEC037` in `fixtures/ui/accepted/AZTEC037/` with concrete matrix scenarios.
+- Implemented `AZTEC038` rule logic (`change note missing fresh randomness`) using conservative change-note randomness heuristics (reuse/deterministic derivation without freshness context).
+- Added `AZTEC038` rule-case fixture matrix in `fixtures/aztec/rule_cases/` (`positive`, `negative`, `suppressed`, `false_positive_guard`) and integrated `aztec038_fixture_matrix` in `crates/aztec-lint-rules/tests/aztec_advanced_rules.rs`.
+- Replaced scaffolded accepted UI fixtures for `AZTEC038` in `fixtures/ui/accepted/AZTEC038/` with concrete matrix scenarios.
 - Updated generated lint reference and CLI/snapshot baselines to reflect the expanded aztec profile rule set (`active_rules=28`).
 - Added `docs/SECOND_WAVE_IMPLEMENTATION_PLAN.md` with sequential implementation and validation gates for the second-wave backlog.
 

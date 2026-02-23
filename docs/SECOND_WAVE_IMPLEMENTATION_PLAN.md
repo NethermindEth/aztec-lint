@@ -123,7 +123,7 @@ Validation:
 Failure mode:
 - Over-reporting when branch exists but delivery count remains constant.
 
-## Step 6: Implement `AZTEC038` End-to-End
+## Step 6: Implement `AZTEC038` End-to-End **COMPLETED**
 
 Action:
 - Implement change-note randomness freshness checks.
