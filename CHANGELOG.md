@@ -13,6 +13,9 @@ Entries are grouped by released version.
 - Fixed the same semantic definition-order mapping issue in `NOIR010` and `NOIR030` to keep local binding/name correlation stable across tuple/structured patterns.
 - Fixed `AZTEC040` to ignore constructor-style initializer entrypoints (`constructor` / `constructor_*`) when evaluating missing `#[only_self]`, reducing false positives for standard deployment initializers while keeping checks for non-constructor initializer entrypoints.
 - Added `AZTEC040` regression coverage for constructor-style initializer exemptions in both unit tests and fixture matrix false-positive guard scenarios.
+- Fixed `NOIR030` to skip reporting flows rooted in unconstrained caller functions, avoiding noisy diagnostics in unconstrained test harness routines.
+- Fixed `NOIR030` to skip `src/test/**`/`*_test.nr`/`*_tests.nr` paths by default, reducing protocol-irrelevant noise from test helper call/assert flows.
+- Added `NOIR030` regression coverage for unconstrained-caller suppression and test-path suppression in the semantic analysis path.
 
 ## [0.6.0]
 

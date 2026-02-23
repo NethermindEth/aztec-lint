@@ -73,6 +73,9 @@ impl Noir030UnconstrainedInfluenceRule {
         }
 
         for function in &semantic.functions {
+            if function.is_unconstrained || is_test_path(&function.span.file) {
+                continue;
+            }
             let seeds = call_seeds_by_function
                 .get(&function.symbol_id)
                 .cloned()
@@ -170,6 +173,9 @@ impl Noir030UnconstrainedInfluenceRule {
 
     fn run_text_fallback(&self, ctx: &RuleContext<'_>, out: &mut Vec<Diagnostic>) {
         for file in ctx.files() {
+            if is_test_path(file.path()) {
+                continue;
+            }
             let unconstrained_fns = unconstrained_functions(file.text());
             let mut tainted = BTreeSet::<String>::new();
             let mut offset = 0usize;
@@ -364,6 +370,13 @@ fn assignment_rhs<'a>(line: &'a str, name: &str, name_column: usize) -> Option<&
     Some(tail[equals + 1..].trim())
 }
 
+fn is_test_path(path: &str) -> bool {
+    let normalized = normalize_file_path(path);
+    normalized.split('/').any(|segment| segment == "test")
+        || normalized.ends_with("_test.nr")
+        || normalized.ends_with("_tests.nr")
+}
+
 #[cfg(test)]
 mod tests {
     use aztec_lint_core::model::{
@@ -550,6 +563,226 @@ fn main() {
         let context = RuleContext::from_sources(
             &project,
             vec![("src/main.nr".to_string(), source.to_string())],
+        );
+        let mut diagnostics = Vec::new();
+        Noir030UnconstrainedInfluenceRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn semantic_unconstrained_caller_is_ignored() {
+        let source = "unconstrained fn read_secret() -> Field { 7 }\nunconstrained fn main() { let secret = read_secret(); assert(secret == 7); }";
+        let (unconstrained_start, unconstrained_end) =
+            span_range(source, "unconstrained fn read_secret() -> Field { 7 }");
+        let (main_start, main_end) = span_range(
+            source,
+            "unconstrained fn main() { let secret = read_secret(); assert(secret == 7); }",
+        );
+        let (let_start, let_end) = span_range(source, "let secret = read_secret();");
+        let (assert_expr_start, assert_expr_end) = span_range(source, "secret == 7");
+
+        let mut project = ProjectModel::default();
+        project.semantic.functions.push(SemanticFunction {
+            symbol_id: "fn::read_secret".to_string(),
+            name: "read_secret".to_string(),
+            module_symbol_id: "module::main".to_string(),
+            return_type_repr: "Field".to_string(),
+            return_type_category: TypeCategory::Field,
+            parameter_types: Vec::new(),
+            is_entrypoint: false,
+            is_unconstrained: true,
+            span: Span::new("src/main.nr", unconstrained_start, unconstrained_end, 1, 1),
+        });
+        project.semantic.functions.push(SemanticFunction {
+            symbol_id: "fn::main".to_string(),
+            name: "main".to_string(),
+            module_symbol_id: "module::main".to_string(),
+            return_type_repr: "()".to_string(),
+            return_type_category: TypeCategory::Unknown,
+            parameter_types: Vec::new(),
+            is_entrypoint: true,
+            is_unconstrained: true,
+            span: Span::new("src/main.nr", main_start, main_end, 2, 1),
+        });
+        project.semantic.expressions.push(SemanticExpression {
+            expr_id: "expr::call_secret".to_string(),
+            function_symbol_id: "fn::main".to_string(),
+            category: ExpressionCategory::Call,
+            type_category: TypeCategory::Field,
+            type_repr: "Field".to_string(),
+            span: Span::new("src/main.nr", let_start + 13, let_start + 26, 2, 1),
+        });
+        project.semantic.expressions.push(SemanticExpression {
+            expr_id: "expr::assert_guard".to_string(),
+            function_symbol_id: "fn::main".to_string(),
+            category: ExpressionCategory::BinaryOp,
+            type_category: TypeCategory::Bool,
+            type_repr: "bool".to_string(),
+            span: Span::new("src/main.nr", assert_expr_start, assert_expr_end, 2, 1),
+        });
+        project.semantic.statements.push(SemanticStatement {
+            stmt_id: "stmt::let_secret".to_string(),
+            function_symbol_id: "fn::main".to_string(),
+            category: StatementCategory::Let,
+            span: Span::new("src/main.nr", let_start, let_end, 2, 1),
+        });
+        project.semantic.dfg_edges.push(DfgEdge {
+            function_symbol_id: "fn::main".to_string(),
+            from_node_id: "expr::call_secret".to_string(),
+            to_node_id: "stmt::let_secret".to_string(),
+            kind: DfgEdgeKind::DefUse,
+        });
+        project.semantic.dfg_edges.push(DfgEdge {
+            function_symbol_id: "fn::main".to_string(),
+            from_node_id: "stmt::let_secret".to_string(),
+            to_node_id: "def::secret".to_string(),
+            kind: DfgEdgeKind::DefUse,
+        });
+        project.semantic.dfg_edges.push(DfgEdge {
+            function_symbol_id: "fn::main".to_string(),
+            from_node_id: "def::secret".to_string(),
+            to_node_id: "expr::assert_guard".to_string(),
+            kind: DfgEdgeKind::UseDef,
+        });
+        project.semantic.call_sites.push(CallSite {
+            call_site_id: "call::1".to_string(),
+            function_symbol_id: "fn::main".to_string(),
+            callee_symbol_id: "fn::read_secret".to_string(),
+            expr_id: "expr::call_secret".to_string(),
+            span: Span::new("src/main.nr", let_start + 13, let_start + 26, 2, 1),
+        });
+        project.semantic.guard_nodes.push(GuardNode {
+            guard_id: "guard::assert::1".to_string(),
+            function_symbol_id: "fn::main".to_string(),
+            kind: GuardKind::Assert,
+            guarded_expr_id: Some("expr::assert_guard".to_string()),
+            span: Span::new(
+                "src/main.nr",
+                assert_expr_start.saturating_sub(7),
+                assert_expr_end + 1,
+                2,
+                1,
+            ),
+        });
+        project.normalize();
+
+        let context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), source.to_string())],
+        );
+        let mut diagnostics = Vec::new();
+        Noir030UnconstrainedInfluenceRule.run(&context, &mut diagnostics);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn semantic_test_path_is_ignored() {
+        let source = "unconstrained fn read_secret() -> Field { 7 }\nfn main() { let secret = read_secret(); assert(secret == 7); }";
+        let (unconstrained_start, unconstrained_end) =
+            span_range(source, "unconstrained fn read_secret() -> Field { 7 }");
+        let (main_start, main_end) = span_range(
+            source,
+            "fn main() { let secret = read_secret(); assert(secret == 7); }",
+        );
+        let (let_start, let_end) = span_range(source, "let secret = read_secret();");
+        let (assert_expr_start, assert_expr_end) = span_range(source, "secret == 7");
+
+        let mut project = ProjectModel::default();
+        project.semantic.functions.push(SemanticFunction {
+            symbol_id: "fn::read_secret".to_string(),
+            name: "read_secret".to_string(),
+            module_symbol_id: "module::main".to_string(),
+            return_type_repr: "Field".to_string(),
+            return_type_category: TypeCategory::Field,
+            parameter_types: Vec::new(),
+            is_entrypoint: false,
+            is_unconstrained: true,
+            span: Span::new(
+                "src/test/main.nr",
+                unconstrained_start,
+                unconstrained_end,
+                1,
+                1,
+            ),
+        });
+        project.semantic.functions.push(SemanticFunction {
+            symbol_id: "fn::main".to_string(),
+            name: "main".to_string(),
+            module_symbol_id: "module::main".to_string(),
+            return_type_repr: "()".to_string(),
+            return_type_category: TypeCategory::Unknown,
+            parameter_types: Vec::new(),
+            is_entrypoint: true,
+            is_unconstrained: false,
+            span: Span::new("src/test/main.nr", main_start, main_end, 2, 1),
+        });
+        project.semantic.expressions.push(SemanticExpression {
+            expr_id: "expr::call_secret".to_string(),
+            function_symbol_id: "fn::main".to_string(),
+            category: ExpressionCategory::Call,
+            type_category: TypeCategory::Field,
+            type_repr: "Field".to_string(),
+            span: Span::new("src/test/main.nr", let_start + 13, let_start + 26, 2, 1),
+        });
+        project.semantic.expressions.push(SemanticExpression {
+            expr_id: "expr::assert_guard".to_string(),
+            function_symbol_id: "fn::main".to_string(),
+            category: ExpressionCategory::BinaryOp,
+            type_category: TypeCategory::Bool,
+            type_repr: "bool".to_string(),
+            span: Span::new("src/test/main.nr", assert_expr_start, assert_expr_end, 2, 1),
+        });
+        project.semantic.statements.push(SemanticStatement {
+            stmt_id: "stmt::let_secret".to_string(),
+            function_symbol_id: "fn::main".to_string(),
+            category: StatementCategory::Let,
+            span: Span::new("src/test/main.nr", let_start, let_end, 2, 1),
+        });
+        project.semantic.dfg_edges.push(DfgEdge {
+            function_symbol_id: "fn::main".to_string(),
+            from_node_id: "expr::call_secret".to_string(),
+            to_node_id: "stmt::let_secret".to_string(),
+            kind: DfgEdgeKind::DefUse,
+        });
+        project.semantic.dfg_edges.push(DfgEdge {
+            function_symbol_id: "fn::main".to_string(),
+            from_node_id: "stmt::let_secret".to_string(),
+            to_node_id: "def::secret".to_string(),
+            kind: DfgEdgeKind::DefUse,
+        });
+        project.semantic.dfg_edges.push(DfgEdge {
+            function_symbol_id: "fn::main".to_string(),
+            from_node_id: "def::secret".to_string(),
+            to_node_id: "expr::assert_guard".to_string(),
+            kind: DfgEdgeKind::UseDef,
+        });
+        project.semantic.call_sites.push(CallSite {
+            call_site_id: "call::1".to_string(),
+            function_symbol_id: "fn::main".to_string(),
+            callee_symbol_id: "fn::read_secret".to_string(),
+            expr_id: "expr::call_secret".to_string(),
+            span: Span::new("src/test/main.nr", let_start + 13, let_start + 26, 2, 1),
+        });
+        project.semantic.guard_nodes.push(GuardNode {
+            guard_id: "guard::assert::1".to_string(),
+            function_symbol_id: "fn::main".to_string(),
+            kind: GuardKind::Assert,
+            guarded_expr_id: Some("expr::assert_guard".to_string()),
+            span: Span::new(
+                "src/test/main.nr",
+                assert_expr_start.saturating_sub(7),
+                assert_expr_end + 1,
+                2,
+                1,
+            ),
+        });
+        project.normalize();
+
+        let context = RuleContext::from_sources(
+            &project,
+            vec![("src/test/main.nr".to_string(), source.to_string())],
         );
         let mut diagnostics = Vec::new();
         Noir030UnconstrainedInfluenceRule.run(&context, &mut diagnostics);
