@@ -230,14 +230,14 @@ Changes:
 
 Validation:
 1. `cargo test -p aztec-lint-aztec performance_smoke_stays_bounded --locked` (temporary until new gate lands)
-2. `cargo run -p xtask -- perf-gate --check --locked` (post-Step 5)
+2. `cargo xtask perf-gate --check --locked` (post-Step 5)
 3. CI job must fail on budget violations.
 
 Failure modes to watch:
 1. Flaky timing gates from noisy environments without warm-up and repeated runs.
 2. Budgets too loose to catch regressions or too strict to permit valid improvements.
 
-## Step 5: Add lint-authoring and maintenance automation via xtask
+## Step 5: Add lint-authoring and maintenance automation via xtask **COMPLETED**
 
 Files:
 1. `Cargo.toml` (add workspace member)
@@ -270,9 +270,9 @@ Changes:
 4. Add `xtask lint-intake` command that imports/updates suggestion status from `docs/NEW_LINTS.md` into `docs/rule-roadmap.md`.
 
 Validation:
-1. `cargo run -p xtask -- new-lint --id NOIR130 --pack noir_core --category maintainability --tier preview --dry-run`
-2. `cargo run -p xtask -- update-lints --check`
-3. `cargo run -p xtask -- lint-intake --source docs/NEW_LINTS.md --check`
+1. `cargo xtask new-lint --id NOIR130 --pack noir_core --category maintainability --tier preview --dry-run`
+2. `cargo xtask update-lints --check`
+3. `cargo xtask lint-intake --source docs/NEW_LINTS.md --check`
 4. `cargo test --workspace --locked`
 
 Failure modes to watch:
@@ -300,7 +300,7 @@ Changes:
 4. Add roadmap view pages by intake status (`covered`, `accepted`, `deferred`, `rejected`) so `docs/NEW_LINTS.md` decisions remain auditable.
 
 Validation:
-1. `cargo run -p xtask -- docs-portal --check`
+1. `cargo xtask docs-portal --check`
 2. `rg -n "AZTEC001|NOIR001|Maturity|Category" docs/portal/index.md docs/portal/lints`
 3. CI docs job verifies no uncommitted generated changes.
 
@@ -342,7 +342,7 @@ Failure modes to watch:
 
 ## Rollout milestones (recommended)
 
-1. Milestone A (metadata + automation): Steps 0, 1, 5.
+1. Milestone A (metadata + automation): Steps 0, 1, 5. **COMPLETED**
 2. Milestone B (matrix harness + first corpus): Step 3.
 3. Milestone C (perf gates): Step 4 and CI integration from Step 7.
 4. Milestone D (docs portal + rule growth): Step 6 plus roadmap execution from Step 2.

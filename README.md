@@ -214,7 +214,7 @@ Required command contract (becomes mandatory as each command lands):
 
 ```bash
 # Scaffold a new lint from canonical templates
-cargo xtask new-lint --id <RULE_ID> --pack <PACK> --policy <POLICY> --tier <stable|preview|experimental>
+cargo xtask new-lint --id <RULE_ID> --pack <PACK> --category <CATEGORY> --tier <stable|preview|experimental> [--policy <POLICY>]
 
 # Regenerate derived lint artifacts and fail on drift
 cargo xtask update-lints
