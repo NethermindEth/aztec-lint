@@ -1,0 +1,21 @@
+[runner]
+warmup_runs = 2
+sample_runs = 9
+
+[[scenario]]
+id = "note_consumption_nullifier"
+fixture = "fixtures/bench/note_consumption_nullifier.nr"
+expected_min_flows = 1
+iterations = 250
+
+[[scenario]]
+id = "domain_separation_hash_tuple"
+fixture = "fixtures/bench/domain_separation_hash_tuple.nr"
+expected_min_flows = 1
+iterations = 250
+
+[[scenario]]
+id = "looped_hash_merkle_verification"
+fixture = "fixtures/bench/looped_hash_merkle_verification.nr"
+expected_min_flows = 1
+iterations = 250

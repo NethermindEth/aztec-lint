@@ -46,3 +46,6 @@ jobs:
           cargo test -p aztec-lint-cli --test ui_matrix --locked
           cargo test -p aztec-lint-cli --test fix_matrix --locked
           cargo test -p aztec-lint-cli --test corpus_matrix --locked
+
+      - name: Run performance budget gate
+        run: cargo xtask perf-gate --check --locked

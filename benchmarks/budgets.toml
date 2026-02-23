@@ -1,0 +1,18 @@
+[policy]
+noise_percent = 3.0
+hard_fail_percent = 8.0
+
+[allowlist]
+scenario_ids = []
+
+[budget.note_consumption_nullifier]
+median_ms = 40.6
+p95_ms = 41.6
+
+[budget.domain_separation_hash_tuple]
+median_ms = 36.1
+p95_ms = 37.2
+
+[budget.looped_hash_merkle_verification]
+median_ms = 63.6
+p95_ms = 66.4
