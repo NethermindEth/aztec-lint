@@ -15,6 +15,15 @@ Entries are grouped by released version.
 - `protocol`: `+0`
 - `soundness`: `+0`
 
+- Started second-wave rule scaffolding for `AZTEC036` through `AZTEC041` by wiring new Aztec rule modules and runtime registry entries in `aztec-lint-rules`.
+- Added placeholder rule implementations for:
+  - `AZTEC036` secret-branch affects enqueue
+  - `AZTEC037` secret-branch affects delivery count
+  - `AZTEC038` change-note missing fresh randomness
+  - `AZTEC039` partial spend not balanced
+  - `AZTEC040` initializer not only-self
+  - `AZTEC041` cast truncation risk
+
 ## [0.5.0]
 
 ### 2026-02-23

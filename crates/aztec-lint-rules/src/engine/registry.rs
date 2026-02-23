@@ -15,6 +15,12 @@ use crate::aztec::{
     aztec033_public_mutates_private_without_only_self::Aztec033PublicMutatesPrivateWithoutOnlySelfRule,
     aztec034_hash_input_not_range_constrained::Aztec034HashInputNotRangeConstrainedRule,
     aztec035_storage_key_suspicious::Aztec035StorageKeySuspiciousRule,
+    aztec036_secret_branch_affects_enqueue::Aztec036SecretBranchAffectsEnqueueRule,
+    aztec037_secret_branch_affects_delivery_count::Aztec037SecretBranchAffectsDeliveryCountRule,
+    aztec038_change_note_missing_fresh_randomness::Aztec038ChangeNoteMissingFreshRandomnessRule,
+    aztec039_partial_spend_not_balanced::Aztec039PartialSpendNotBalancedRule,
+    aztec040_initializer_not_only_self::Aztec040InitializerNotOnlySelfRule,
+    aztec041_cast_truncation_risk::Aztec041CastTruncationRiskRule,
 };
 use crate::noir_core::{
     noir001_unused::Noir001UnusedRule, noir002_shadowing::Noir002ShadowingRule,
@@ -54,6 +60,12 @@ pub fn full_registry() -> Vec<RuleRegistration> {
         register(Box::new(Aztec033PublicMutatesPrivateWithoutOnlySelfRule)),
         register(Box::new(Aztec034HashInputNotRangeConstrainedRule)),
         register(Box::new(Aztec035StorageKeySuspiciousRule)),
+        register(Box::new(Aztec036SecretBranchAffectsEnqueueRule)),
+        register(Box::new(Aztec037SecretBranchAffectsDeliveryCountRule)),
+        register(Box::new(Aztec038ChangeNoteMissingFreshRandomnessRule)),
+        register(Box::new(Aztec039PartialSpendNotBalancedRule)),
+        register(Box::new(Aztec040InitializerNotOnlySelfRule)),
+        register(Box::new(Aztec041CastTruncationRiskRule)),
     ]
 }
 

@@ -1,4 +1,4 @@
-checked=. profile=aztec changed_only=false active_rules=22
+checked=. profile=aztec changed_only=false active_rules=28
 warning[NOIR100]: magic number `4` should be named
   --> src/main.nr:1:22
    |

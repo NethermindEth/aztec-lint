@@ -411,6 +411,192 @@ References:
 - `docs/rule-authoring.md`
 - `docs/suppression.md`
 
+### AZTEC036
+
+- Pack: `aztec_pack`
+- Category: `privacy`
+- Maturity: `preview`
+- Policy: `privacy`
+- Default Level: `warn`
+- Confidence: `medium`
+- Introduced In: `0.6.0`
+- Lifecycle: `active`
+- Summary: Secret-dependent branch affects enqueue behavior.
+
+What it does:
+Flags private or secret-influenced branching that changes whether or how enqueue-style bridge calls are emitted.
+
+Why this matters:
+Observer-visible enqueue shape differences can leak private branch decisions.
+
+Known limitations:
+Pattern matching is currently heuristic and may not cover every custom enqueue wrapper.
+
+How to fix:
+Refactor enqueue behavior so public bridge decisions are independent of secret branch predicates.
+
+Examples:
+- Emit a fixed enqueue pattern and move secret-dependent logic into constrained private computation.
+
+References:
+- `docs/rule-authoring.md`
+- `docs/decisions/0003-confidence-model.md`
+
+### AZTEC037
+
+- Pack: `aztec_pack`
+- Category: `privacy`
+- Maturity: `preview`
+- Policy: `privacy`
+- Default Level: `warn`
+- Confidence: `medium`
+- Introduced In: `0.6.0`
+- Lifecycle: `active`
+- Summary: Secret-dependent branch affects delivery count.
+
+What it does:
+Reports branch-dependent behavior where secret inputs influence the number or presence of delivery-style effects.
+
+Why this matters:
+Varying delivery cardinality on secret predicates can reveal private state through externally visible behavior.
+
+Known limitations:
+Delivery sink coverage is currently scoped to recognized call patterns.
+
+How to fix:
+Keep delivery count and emission structure invariant with respect to secret branch conditions.
+
+Examples:
+- Avoid conditional delivery emission based on private note values.
+
+References:
+- `docs/rule-authoring.md`
+- `docs/decisions/0003-confidence-model.md`
+
+### AZTEC038
+
+- Pack: `aztec_pack`
+- Category: `correctness`
+- Maturity: `preview`
+- Policy: `correctness`
+- Default Level: `warn`
+- Confidence: `low`
+- Introduced In: `0.6.0`
+- Lifecycle: `active`
+- Summary: Change note appears to miss fresh randomness.
+
+What it does:
+Detects change-note construction patterns that appear to reuse deterministic randomness or omit freshness inputs.
+
+Why this matters:
+Weak randomness freshness can increase linkage risk and break expected note uniqueness properties.
+
+Known limitations:
+Freshness detection is heuristic and may miss user-defined entropy helper conventions.
+
+How to fix:
+Derive change-note randomness from a fresh, non-reused source and thread it explicitly into note construction.
+
+Examples:
+- Use a per-note fresh randomness value instead of reusing an existing note nonce.
+
+References:
+- `docs/rule-authoring.md`
+- `docs/suppression.md`
+
+### AZTEC039
+
+- Pack: `aztec_pack`
+- Category: `correctness`
+- Maturity: `preview`
+- Policy: `correctness`
+- Default Level: `warn`
+- Confidence: `low`
+- Introduced In: `0.6.0`
+- Lifecycle: `active`
+- Summary: Partial spend logic appears unbalanced.
+
+What it does:
+Flags partial-spend arithmetic patterns that do not clearly reconcile consumed, spent, and change values.
+
+Why this matters:
+Unbalanced partial-spend accounting can cause invalid state transitions or silent value drift.
+
+Known limitations:
+Equivalent arithmetic forms may not all be recognized by pattern-driven detection.
+
+How to fix:
+Make spend and change reconciliation explicit and assert conservation-style invariants near the transition point.
+
+Examples:
+- Ensure `consumed = spend + change` is enforced before emitting updated notes.
+
+References:
+- `docs/rule-authoring.md`
+- `docs/suppression.md`
+
+### AZTEC040
+
+- Pack: `aztec_pack`
+- Category: `protocol`
+- Maturity: `preview`
+- Policy: `protocol`
+- Default Level: `deny`
+- Confidence: `high`
+- Introduced In: `0.6.0`
+- Lifecycle: `active`
+- Summary: Initializer entrypoint missing #[only_self].
+
+What it does:
+Reports initializer functions that are not protected by the expected only-self access restriction.
+
+Why this matters:
+Unrestricted initializers can allow unauthorized setup flows or protocol-state takeover.
+
+Known limitations:
+Framework-equivalent guards not expressed through the configured only-self signal may need suppression.
+
+How to fix:
+Annotate initializer entrypoints with `#[only_self]` or move privileged initialization behind a self-only gate.
+
+Examples:
+- Mark contract initializer functions with `#[only_self]` before deployment use.
+
+References:
+- `docs/rule-authoring.md`
+- `docs/decisions/0001-aztec010-scope.md`
+
+### AZTEC041
+
+- Pack: `aztec_pack`
+- Category: `correctness`
+- Maturity: `preview`
+- Policy: `correctness`
+- Default Level: `warn`
+- Confidence: `medium`
+- Introduced In: `0.6.0`
+- Lifecycle: `active`
+- Summary: Field/integer cast may truncate or wrap unexpectedly.
+
+What it does:
+Finds cast patterns between Field and bounded integers that lack nearby guard conditions proving safe range.
+
+Why this matters:
+Unchecked narrowing conversions can silently corrupt values and invalidate downstream protocol logic.
+
+Known limitations:
+Guard recognition focuses on known range-check idioms and may miss custom helper abstractions.
+
+How to fix:
+Add explicit range checks before narrowing casts and keep the guarded value flow local and visible.
+
+Examples:
+- Assert value bounds before converting `Field` into a narrower integer type.
+
+References:
+- `docs/rule-authoring.md`
+- `docs/decisions/0003-confidence-model.md`
+
 ## Noir Core Pack
 
 ### NOIR001
