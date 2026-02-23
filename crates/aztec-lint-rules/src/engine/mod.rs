@@ -252,7 +252,9 @@ mod tests {
 
     use aztec_lint_core::config::RuleLevel;
     use aztec_lint_core::diagnostics::{Confidence, Diagnostic, DiagnosticViolationKind, Severity};
-    use aztec_lint_core::lints::{LintCategory, LintDocs, LintLifecycleState, LintSpec, find_lint};
+    use aztec_lint_core::lints::{
+        LintCategory, LintDocs, LintLifecycleState, LintMaturityTier, LintSpec, find_lint,
+    };
     use aztec_lint_core::model::ProjectModel;
     use aztec_lint_core::model::Span;
 
@@ -473,6 +475,7 @@ fn baseline_scope() {
             pack,
             policy,
             category: LintCategory::Correctness,
+            maturity: LintMaturityTier::Stable,
             introduced_in: "0.1.0",
             default_level: RuleLevel::Warn,
             confidence: Confidence::Medium,

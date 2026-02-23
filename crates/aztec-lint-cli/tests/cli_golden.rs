@@ -92,23 +92,23 @@ fn git(root: &Path, args: &[&str]) {
 #[test]
 fn rules_command_matches_golden_output() {
     let expected = "\
-RULE_ID\tPACK\tPOLICY\tCONFIDENCE\tSUMMARY\n\
-AZTEC001\taztec_pack\tprivacy\tmedium\tPrivate data reaches a public sink.\n\
-AZTEC002\taztec_pack\tprivacy\tlow\tSecret-dependent branching affects public state.\n\
-AZTEC003\taztec_pack\tprivacy\tmedium\tPrivate entrypoint uses debug logging.\n\
-AZTEC010\taztec_pack\tprotocol\thigh\tPrivate to public bridge requires #[only_self].\n\
-AZTEC020\taztec_pack\tsoundness\thigh\tUnconstrained influence reaches commitments, storage, or nullifiers.\n\
-AZTEC021\taztec_pack\tsoundness\tmedium\tMissing range constraints before hashing or serialization.\n\
-AZTEC022\taztec_pack\tsoundness\tmedium\tSuspicious Merkle witness usage.\n\
-NOIR001\tnoir_core\tcorrectness\thigh\tUnused variable or import.\n\
-NOIR002\tnoir_core\tcorrectness\tmedium\tSuspicious shadowing.\n\
-NOIR010\tnoir_core\tcorrectness\thigh\tBoolean computed but not asserted.\n\
-NOIR020\tnoir_core\tcorrectness\thigh\tArray indexing without bounds validation.\n\
-NOIR030\tnoir_core\tcorrectness\tmedium\tUnconstrained value influences constrained logic.\n\
-NOIR100\tnoir_core\tmaintainability\thigh\tMagic number literal should be named.\n\
-NOIR101\tnoir_core\tmaintainability\tlow\tRepeated local initializer magic number should be named.\n\
-NOIR110\tnoir_core\tmaintainability\tlow\tFunction complexity exceeds threshold.\n\
-NOIR120\tnoir_core\tmaintainability\tlow\tFunction nesting depth exceeds threshold.\n";
+RULE_ID\tPACK\tCATEGORY\tMATURITY\tPOLICY\tCONFIDENCE\tSUMMARY\n\
+AZTEC001\taztec_pack\tprivacy\tstable\tprivacy\tmedium\tPrivate data reaches a public sink.\n\
+AZTEC002\taztec_pack\tprivacy\tpreview\tprivacy\tlow\tSecret-dependent branching affects public state.\n\
+AZTEC003\taztec_pack\tprivacy\tstable\tprivacy\tmedium\tPrivate entrypoint uses debug logging.\n\
+AZTEC010\taztec_pack\tprotocol\tstable\tprotocol\thigh\tPrivate to public bridge requires #[only_self].\n\
+AZTEC020\taztec_pack\tsoundness\tstable\tsoundness\thigh\tUnconstrained influence reaches commitments, storage, or nullifiers.\n\
+AZTEC021\taztec_pack\tsoundness\tstable\tsoundness\tmedium\tMissing range constraints before hashing or serialization.\n\
+AZTEC022\taztec_pack\tsoundness\tstable\tsoundness\tmedium\tSuspicious Merkle witness usage.\n\
+NOIR001\tnoir_core\tcorrectness\tstable\tcorrectness\thigh\tUnused variable or import.\n\
+NOIR002\tnoir_core\tcorrectness\tstable\tcorrectness\tmedium\tSuspicious shadowing.\n\
+NOIR010\tnoir_core\tcorrectness\tstable\tcorrectness\thigh\tBoolean computed but not asserted.\n\
+NOIR020\tnoir_core\tcorrectness\tstable\tcorrectness\thigh\tArray indexing without bounds validation.\n\
+NOIR030\tnoir_core\tcorrectness\tstable\tcorrectness\tmedium\tUnconstrained value influences constrained logic.\n\
+NOIR100\tnoir_core\tmaintainability\tstable\tmaintainability\thigh\tMagic number literal should be named.\n\
+NOIR101\tnoir_core\tmaintainability\tpreview\tmaintainability\tlow\tRepeated local initializer magic number should be named.\n\
+NOIR110\tnoir_core\tmaintainability\tpreview\tmaintainability\tlow\tFunction complexity exceeds threshold.\n\
+NOIR120\tnoir_core\tmaintainability\tpreview\tmaintainability\tlow\tFunction nesting depth exceeds threshold.\n";
 
     let mut cmd = cli_bin();
     cmd.arg("rules");
@@ -121,6 +121,7 @@ fn explain_command_matches_golden_output() {
 Rule: AZTEC001\n\
 Pack: aztec_pack\n\
 Category: privacy\n\
+Maturity: stable\n\
 Policy: privacy\n\
 Default Level: deny\n\
 Confidence: medium\n\
@@ -256,6 +257,7 @@ fn explain_supports_rules_from_canonical_catalog() {
 Rule: AZTEC022\n\
 Pack: aztec_pack\n\
 Category: soundness\n\
+Maturity: stable\n\
 Policy: soundness\n\
 Default Level: deny\n\
 Confidence: medium\n\

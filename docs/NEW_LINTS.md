@@ -179,7 +179,7 @@ This is very Clippy-esque: detect suspicious repetition.
 
 ### Recommended metadata per lint
 
-* `policy`: `privacy|protocol|soundness|cost|correctness`
+* `policy`: `privacy|protocol|soundness|performance|correctness` (`cost` is acceptable roadmap shorthand but canonical metadata should use `performance`)
 * `confidence`: `high|medium|low`
 * `default severity`: `deny` only for high-confidence protocol breaks (`ENQUEUE_NOT_ONLY_SELF`, `NOTE_CONSUMED_WITHOUT_NULLIFIER` if reliable)
 

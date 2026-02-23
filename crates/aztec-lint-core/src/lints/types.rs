@@ -22,6 +22,32 @@ impl LintCategory {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum LintMaturityTier {
+    Stable,
+    Preview,
+    Experimental,
+}
+
+impl LintMaturityTier {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Stable => "stable",
+            Self::Preview => "preview",
+            Self::Experimental => "experimental",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "stable" => Some(Self::Stable),
+            "preview" => Some(Self::Preview),
+            "experimental" => Some(Self::Experimental),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LintLifecycleState {
     Active,
@@ -95,6 +121,7 @@ pub struct LintSpec {
     pub pack: &'static str,
     pub policy: &'static str,
     pub category: LintCategory,
+    pub maturity: LintMaturityTier,
     pub introduced_in: &'static str,
     pub default_level: RuleLevel,
     pub confidence: Confidence,

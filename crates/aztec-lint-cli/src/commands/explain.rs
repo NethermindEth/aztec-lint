@@ -19,6 +19,7 @@ pub fn run(args: ExplainArgs) -> Result<ExitCode, CliError> {
     println!("Rule: {}", rule.id);
     println!("Pack: {}", rule.pack);
     println!("Category: {}", rule.category.as_str());
+    println!("Maturity: {}", rule.maturity.as_str());
     println!("Policy: {}", rule.policy);
     println!("Default Level: {}", rule.default_level);
     println!("Confidence: {}", confidence_label(rule.confidence));

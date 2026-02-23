@@ -4,7 +4,7 @@ use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use crate::config::ConfigError;
-use crate::lints::{LintLifecycleState, LintSpec, all_lints};
+use crate::lints::{LintLifecycleState, LintMaturityTier, LintSpec, all_lints};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RawConfig {
@@ -201,10 +201,9 @@ impl Config {
         let mut levels = BTreeMap::<String, RuleLevel>::new();
 
         for ruleset in &resolved.rulesets {
-            let defaults =
-                ruleset_defaults(ruleset).ok_or_else(|| ConfigError::UnknownRuleset {
-                    ruleset: ruleset.clone(),
-                })?;
+            let defaults = ruleset_defaults(ruleset).map_err(|()| ConfigError::UnknownRuleset {
+                ruleset: ruleset.clone(),
+            })?;
             for (rule_id, level) in defaults {
                 levels.insert(rule_id.to_string(), level);
             }
@@ -360,6 +359,19 @@ pub fn builtin_profiles() -> BTreeMap<String, Profile> {
                 allow: Vec::new(),
             },
         ),
+        (
+            "aztec_strict".to_string(),
+            Profile {
+                extends: vec!["aztec".to_string()],
+                ruleset: vec![
+                    "aztec_pack@preview".to_string(),
+                    "aztec_pack@experimental".to_string(),
+                ],
+                deny: Vec::new(),
+                warn: Vec::new(),
+                allow: Vec::new(),
+            },
+        ),
     ])
 }
 
@@ -457,19 +469,70 @@ fn resolve_override_rule_id_for_catalog<'a>(
     }
 }
 
-fn ruleset_defaults(ruleset: &str) -> Option<Vec<(&'static str, RuleLevel)>> {
+fn ruleset_defaults(ruleset: &str) -> Result<Vec<(&'static str, RuleLevel)>, ()> {
+    let selector = parse_ruleset_selector(ruleset).ok_or(())?;
     let mut defaults = all_lints()
         .iter()
-        .filter(|lint| lint.pack == ruleset && lint.lifecycle.is_active())
+        .filter(|lint| lint.lifecycle.is_active())
+        .filter(|lint| selector.matches(lint))
         .map(|lint| (lint.id, lint.default_level))
         .collect::<Vec<_>>();
+    defaults.sort_unstable_by_key(|(rule_id, _)| *rule_id);
+    Ok(defaults)
+}
 
-    if defaults.is_empty() {
+#[derive(Clone, Copy)]
+enum RulesetSelector<'a> {
+    Pack(&'a str),
+    Tier(LintMaturityTier),
+    PackAndTier {
+        pack: &'a str,
+        tier: LintMaturityTier,
+    },
+}
+
+impl RulesetSelector<'_> {
+    fn matches(self, lint: &LintSpec) -> bool {
+        match self {
+            Self::Pack(pack) => lint.pack == pack,
+            Self::Tier(tier) => lint.maturity == tier,
+            Self::PackAndTier { pack, tier } => lint.pack == pack && lint.maturity == tier,
+        }
+    }
+}
+
+fn parse_ruleset_selector(ruleset: &str) -> Option<RulesetSelector<'_>> {
+    let trimmed = ruleset.trim();
+    if trimmed.is_empty() {
         return None;
     }
 
-    defaults.sort_unstable_by_key(|(rule_id, _)| *rule_id);
-    Some(defaults)
+    if let Some(tier) = trimmed.strip_prefix("tier:") {
+        return LintMaturityTier::parse(tier).map(RulesetSelector::Tier);
+    }
+    if let Some(tier) = trimmed.strip_prefix("maturity:") {
+        return LintMaturityTier::parse(tier).map(RulesetSelector::Tier);
+    }
+
+    if let Some((pack, tier)) = trimmed.split_once('@') {
+        if pack.is_empty() {
+            return None;
+        }
+        let tier = LintMaturityTier::parse(tier)?;
+        if !pack_exists(pack) {
+            return None;
+        }
+        return Some(RulesetSelector::PackAndTier { pack, tier });
+    }
+
+    if !pack_exists(trimmed) {
+        return None;
+    }
+    Some(RulesetSelector::Pack(trimmed))
+}
+
+fn pack_exists(pack: &str) -> bool {
+    all_lints().iter().any(|lint| lint.pack == pack)
 }
 
 fn default_contract_attribute() -> String {
@@ -541,7 +604,7 @@ mod tests {
     use super::{Config, RawConfig, RuleLevel, RuleOverrides};
     use crate::config::ConfigError;
     use crate::diagnostics::Confidence;
-    use crate::lints::{LintCategory, LintDocs, LintLifecycleState, LintSpec};
+    use crate::lints::{LintCategory, LintDocs, LintLifecycleState, LintMaturityTier, LintSpec};
     use crate::policy::CORRECTNESS;
 
     const SPEC_SAMPLE_CONFIG: &str = r#"
@@ -608,6 +671,101 @@ verbose_blocked_notes = false
             config.aztec.domain_separation.nullifier_requires,
             vec!["contract_address", "nonce"]
         );
+    }
+
+    #[test]
+    fn builtin_profiles_include_aztec_strict() {
+        let config = Config::default();
+        let resolved = config
+            .resolve_profile("aztec_strict")
+            .expect("aztec_strict profile should resolve");
+        assert_eq!(
+            resolved.rulesets,
+            vec![
+                "noir_core".to_string(),
+                "aztec_pack".to_string(),
+                "aztec_pack@preview".to_string(),
+                "aztec_pack@experimental".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn ruleset_selector_supports_tier_and_pack_tier() {
+        let raw: RawConfig = toml::from_str(
+            r#"
+[profile.default]
+ruleset = ["tier:stable", "aztec_pack@preview"]
+"#,
+        )
+        .expect("config with tier selectors must parse");
+        let config = Config::from_raw(raw);
+        let levels = config
+            .effective_rule_levels("default", &RuleOverrides::default())
+            .expect("tier selectors should resolve");
+
+        assert!(
+            levels.contains_key("NOIR001"),
+            "stable tier should include NOIR001"
+        );
+        assert!(
+            levels.contains_key("AZTEC002"),
+            "aztec_pack@preview should include AZTEC002"
+        );
+        assert!(
+            !levels.contains_key("NOIR101"),
+            "noir_core preview lint should not be included by aztec_pack@preview"
+        );
+    }
+
+    #[test]
+    fn ruleset_selector_supports_maturity_alias() {
+        let raw: RawConfig = toml::from_str(
+            r#"
+[profile.default]
+ruleset = ["maturity:preview"]
+"#,
+        )
+        .expect("config with maturity alias must parse");
+        let config = Config::from_raw(raw);
+        let levels = config
+            .effective_rule_levels("default", &RuleOverrides::default())
+            .expect("maturity alias selector should resolve");
+
+        assert!(
+            levels.contains_key("AZTEC002"),
+            "preview selector should include AZTEC002"
+        );
+        assert!(
+            levels.contains_key("NOIR101"),
+            "preview selector should include NOIR101"
+        );
+        assert!(
+            !levels.contains_key("NOIR001"),
+            "preview selector should not include stable-only lint NOIR001"
+        );
+    }
+
+    #[test]
+    fn ruleset_selector_rejects_invalid_tier_name() {
+        let raw: RawConfig = toml::from_str(
+            r#"
+[profile.default]
+ruleset = ["tier:beta"]
+"#,
+        )
+        .expect("config with invalid tier selector must parse as TOML");
+        let config = Config::from_raw(raw);
+        let err = config
+            .effective_rule_levels("default", &RuleOverrides::default())
+            .expect_err("invalid tier selector should fail with unknown ruleset");
+
+        match err {
+            ConfigError::UnknownRuleset { ruleset } => {
+                assert_eq!(ruleset, "tier:beta");
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 
     #[test]
@@ -769,6 +927,7 @@ deny = ["NOIR404"]
                 pack: "noir_core",
                 policy: CORRECTNESS,
                 category: LintCategory::Correctness,
+                maturity: LintMaturityTier::Stable,
                 introduced_in: "0.1.0",
                 default_level: RuleLevel::Deny,
                 confidence: Confidence::High,
@@ -788,6 +947,7 @@ deny = ["NOIR404"]
                 pack: "noir_core",
                 policy: CORRECTNESS,
                 category: LintCategory::Correctness,
+                maturity: LintMaturityTier::Stable,
                 introduced_in: "0.1.0",
                 default_level: RuleLevel::Deny,
                 confidence: Confidence::High,

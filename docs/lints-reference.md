@@ -4,12 +4,15 @@ This document lists active enforced lints in `aztec-lint` and explains what each
 
 Source of truth for this data is the canonical lint metadata catalog in `crates/aztec-lint-core/src/lints/mod.rs`.
 
+Policy note: `performance` is the canonical metadata policy name; roadmap shorthand `cost` maps to `performance`.
+
 ## AZTEC Pack
 
 ### AZTEC001
 
 - Pack: `aztec_pack`
 - Category: `privacy`
+- Maturity: `stable`
 - Policy: `privacy`
 - Default Level: `deny`
 - Confidence: `medium`
@@ -40,6 +43,7 @@ References:
 
 - Pack: `aztec_pack`
 - Category: `privacy`
+- Maturity: `preview`
 - Policy: `privacy`
 - Default Level: `deny`
 - Confidence: `low`
@@ -70,6 +74,7 @@ References:
 
 - Pack: `aztec_pack`
 - Category: `privacy`
+- Maturity: `stable`
 - Policy: `privacy`
 - Default Level: `deny`
 - Confidence: `medium`
@@ -100,6 +105,7 @@ References:
 
 - Pack: `aztec_pack`
 - Category: `protocol`
+- Maturity: `stable`
 - Policy: `protocol`
 - Default Level: `deny`
 - Confidence: `high`
@@ -130,6 +136,7 @@ References:
 
 - Pack: `aztec_pack`
 - Category: `soundness`
+- Maturity: `stable`
 - Policy: `soundness`
 - Default Level: `deny`
 - Confidence: `high`
@@ -160,6 +167,7 @@ References:
 
 - Pack: `aztec_pack`
 - Category: `soundness`
+- Maturity: `stable`
 - Policy: `soundness`
 - Default Level: `deny`
 - Confidence: `medium`
@@ -190,6 +198,7 @@ References:
 
 - Pack: `aztec_pack`
 - Category: `soundness`
+- Maturity: `stable`
 - Policy: `soundness`
 - Default Level: `deny`
 - Confidence: `medium`
@@ -222,6 +231,7 @@ References:
 
 - Pack: `noir_core`
 - Category: `correctness`
+- Maturity: `stable`
 - Policy: `correctness`
 - Default Level: `deny`
 - Confidence: `high`
@@ -251,6 +261,7 @@ References:
 
 - Pack: `noir_core`
 - Category: `correctness`
+- Maturity: `stable`
 - Policy: `correctness`
 - Default Level: `deny`
 - Confidence: `medium`
@@ -280,6 +291,7 @@ References:
 
 - Pack: `noir_core`
 - Category: `correctness`
+- Maturity: `stable`
 - Policy: `correctness`
 - Default Level: `deny`
 - Confidence: `high`
@@ -309,6 +321,7 @@ References:
 
 - Pack: `noir_core`
 - Category: `correctness`
+- Maturity: `stable`
 - Policy: `correctness`
 - Default Level: `deny`
 - Confidence: `high`
@@ -338,6 +351,7 @@ References:
 
 - Pack: `noir_core`
 - Category: `correctness`
+- Maturity: `stable`
 - Policy: `correctness`
 - Default Level: `deny`
 - Confidence: `medium`
@@ -368,6 +382,7 @@ References:
 
 - Pack: `noir_core`
 - Category: `maintainability`
+- Maturity: `stable`
 - Policy: `maintainability`
 - Default Level: `warn`
 - Confidence: `high`
@@ -397,6 +412,7 @@ References:
 
 - Pack: `noir_core`
 - Category: `maintainability`
+- Maturity: `preview`
 - Policy: `maintainability`
 - Default Level: `warn`
 - Confidence: `low`
@@ -427,6 +443,7 @@ References:
 
 - Pack: `noir_core`
 - Category: `maintainability`
+- Maturity: `preview`
 - Policy: `maintainability`
 - Default Level: `warn`
 - Confidence: `low`
@@ -456,6 +473,7 @@ References:
 
 - Pack: `noir_core`
 - Category: `maintainability`
+- Maturity: `preview`
 - Policy: `maintainability`
 - Default Level: `warn`
 - Confidence: `low`

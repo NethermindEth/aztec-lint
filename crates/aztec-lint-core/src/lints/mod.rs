@@ -6,7 +6,7 @@ use crate::policy::{CORRECTNESS, MAINTAINABILITY, PRIVACY, PROTOCOL, SOUNDNESS};
 
 pub mod types;
 
-pub use types::{LintCategory, LintDocs, LintLifecycleState, LintSpec};
+pub use types::{LintCategory, LintDocs, LintLifecycleState, LintMaturityTier, LintSpec};
 
 const INTRODUCED_IN_V0_1_0: &str = "0.1.0";
 
@@ -21,6 +21,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         pack: "aztec_pack",
         policy: PRIVACY,
         category: LintCategory::Privacy,
+        maturity: LintMaturityTier::Stable,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Deny,
         confidence: Confidence::Medium,
@@ -40,6 +41,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         pack: "aztec_pack",
         policy: PRIVACY,
         category: LintCategory::Privacy,
+        maturity: LintMaturityTier::Preview,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Deny,
         confidence: Confidence::Low,
@@ -59,6 +61,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         pack: "aztec_pack",
         policy: PRIVACY,
         category: LintCategory::Privacy,
+        maturity: LintMaturityTier::Stable,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Deny,
         confidence: Confidence::Medium,
@@ -78,6 +81,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         pack: "aztec_pack",
         policy: PROTOCOL,
         category: LintCategory::Protocol,
+        maturity: LintMaturityTier::Stable,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Deny,
         confidence: Confidence::High,
@@ -97,6 +101,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         pack: "aztec_pack",
         policy: SOUNDNESS,
         category: LintCategory::Soundness,
+        maturity: LintMaturityTier::Stable,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Deny,
         confidence: Confidence::High,
@@ -116,6 +121,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         pack: "aztec_pack",
         policy: SOUNDNESS,
         category: LintCategory::Soundness,
+        maturity: LintMaturityTier::Stable,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Deny,
         confidence: Confidence::Medium,
@@ -135,6 +141,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         pack: "aztec_pack",
         policy: SOUNDNESS,
         category: LintCategory::Soundness,
+        maturity: LintMaturityTier::Stable,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Deny,
         confidence: Confidence::Medium,
@@ -156,6 +163,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         pack: "noir_core",
         policy: CORRECTNESS,
         category: LintCategory::Correctness,
+        maturity: LintMaturityTier::Stable,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Deny,
         confidence: Confidence::High,
@@ -175,6 +183,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         pack: "noir_core",
         policy: CORRECTNESS,
         category: LintCategory::Correctness,
+        maturity: LintMaturityTier::Stable,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Deny,
         confidence: Confidence::Medium,
@@ -194,6 +203,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         pack: "noir_core",
         policy: CORRECTNESS,
         category: LintCategory::Correctness,
+        maturity: LintMaturityTier::Stable,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Deny,
         confidence: Confidence::High,
@@ -213,6 +223,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         pack: "noir_core",
         policy: CORRECTNESS,
         category: LintCategory::Correctness,
+        maturity: LintMaturityTier::Stable,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Deny,
         confidence: Confidence::High,
@@ -232,6 +243,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         pack: "noir_core",
         policy: CORRECTNESS,
         category: LintCategory::Correctness,
+        maturity: LintMaturityTier::Stable,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Deny,
         confidence: Confidence::Medium,
@@ -251,6 +263,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         pack: "noir_core",
         policy: MAINTAINABILITY,
         category: LintCategory::Maintainability,
+        maturity: LintMaturityTier::Stable,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Warn,
         confidence: Confidence::High,
@@ -270,6 +283,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         pack: "noir_core",
         policy: MAINTAINABILITY,
         category: LintCategory::Maintainability,
+        maturity: LintMaturityTier::Preview,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Warn,
         confidence: Confidence::Low,
@@ -289,6 +303,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         pack: "noir_core",
         policy: MAINTAINABILITY,
         category: LintCategory::Maintainability,
+        maturity: LintMaturityTier::Preview,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Warn,
         confidence: Confidence::Low,
@@ -308,6 +323,7 @@ const ALL_LINT_SPECS: &[LintSpec] = &[
         pack: "noir_core",
         policy: MAINTAINABILITY,
         category: LintCategory::Maintainability,
+        maturity: LintMaturityTier::Preview,
         introduced_in: INTRODUCED_IN_V0_1_0,
         default_level: RuleLevel::Warn,
         confidence: Confidence::Low,
@@ -338,6 +354,8 @@ pub fn normalize_lint_id(rule_id: &str) -> String {
 }
 
 pub fn render_lints_reference_markdown() -> String {
+    use std::collections::BTreeMap;
+
     let mut output = String::new();
     let _ = writeln!(output, "# Lint Reference");
     let _ = writeln!(output);
@@ -351,24 +369,28 @@ pub fn render_lints_reference_markdown() -> String {
         "Source of truth for this data is the canonical lint metadata catalog in `crates/aztec-lint-core/src/lints/mod.rs`."
     );
     let _ = writeln!(output);
+    let _ = writeln!(
+        output,
+        "Policy note: `performance` is the canonical metadata policy name; roadmap shorthand `cost` maps to `performance`."
+    );
+    let _ = writeln!(output);
 
-    for pack in ["aztec_pack", "noir_core"] {
-        let heading = match pack {
-            "aztec_pack" => "## AZTEC Pack",
-            "noir_core" => "## Noir Core Pack",
-            _ => continue,
-        };
-        let _ = writeln!(output, "{heading}");
+    let mut grouped = BTreeMap::<&str, Vec<&LintSpec>>::new();
+    for lint in all_lints().iter().filter(|lint| lint.lifecycle.is_active()) {
+        grouped.entry(lint.pack).or_default().push(lint);
+    }
+
+    for (pack, mut lints) in grouped {
+        lints.sort_unstable_by_key(|lint| lint.id);
+        let _ = writeln!(output, "## {}", pack_heading(pack));
         let _ = writeln!(output);
 
-        for lint in all_lints()
-            .iter()
-            .filter(|lint| lint.lifecycle.is_active() && lint.pack == pack)
-        {
+        for lint in lints {
             let _ = writeln!(output, "### {}", lint.id);
             let _ = writeln!(output);
             let _ = writeln!(output, "- Pack: `{}`", lint.pack);
             let _ = writeln!(output, "- Category: `{}`", lint.category.as_str());
+            let _ = writeln!(output, "- Maturity: `{}`", lint.maturity.as_str());
             let _ = writeln!(output, "- Policy: `{}`", lint.policy);
             let _ = writeln!(output, "- Default Level: `{}`", lint.default_level);
             let _ = writeln!(
@@ -406,6 +428,30 @@ pub fn render_lints_reference_markdown() -> String {
     }
 
     output
+}
+
+fn pack_heading(pack: &str) -> String {
+    let mut words = pack
+        .split('_')
+        .filter(|segment| !segment.is_empty())
+        .map(|segment| {
+            if segment == "aztec" {
+                "AZTEC".to_string()
+            } else {
+                let mut chars = segment.chars();
+                let Some(first) = chars.next() else {
+                    return String::new();
+                };
+                format!("{}{}", first.to_ascii_uppercase(), chars.as_str())
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if !words.iter().any(|word| word == "Pack") {
+        words.push("Pack".to_string());
+    }
+
+    words.join(" ")
 }
 
 const fn confidence_label(confidence: Confidence) -> &'static str {
@@ -449,9 +495,24 @@ fn validate_catalog_integrity(catalog: &[LintSpec]) -> Result<(), String> {
                 lint.id
             ));
         }
+        if lint.policy == "cost" {
+            return Err(format!(
+                "lint '{}' uses non-canonical policy 'cost'; use 'performance'",
+                lint.id
+            ));
+        }
         if lint.lifecycle.is_active() && !lint.docs.has_required_fields() {
             return Err(format!(
                 "active lint '{}' is missing required docs fields",
+                lint.id
+            ));
+        }
+        if lint.lifecycle.is_active()
+            && lint.maturity == LintMaturityTier::Stable
+            && lint.confidence == Confidence::Low
+        {
+            return Err(format!(
+                "stable lint '{}' must not have low confidence; lower maturity or raise confidence",
                 lint.id
             ));
         }
@@ -543,8 +604,8 @@ mod tests {
     use std::path::PathBuf;
 
     use super::{
-        LintCategory, LintDocs, LintLifecycleState, LintSpec, all_lints, find_lint,
-        render_lints_reference_markdown, validate_catalog_integrity,
+        LintCategory, LintDocs, LintLifecycleState, LintMaturityTier, LintSpec, all_lints,
+        find_lint, render_lints_reference_markdown, validate_catalog_integrity,
     };
     use crate::config::RuleLevel;
     use crate::diagnostics::Confidence;
@@ -582,6 +643,7 @@ mod tests {
             pack: "noir_core",
             policy: CORRECTNESS,
             category: LintCategory::Correctness,
+            maturity: LintMaturityTier::Stable,
             introduced_in: "0.2.0",
             default_level: RuleLevel::Deny,
             confidence: Confidence::Low,
@@ -608,6 +670,7 @@ mod tests {
                 pack: "noir_core",
                 policy: CORRECTNESS,
                 category: LintCategory::Correctness,
+                maturity: LintMaturityTier::Stable,
                 introduced_in: "0.2.0",
                 default_level: RuleLevel::Warn,
                 confidence: Confidence::Low,
@@ -623,6 +686,7 @@ mod tests {
                 pack: "noir_core",
                 policy: CORRECTNESS,
                 category: LintCategory::Correctness,
+                maturity: LintMaturityTier::Stable,
                 introduced_in: "0.2.0",
                 default_level: RuleLevel::Warn,
                 confidence: Confidence::Low,
@@ -650,6 +714,7 @@ mod tests {
             pack: "noir_core",
             policy: CORRECTNESS,
             category: LintCategory::Correctness,
+            maturity: LintMaturityTier::Stable,
             introduced_in: "0.2.0",
             default_level: RuleLevel::Warn,
             confidence: Confidence::Low,
@@ -675,6 +740,7 @@ mod tests {
             pack: "noir_core",
             policy: CORRECTNESS,
             category: LintCategory::Correctness,
+            maturity: LintMaturityTier::Stable,
             introduced_in: "0.1.0",
             default_level: RuleLevel::Deny,
             confidence: Confidence::High,

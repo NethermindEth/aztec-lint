@@ -146,11 +146,21 @@ ruleset = ["noir_core"]
 extends = ["default"]
 ruleset = ["aztec_pack"]
 
+[profile.aztec_strict]
+extends = ["aztec"]
+ruleset = ["aztec_pack@preview", "aztec_pack@experimental"]
+
 # Optional profile-level overrides
 # deny = ["NOIR001"]
 # warn = ["NOIR100"]
 # allow = ["AZTEC003"]
 ```
+
+Ruleset selector forms:
+
+- `<pack>` (for example `noir_core`, `aztec_pack`)
+- `tier:<stable|preview|experimental>` (alias: `maturity:<...>`)
+- `<pack>@<stable|preview|experimental>`
 
 Unknown rule IDs fail fast before execution (for CLI overrides and profile overrides).
 
