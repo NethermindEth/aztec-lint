@@ -43,19 +43,16 @@ fn build_generated_files(
     portal_root: &Path,
 ) -> Result<BTreeMap<PathBuf, String>, DynError> {
     let mut files = BTreeMap::<PathBuf, String>::new();
-    let active = all_lints()
-        .iter()
-        .filter(|lint| lint.lifecycle.is_active())
-        .collect::<Vec<_>>();
+    let all = all_lints().iter().collect::<Vec<_>>();
     let intake_entries = load_intake_entries(workspace_root)?;
 
     files.insert(
         portal_root.join("index.md"),
-        render_index(&active, &intake_entries),
+        render_index(&all, &intake_entries),
     );
     files.insert(
         portal_root.join("search-index.json"),
-        render_search_index(&active),
+        render_search_index(&all),
     );
     files.insert(
         portal_root.join("roadmap/index.md"),
@@ -68,7 +65,7 @@ fn build_generated_files(
         );
     }
 
-    for lint in active {
+    for lint in all {
         let page = portal_root
             .join("lints")
             .join(format!("{}.md", lint.id.to_ascii_lowercase()));
@@ -197,12 +194,13 @@ fn render_index(lints: &[&LintSpec], intake_entries: &[IntakeEntry]) -> String {
         out.push_str(&format!("### {}\n\n", title_case(category)));
         for lint in items {
             out.push_str(&format!(
-                "- [{}](lints/{}.md) (`{}` / `{}` / `{}`)\n",
+                "- [{}](lints/{}.md) (`{}` / `{}` / `{}` / `{}`)\n",
                 lint.id,
                 lint.id.to_ascii_lowercase(),
                 lint.pack,
                 lint.maturity.as_str(),
-                lint.policy
+                lint.policy,
+                lifecycle_label(lint.lifecycle)
             ));
         }
         out.push('\n');
@@ -220,7 +218,12 @@ fn render_index(lints: &[&LintSpec], intake_entries: &[IntakeEntry]) -> String {
         items.sort_unstable_by_key(|lint| lint.id);
         out.push_str(&format!("### {}\n\n", title_case(maturity)));
         for lint in items {
-            out.push_str(&format!("- `{}` ({})\n", lint.id, lint.pack));
+            out.push_str(&format!(
+                "- `{}` ({}, {})\n",
+                lint.id,
+                lint.pack,
+                lifecycle_label(lint.lifecycle)
+            ));
         }
         out.push('\n');
     }
@@ -235,10 +238,11 @@ fn render_index(lints: &[&LintSpec], intake_entries: &[IntakeEntry]) -> String {
         out.push_str(&format!("### {}\n\n", title_case(pack)));
         for lint in items {
             out.push_str(&format!(
-                "- `{}` ({}, {})\n",
+                "- `{}` ({}, {}, {})\n",
                 lint.id,
                 lint.category.as_str(),
-                lint.maturity.as_str()
+                lint.maturity.as_str(),
+                lifecycle_label(lint.lifecycle)
             ));
         }
         out.push('\n');
@@ -391,7 +395,9 @@ fn render_roadmap_status_page(status: &str, entries: &[IntakeEntry]) -> String {
     for entry in filtered {
         out.push_str(&format!(
             "| {} | {} | {} |\n",
-            entry.proposal, entry.canonical_mapping, entry.notes
+            markdown_table_escape(&entry.proposal),
+            markdown_table_escape(&entry.canonical_mapping),
+            markdown_table_escape(&entry.notes)
         ));
     }
     out.push('\n');
@@ -423,6 +429,7 @@ fn render_search_index(lints: &[&LintSpec]) -> String {
                 "category": lint.category.as_str(),
                 "maturity": lint.maturity.as_str(),
                 "policy": lint.policy,
+                "lifecycle": lifecycle_label(lint.lifecycle),
                 "summary": lint.docs.summary,
                 "path": format!("lints/{}.md", lint.id.to_ascii_lowercase()),
             })
@@ -461,4 +468,10 @@ fn title_case(raw: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn markdown_table_escape(raw: &str) -> String {
+    raw.replace('\\', "\\\\")
+        .replace('|', "\\|")
+        .replace('\n', "<br>")
 }
