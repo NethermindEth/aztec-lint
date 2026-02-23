@@ -55,8 +55,8 @@ impl Noir001UnusedRule {
                 .push(edge.to_node_id.clone());
         }
         for definitions in definitions_by_statement.values_mut() {
-            definitions.sort();
-            definitions.dedup();
+            let mut seen_definitions = BTreeSet::new();
+            definitions.retain(|definition| seen_definitions.insert(definition.clone()));
         }
 
         let used_definitions = semantic
@@ -1511,6 +1511,67 @@ mod tests {
         Noir001UnusedRule.run(&context, &mut diagnostics);
 
         assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn semantic_binding_mapping_preserves_statement_definition_order() {
+        let source = "fn main() { let (unused, _, used) = pair; assert(used == 7); }";
+        let (function_start, function_end) = span_range(source, "fn main() {");
+        let (statement_start, statement_end) = span_range(source, "let (unused, _, used) = pair;");
+
+        let mut project = ProjectModel::default();
+        project.semantic.functions.push(SemanticFunction {
+            symbol_id: "fn::main".to_string(),
+            name: "main".to_string(),
+            module_symbol_id: "module::main".to_string(),
+            return_type_repr: "()".to_string(),
+            return_type_category: TypeCategory::Unknown,
+            parameter_types: Vec::new(),
+            is_entrypoint: true,
+            is_unconstrained: false,
+            span: Span::new("src/main.nr", function_start, function_end, 1, 1),
+        });
+        project.semantic.statements.push(SemanticStatement {
+            stmt_id: "stmt::1".to_string(),
+            function_symbol_id: "fn::main".to_string(),
+            category: StatementCategory::Let,
+            span: Span::new("src/main.nr", statement_start, statement_end, 1, 1),
+        });
+        project.semantic.dfg_edges.extend([
+            DfgEdge {
+                function_symbol_id: "fn::main".to_string(),
+                from_node_id: "stmt::1".to_string(),
+                to_node_id: "def::10".to_string(),
+                kind: DfgEdgeKind::DefUse,
+            },
+            DfgEdge {
+                function_symbol_id: "fn::main".to_string(),
+                from_node_id: "stmt::1".to_string(),
+                to_node_id: "def::2".to_string(),
+                kind: DfgEdgeKind::DefUse,
+            },
+            DfgEdge {
+                function_symbol_id: "fn::main".to_string(),
+                from_node_id: "def::2".to_string(),
+                to_node_id: "expr::used".to_string(),
+                kind: DfgEdgeKind::UseDef,
+            },
+        ]);
+        project.normalize();
+
+        let context = RuleContext::from_sources(
+            &project,
+            vec![("src/main.nr".to_string(), source.to_string())],
+        );
+
+        let mut diagnostics = Vec::new();
+        Noir001UnusedRule.run(&context, &mut diagnostics);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].message,
+            "`unused` is declared but never used"
+        );
     }
 
     #[test]

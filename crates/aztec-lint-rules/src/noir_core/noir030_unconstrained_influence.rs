@@ -277,8 +277,8 @@ fn function_bindings(
             })
             .map(|edge| edge.to_node_id.clone())
             .collect::<Vec<_>>();
-        definitions.sort();
-        definitions.dedup();
+        let mut seen_definitions = BTreeSet::new();
+        definitions.retain(|definition| seen_definitions.insert(definition.clone()));
 
         let Some(statement_source) =
             source_slice(file.text(), statement.span.start, statement.span.end)

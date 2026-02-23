@@ -8,6 +8,9 @@ Entries are grouped by released version.
 ## [Unreleased]
 
 - Fixed semantic `let`-pattern DFG extraction to skip wildcard (`_`) bindings when emitting `stmt -> def` edges, preventing tuple-pattern placeholder slots from misaligning downstream binding analysis.
+- Fixed semantic local-binding mapping in `NOIR001` to preserve statement definition order (stable dedup without lexicographic reordering), preventing false positives on used tuple-destructure bindings when `def::*` ids are not text-order sortable.
+- Added `NOIR001` regression coverage for tuple-pattern binding order alignment to ensure used trailing bindings are not reported as unused.
+- Fixed the same semantic definition-order mapping issue in `NOIR010` and `NOIR030` to keep local binding/name correlation stable across tuple/structured patterns.
 
 ## [0.6.0]
 

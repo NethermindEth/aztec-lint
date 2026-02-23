@@ -76,8 +76,8 @@ impl Noir010BoolNotAssertedRule {
                 })
                 .map(|edge| edge.to_node_id.clone())
                 .collect::<Vec<_>>();
-            definitions.sort();
-            definitions.dedup();
+            let mut seen_definitions = BTreeSet::new();
+            definitions.retain(|definition| seen_definitions.insert(definition.clone()));
 
             let parsed_bindings = text_fallback_statement_bindings(statement_source);
             for (index, definition_node_id) in definitions.iter().enumerate() {
