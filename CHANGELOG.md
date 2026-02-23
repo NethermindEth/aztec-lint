@@ -9,11 +9,30 @@ Entries are grouped by released version.
 
 ### Rule Growth by Category
 
-- `correctness`: `+0`
+- `correctness`: `+1`
 - `maintainability`: `+0`
 - `privacy`: `+0`
-- `protocol`: `+0`
-- `soundness`: `+0`
+- `protocol`: `+3`
+- `soundness`: `+2`
+
+- Added six new preview Aztec lints to the active catalog and runtime registry:
+  - `AZTEC030` (`soundness`): note consumed without nullifier emission.
+  - `AZTEC031` (`protocol`): nullifier hash missing configured domain-separation components.
+  - `AZTEC032` (`protocol`): commitment hash missing configured domain-separation components.
+  - `AZTEC033` (`protocol`): public private-state mutation without `#[only_self]`.
+  - `AZTEC034` (`soundness`): hash input cast to `Field` without prior range guard.
+  - `AZTEC035` (`correctness`): suspicious repeated nested storage key (`.at(x).at(x)`).
+- Added shared Aztec text-scan utilities for contract/function line scanning and call-argument extraction in `crates/aztec-lint-rules/src/aztec/text_scan.rs`.
+- Added full fixture matrix coverage for `AZTEC030` through `AZTEC035` in `fixtures/aztec/rule_cases/` and corresponding accepted UI fixture packs in `fixtures/ui/accepted/AZTEC030` through `fixtures/ui/accepted/AZTEC035`.
+- Added advanced rule test coverage for `AZTEC030` through `AZTEC035` in `crates/aztec-lint-rules/tests/aztec_advanced_rules.rs`.
+- Fixed `AZTEC031` and `AZTEC032` domain-separation detection to validate required components against hash preimages (for example `hash(...)`) instead of the full sink call argument list, preventing false negatives such as `emit_nullifier(hash(x), nonce)`.
+- Added targeted regressions for `AZTEC031`/`AZTEC032` to assert diagnostics when required domain components appear outside the hashed payload.
+- Changed CLI golden contracts to include the six new lint rows and updated aztec-profile active-rule counts (`active_rules=22`) in text snapshots.
+- Regenerated lint reference and portal artifacts to include `AZTEC030` through `AZTEC035`:
+  - `docs/lints-reference.md`
+  - `docs/portal/index.md`
+  - `docs/portal/search-index.json`
+  - `docs/portal/lints/aztec030.md` through `docs/portal/lints/aztec035.md`
 
 - Added lint maturity metadata (`stable`, `preview`, `experimental`) to the canonical `LintSpec` model and catalog.
 - Changed catalog quality invariants to reject non-canonical `cost` policy naming (use `performance`) and to reject active `stable` lints with `low` confidence.
@@ -52,6 +71,7 @@ Entries are grouped by released version.
 - Added local CI parity entrypoints in `Makefile`: `make matrix`, `make perf`, and `make generate`, and updated `make ci` to run the full gate set.
 - Added generated docs portal baseline artifacts under `docs/portal/` so docs drift checks can run as blocking CI gates.
 - Changed `cargo xtask docs-portal` to generate intake roadmap pages at `docs/portal/roadmap/` (`covered`, `accepted`, `deferred`, `rejected`, plus index) sourced from `docs/NEW_LINTS.md`.
+- Changed first-wave intake/roadmap status for implemented lints (`AZTEC030` through `AZTEC035`) from `accepted/planned` to `covered/active` in `docs/NEW_LINTS.md`, `docs/rule-roadmap.md`, and generated portal roadmap pages.
 - Changed per-lint portal pages to include explicit `Config Knobs` and `Fix Safety Notes` sections.
 - Added CI docs artifact publication (`docs/portal`) in `.github/workflows/ci-docs.yml` and linked the portal entrypoint in `README.md`.
 

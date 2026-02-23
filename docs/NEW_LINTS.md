@@ -3,7 +3,7 @@ Below is a set of **Aztec-specific lints** that tend to have high practical valu
 ## Intake status snapshot (2026-02-23)
 
 Execution scheduling (owner, target release, and matrix test obligations) is tracked in `docs/rule-roadmap.md`.
-Accepted lint IDs remain roadmap items until the backlog includes implementation milestones and explicit test coverage plans.
+Accepted lint IDs remain roadmap items until implementation lands with explicit fixture and regression coverage.
 
 Status meanings for lint intake:
 
@@ -20,12 +20,12 @@ Current triage mapping:
 | `AZTEC_PRIVATE_TO_ENQUEUE_TAINT` | `covered` | `AZTEC001` | Covered, with planned enqueue-argument sink precision improvements. |
 | `AZTEC_DEBUG_LOG_IN_PRIVATE` | `covered` | `AZTEC003` | Existing private debug-log guard. |
 | `AZTEC_UNCONSTRAINED_AFFECTS_SINK` | `covered` | `AZTEC020` | Existing unconstrained-to-critical-sink coverage. |
-| `AZTEC_NOTE_CONSUMED_WITHOUT_NULLIFIER` | `accepted` | `AZTEC030` | First-wave high-priority roadmap item. |
-| `AZTEC_DOMAIN_SEP_NULLIFIER` | `accepted` | `AZTEC031` | First-wave high-priority roadmap item. |
-| `AZTEC_DOMAIN_SEP_COMMITMENT` | `accepted` | `AZTEC032` | First-wave high-priority roadmap item. |
-| `AZTEC_PUBLIC_FN_MISSING_ONLY_SELF_WHEN_MUTATING_PRIVATE_STATE` | `accepted` | `AZTEC033` | First-wave high-priority roadmap item. |
-| `AZTEC_HASH_INPUT_NOT_RANGE_CONSTRAINED` | `accepted` | `AZTEC034` | First-wave high-priority roadmap item. |
-| `AZTEC_STORAGE_KEY_SUSPICIOUS` | `accepted` | `AZTEC035` | First-wave high-priority roadmap item. |
+| `AZTEC_NOTE_CONSUMED_WITHOUT_NULLIFIER` | `covered` | `AZTEC030` | Implemented with rule-case/UI/corpus coverage in the first-wave rollout. |
+| `AZTEC_DOMAIN_SEP_NULLIFIER` | `covered` | `AZTEC031` | Implemented with rule-case and UI matrix coverage in the first-wave rollout. |
+| `AZTEC_DOMAIN_SEP_COMMITMENT` | `covered` | `AZTEC032` | Implemented with rule-case and UI matrix coverage in the first-wave rollout. |
+| `AZTEC_PUBLIC_FN_MISSING_ONLY_SELF_WHEN_MUTATING_PRIVATE_STATE` | `covered` | `AZTEC033` | Implemented with rule-case and UI matrix coverage in the first-wave rollout. |
+| `AZTEC_HASH_INPUT_NOT_RANGE_CONSTRAINED` | `covered` | `AZTEC034` | Implemented with rule-case/UI plus benchmark scenario coverage in the first-wave rollout. |
+| `AZTEC_STORAGE_KEY_SUSPICIOUS` | `covered` | `AZTEC035` | Implemented with rule-case and UI matrix coverage in the first-wave rollout. |
 | `AZTEC_SECRET_BRANCH_AFFECTS_ENQUEUE` | `accepted` | `AZTEC036` | Second-wave strict-profile candidate. |
 | `AZTEC_SECRET_BRANCH_AFFECTS_DELIVERY_COUNT` | `accepted` | `AZTEC037` | Second-wave strict-profile candidate. |
 | `AZTEC_CHANGE_NOTE_MISSING_FRESH_RANDOMNESS` | `accepted` | `AZTEC038` | Second-wave correctness/privacy candidate. |

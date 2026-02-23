@@ -70,6 +70,66 @@
     "summary": "Suspicious Merkle witness usage."
   },
   {
+    "category": "soundness",
+    "id": "AZTEC030",
+    "lifecycle": "active",
+    "maturity": "preview",
+    "pack": "aztec_pack",
+    "path": "lints/aztec030.md",
+    "policy": "soundness",
+    "summary": "Note consumption without nullifier emission."
+  },
+  {
+    "category": "protocol",
+    "id": "AZTEC031",
+    "lifecycle": "active",
+    "maturity": "preview",
+    "pack": "aztec_pack",
+    "path": "lints/aztec031.md",
+    "policy": "protocol",
+    "summary": "Nullifier hash appears missing domain separation inputs."
+  },
+  {
+    "category": "protocol",
+    "id": "AZTEC032",
+    "lifecycle": "active",
+    "maturity": "preview",
+    "pack": "aztec_pack",
+    "path": "lints/aztec032.md",
+    "policy": "protocol",
+    "summary": "Commitment hash appears missing domain separation inputs."
+  },
+  {
+    "category": "protocol",
+    "id": "AZTEC033",
+    "lifecycle": "active",
+    "maturity": "preview",
+    "pack": "aztec_pack",
+    "path": "lints/aztec033.md",
+    "policy": "protocol",
+    "summary": "Public entrypoint mutates private state without #[only_self]."
+  },
+  {
+    "category": "soundness",
+    "id": "AZTEC034",
+    "lifecycle": "active",
+    "maturity": "preview",
+    "pack": "aztec_pack",
+    "path": "lints/aztec034.md",
+    "policy": "soundness",
+    "summary": "Hash input cast to Field without prior range guard."
+  },
+  {
+    "category": "correctness",
+    "id": "AZTEC035",
+    "lifecycle": "active",
+    "maturity": "preview",
+    "pack": "aztec_pack",
+    "path": "lints/aztec035.md",
+    "policy": "correctness",
+    "summary": "Suspicious repeated nested storage key."
+  },
+  {
     "category": "correctness",
     "id": "NOIR001",
     "lifecycle": "active",

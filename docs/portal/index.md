@@ -6,6 +6,7 @@ Generated from canonical lint metadata.
 
 ### Correctness
 
+- [AZTEC035](lints/aztec035.md) (`aztec_pack` / `preview` / `correctness` / `active`)
 - [NOIR001](lints/noir001.md) (`noir_core` / `stable` / `correctness` / `active`)
 - [NOIR002](lints/noir002.md) (`noir_core` / `stable` / `correctness` / `active`)
 - [NOIR010](lints/noir010.md) (`noir_core` / `stable` / `correctness` / `active`)
@@ -28,18 +29,29 @@ Generated from canonical lint metadata.
 ### Protocol
 
 - [AZTEC010](lints/aztec010.md) (`aztec_pack` / `stable` / `protocol` / `active`)
+- [AZTEC031](lints/aztec031.md) (`aztec_pack` / `preview` / `protocol` / `active`)
+- [AZTEC032](lints/aztec032.md) (`aztec_pack` / `preview` / `protocol` / `active`)
+- [AZTEC033](lints/aztec033.md) (`aztec_pack` / `preview` / `protocol` / `active`)
 
 ### Soundness
 
 - [AZTEC020](lints/aztec020.md) (`aztec_pack` / `stable` / `soundness` / `active`)
 - [AZTEC021](lints/aztec021.md) (`aztec_pack` / `stable` / `soundness` / `active`)
 - [AZTEC022](lints/aztec022.md) (`aztec_pack` / `stable` / `soundness` / `active`)
+- [AZTEC030](lints/aztec030.md) (`aztec_pack` / `preview` / `soundness` / `active`)
+- [AZTEC034](lints/aztec034.md) (`aztec_pack` / `preview` / `soundness` / `active`)
 
 ## By Maturity
 
 ### Preview
 
 - `AZTEC002` (aztec_pack, active)
+- `AZTEC030` (aztec_pack, active)
+- `AZTEC031` (aztec_pack, active)
+- `AZTEC032` (aztec_pack, active)
+- `AZTEC033` (aztec_pack, active)
+- `AZTEC034` (aztec_pack, active)
+- `AZTEC035` (aztec_pack, active)
 - `NOIR101` (noir_core, active)
 - `NOIR110` (noir_core, active)
 - `NOIR120` (noir_core, active)
@@ -70,6 +82,12 @@ Generated from canonical lint metadata.
 - `AZTEC020` (soundness, stable, active)
 - `AZTEC021` (soundness, stable, active)
 - `AZTEC022` (soundness, stable, active)
+- `AZTEC030` (soundness, preview, active)
+- `AZTEC031` (protocol, preview, active)
+- `AZTEC032` (protocol, preview, active)
+- `AZTEC033` (protocol, preview, active)
+- `AZTEC034` (soundness, preview, active)
+- `AZTEC035` (correctness, preview, active)
 
 ### Noir Core
 
@@ -87,8 +105,8 @@ Generated from canonical lint metadata.
 
 Generated from intake decisions in `docs/NEW_LINTS.md`.
 
-- [Covered](roadmap/covered.md): `4` proposal(s)
-- [Accepted](roadmap/accepted.md): `12` proposal(s)
+- [Covered](roadmap/covered.md): `10` proposal(s)
+- [Accepted](roadmap/accepted.md): `6` proposal(s)
 - [Deferred](roadmap/deferred.md): `2` proposal(s)
 - [Rejected](roadmap/rejected.md): `1` proposal(s)
 

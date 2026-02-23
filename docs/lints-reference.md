@@ -225,6 +225,192 @@ References:
 - `docs/rule-authoring.md`
 - `docs/decisions/0003-confidence-model.md`
 
+### AZTEC030
+
+- Pack: `aztec_pack`
+- Category: `soundness`
+- Maturity: `preview`
+- Policy: `soundness`
+- Default Level: `deny`
+- Confidence: `high`
+- Introduced In: `0.5.0`
+- Lifecycle: `active`
+- Summary: Note consumption without nullifier emission.
+
+What it does:
+Reports note pop/consume patterns when the same function does not emit a nullifier.
+
+Why this matters:
+Consumed notes without nullifiers can enable replay or double-spend style state inconsistencies.
+
+Known limitations:
+Function-local matching does not prove path-complete nullifier coverage in highly dynamic control flow.
+
+How to fix:
+Emit nullifiers for consumed notes or switch to helper APIs that enforce consume-and-nullify semantics.
+
+Examples:
+- After `pop_note` or `pop_notes`, emit the associated nullifier in the same function path.
+
+References:
+- `docs/rule-authoring.md`
+- `docs/decisions/0003-confidence-model.md`
+
+### AZTEC031
+
+- Pack: `aztec_pack`
+- Category: `protocol`
+- Maturity: `preview`
+- Policy: `protocol`
+- Default Level: `warn`
+- Confidence: `medium`
+- Introduced In: `0.5.0`
+- Lifecycle: `active`
+- Summary: Nullifier hash appears missing domain separation inputs.
+
+What it does:
+Flags nullifier hash call sites where required domain components are not present in hash inputs.
+
+Why this matters:
+Weak nullifier domain separation can cause collisions across domains or protocol contexts.
+
+Known limitations:
+Heuristic token matching may miss custom domain-separation helpers or aliases.
+
+How to fix:
+Include configured domain fields (for example contract address and nonce) in nullifier hash inputs.
+
+Examples:
+- Include `this_address` and `nonce` (or equivalent fields) in the nullifier hash tuple.
+
+References:
+- `docs/rule-authoring.md`
+- `docs/decisions/0003-confidence-model.md`
+
+### AZTEC032
+
+- Pack: `aztec_pack`
+- Category: `protocol`
+- Maturity: `preview`
+- Policy: `protocol`
+- Default Level: `warn`
+- Confidence: `medium`
+- Introduced In: `0.5.0`
+- Lifecycle: `active`
+- Summary: Commitment hash appears missing domain separation inputs.
+
+What it does:
+Detects commitment-style hash sinks that do not include configured domain-separation components.
+
+Why this matters:
+Insufficient commitment domain separation can blur security boundaries and weaken protocol assumptions.
+
+Known limitations:
+Rule matching focuses on recognizable commitment sink names and hash-shaped inputs.
+
+How to fix:
+Add required context fields (such as contract address and note type) to commitment hash construction.
+
+Examples:
+- Derive commitments with explicit domain tags instead of hashing only payload values.
+
+References:
+- `docs/rule-authoring.md`
+- `docs/decisions/0003-confidence-model.md`
+
+### AZTEC033
+
+- Pack: `aztec_pack`
+- Category: `protocol`
+- Maturity: `preview`
+- Policy: `protocol`
+- Default Level: `deny`
+- Confidence: `high`
+- Introduced In: `0.5.0`
+- Lifecycle: `active`
+- Summary: Public entrypoint mutates private state without #[only_self].
+
+What it does:
+Reports public entrypoints that appear to mutate private note/state transitions and lack only-self protection.
+
+Why this matters:
+Publicly callable private-state mutation surfaces can break intended access boundaries.
+
+Known limitations:
+Detection relies on recognized mutation patterns and may not cover every custom state transition helper.
+
+How to fix:
+Add `#[only_self]` to the public entrypoint or refactor the mutation into a safer private flow.
+
+Examples:
+- Mark public state-transition bridges with `#[only_self]` before calling note mutation APIs.
+
+References:
+- `docs/rule-authoring.md`
+- `docs/decisions/0001-aztec010-scope.md`
+
+### AZTEC034
+
+- Pack: `aztec_pack`
+- Category: `soundness`
+- Maturity: `preview`
+- Policy: `soundness`
+- Default Level: `warn`
+- Confidence: `medium`
+- Introduced In: `0.5.0`
+- Lifecycle: `active`
+- Summary: Hash input cast to Field without prior range guard.
+
+What it does:
+Finds hash inputs that are cast or converted to Field without an earlier range-style constraint.
+
+Why this matters:
+Missing range proofs can make hashed representations ambiguous for bounded integer semantics.
+
+Known limitations:
+Nearby helper-based constraints may not be recognized when they do not resemble explicit range checks.
+
+How to fix:
+Constrain numeric width before Field conversion and hashing, then keep the guarded value flow explicit.
+
+Examples:
+- Assert bounded `amount` before hashing `amount as Field`.
+
+References:
+- `docs/rule-authoring.md`
+- `docs/decisions/0003-confidence-model.md`
+
+### AZTEC035
+
+- Pack: `aztec_pack`
+- Category: `correctness`
+- Maturity: `preview`
+- Policy: `correctness`
+- Default Level: `warn`
+- Confidence: `medium`
+- Introduced In: `0.5.0`
+- Lifecycle: `active`
+- Summary: Suspicious repeated nested storage key.
+
+What it does:
+Flags `.at(x).at(x)`-style nested key repetition that often indicates copy-paste key mistakes.
+
+Why this matters:
+Repeating nested map keys unintentionally can corrupt indexing logic and authorization behavior.
+
+Known limitations:
+Some intentionally duplicated keying patterns may require suppression when semantically correct.
+
+How to fix:
+Use distinct key expressions for each nested `.at(...)` level or extract named key variables for clarity.
+
+Examples:
+- Replace `.at(owner).at(owner)` with the intended second key such as `.at(owner).at(spender)`.
+
+References:
+- `docs/rule-authoring.md`
+- `docs/suppression.md`
+
 ## Noir Core Pack
 
 ### NOIR001
