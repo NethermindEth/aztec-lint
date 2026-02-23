@@ -1,0 +1,4 @@
+[package]
+name="noir_error_unused"
+type="bin"
+authors=[""]

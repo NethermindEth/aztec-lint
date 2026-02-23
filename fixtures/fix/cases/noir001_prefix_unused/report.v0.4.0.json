@@ -1,0 +1,13 @@
+{
+  "exit_code": 0,
+  "metrics": {
+    "fixes_total": 1,
+    "fixes_selected": 1,
+    "fixes_skipped": 0,
+    "files_changed": 1
+  },
+  "stdout_contains": [
+    "fix_selected rule=NOIR001",
+    "No diagnostics."
+  ]
+}

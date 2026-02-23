@@ -1,0 +1,4 @@
+[package]
+name="noir_mixed_bool_magic"
+type="bin"
+authors=[""]

@@ -1,0 +1,4 @@
+[package]
+name="noir_warning_magic"
+type="bin"
+authors=[""]

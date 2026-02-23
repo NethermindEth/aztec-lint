@@ -1,0 +1,4 @@
+[package]
+name="noir_warning_depth"
+type="bin"
+authors=[""]
