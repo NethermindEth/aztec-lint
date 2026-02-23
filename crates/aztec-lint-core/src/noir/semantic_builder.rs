@@ -245,6 +245,9 @@ impl<'a> FunctionCollector<'a> {
                 );
                 self.visit_expression(let_stmt.expression, Some(stmt_id));
                 for definition_id in pattern_definition_ids(&let_stmt.pattern) {
+                    if self.interner.definition_name(definition_id) == "_" {
+                        continue;
+                    }
                     self.push_dfg_edge(
                         &stmt_node_id(stmt_id),
                         &definition_node_id(definition_id),

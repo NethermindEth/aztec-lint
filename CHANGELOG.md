@@ -7,7 +7,7 @@ Entries are grouped by released version.
 
 ## [Unreleased]
 
-- No unreleased changes yet.
+- Fixed semantic `let`-pattern DFG extraction to skip wildcard (`_`) bindings when emitting `stmt -> def` edges, preventing tuple-pattern placeholder slots from misaligning downstream binding analysis.
 
 ## [0.6.0]
 
