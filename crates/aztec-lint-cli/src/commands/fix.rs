@@ -12,7 +12,8 @@ use clap::Args;
 
 use crate::cli::{CliError, CommonLintFlags, OutputFormat, TargetSelectionFlags};
 use crate::commands::check::{
-    collect_lint_run, has_blocking_diagnostics, passes_thresholds, suppression_visible,
+    collect_lint_run, diagnostics_for_text_display, has_blocking_diagnostics, passes_thresholds,
+    suppression_visible, text_display_root,
 };
 use crate::exit_codes;
 
@@ -213,14 +214,21 @@ fn render_fix_result(context: FixRenderContext<'_>) -> Result<(), CliError> {
                 );
             }
 
+            let display_root = text_display_root(context.path, context.sarif_root);
+            let diagnostics = diagnostics_for_text_display(
+                context.diagnostics,
+                context.sarif_root,
+                display_root.as_path(),
+            );
+            let diagnostic_refs = diagnostics.iter().collect::<Vec<_>>();
             let rendered = render_check_report(CheckTextReport {
                 path: context.path,
-                source_root: context.sarif_root,
+                source_root: display_root.as_path(),
                 show_run_header: false,
                 profile: context.profile,
                 changed_only: context.changed_only,
                 active_rules: context.effective_rules,
-                diagnostics: context.diagnostics,
+                diagnostics: &diagnostic_refs,
             });
             print!("{rendered}");
             Ok(())

@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -227,14 +228,18 @@ fn render_result(
 ) -> Result<(), CliError> {
     match format {
         OutputFormat::Text => {
+            let display_root = text_display_root(path, sarif_root);
+            let diagnostics =
+                diagnostics_for_text_display(diagnostics, sarif_root, display_root.as_path());
+            let diagnostic_refs = diagnostics.iter().collect::<Vec<_>>();
             let rendered = render_check_report(CheckTextReport {
                 path,
-                source_root: sarif_root,
+                source_root: display_root.as_path(),
                 show_run_header: true,
                 profile,
                 changed_only,
                 active_rules: effective_rules,
-                diagnostics,
+                diagnostics: &diagnostic_refs,
             });
             print!("{rendered}");
             Ok(())
@@ -257,6 +262,26 @@ fn render_result(
             Ok(())
         }
     }
+}
+
+pub(crate) fn text_display_root(path_arg: &Path, default_root: &Path) -> PathBuf {
+    if path_arg.is_absolute() {
+        return default_root.to_path_buf();
+    }
+    env::current_dir().unwrap_or_else(|_| default_root.to_path_buf())
+}
+
+pub(crate) fn diagnostics_for_text_display(
+    diagnostics: &[&Diagnostic],
+    source_root: &Path,
+    display_root: &Path,
+) -> Vec<Diagnostic> {
+    let mut cloned = diagnostics
+        .iter()
+        .map(|diagnostic| (*diagnostic).clone())
+        .collect::<Vec<_>>();
+    rebase_diagnostic_paths_between_roots(&mut cloned, source_root, display_root);
+    cloned
 }
 
 fn report_root_for_target(path: &Path, projects: &[NoirProject]) -> PathBuf {
@@ -400,46 +425,62 @@ fn rebase_diagnostic_paths(
     project_root: &Path,
     report_root: &Path,
 ) {
+    rebase_diagnostic_paths_between_roots(diagnostics, project_root, report_root);
+}
+
+fn rebase_diagnostic_paths_between_roots(
+    diagnostics: &mut [Diagnostic],
+    source_root: &Path,
+    target_root: &Path,
+) {
     for diagnostic in diagnostics {
         diagnostic.primary_span.file =
-            rebase_file_path(&diagnostic.primary_span.file, project_root, report_root);
+            rebase_file_path_between_roots(&diagnostic.primary_span.file, source_root, target_root);
 
         for span in &mut diagnostic.secondary_spans {
-            span.file = rebase_file_path(&span.file, project_root, report_root);
+            span.file = rebase_file_path_between_roots(&span.file, source_root, target_root);
         }
 
         for note in &mut diagnostic.notes {
             if let Some(span) = &mut note.span {
-                span.file = rebase_file_path(&span.file, project_root, report_root);
+                span.file = rebase_file_path_between_roots(&span.file, source_root, target_root);
             }
         }
 
         for help in &mut diagnostic.helps {
             if let Some(span) = &mut help.span {
-                span.file = rebase_file_path(&span.file, project_root, report_root);
+                span.file = rebase_file_path_between_roots(&span.file, source_root, target_root);
             }
         }
 
         for suggestion in &mut diagnostic.structured_suggestions {
             suggestion.span.file =
-                rebase_file_path(&suggestion.span.file, project_root, report_root);
+                rebase_file_path_between_roots(&suggestion.span.file, source_root, target_root);
         }
 
         for fix in &mut diagnostic.fixes {
-            fix.span.file = rebase_file_path(&fix.span.file, project_root, report_root);
+            fix.span.file =
+                rebase_file_path_between_roots(&fix.span.file, source_root, target_root);
+        }
+
+        for group in &mut diagnostic.suggestion_groups {
+            for edit in &mut group.edits {
+                edit.span.file =
+                    rebase_file_path_between_roots(&edit.span.file, source_root, target_root);
+            }
         }
     }
 }
 
-fn rebase_file_path(file: &str, project_root: &Path, report_root: &Path) -> String {
+fn rebase_file_path_between_roots(file: &str, source_root: &Path, target_root: &Path) -> String {
     let file_path = Path::new(file);
     let absolute_path = if file_path.is_absolute() {
         file_path.to_path_buf()
     } else {
-        project_root.join(file_path)
+        source_root.join(file_path)
     };
     let rebased = absolute_path
-        .strip_prefix(report_root)
+        .strip_prefix(target_root)
         .unwrap_or(absolute_path.as_path());
     normalize_file_path(&rebased.to_string_lossy())
 }
@@ -705,8 +746,8 @@ mod tests {
     use crate::cli::ResolvedTargetSelection;
 
     use super::{
-        NoirProject, NoirTargetKind, filter_projects_by_target,
-        retain_diagnostics_for_selected_targets, workspace_members,
+        NoirProject, NoirTargetKind, diagnostics_for_text_display, filter_projects_by_target,
+        retain_diagnostics_for_selected_targets, text_display_root, workspace_members,
     };
 
     #[test]
@@ -823,6 +864,29 @@ mod tests {
             diagnostics[0].primary_span.file,
             "aave_wrapper/src/types/position_receipt.nr"
         );
+    }
+
+    #[test]
+    fn text_display_rebases_paths_relative_to_current_directory() {
+        let source_root = Path::new("/repo/src/nft_contract");
+        let display_root = Path::new("/repo");
+        let diagnostic = diagnostic("src/test/utils.nr");
+
+        let rebased = diagnostics_for_text_display(&[&diagnostic], source_root, display_root);
+
+        assert_eq!(
+            rebased[0].primary_span.file,
+            "src/nft_contract/src/test/utils.nr"
+        );
+    }
+
+    #[test]
+    fn absolute_target_keeps_target_relative_display_root() {
+        let display_root = text_display_root(
+            Path::new("/repo/fixtures/noir_core/minimal"),
+            Path::new("/repo/fixtures/noir_core/minimal"),
+        );
+        assert_eq!(display_root, Path::new("/repo/fixtures/noir_core/minimal"));
     }
 
     fn noir_project(root: &str, entry: &str) -> NoirProject {
