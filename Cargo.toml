@@ -10,16 +10,16 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.6.1"
+version = "0.6.2"
 edition = "2024"
 license = "Apache-2.0"
 rust-version = "1.93.0"
 
 [workspace.dependencies]
-aztec-lint-core = { version = "0.6.1", path = "crates/aztec-lint-core" }
-aztec-lint-rules = { version = "0.6.1", path = "crates/aztec-lint-rules" }
-aztec-lint-aztec = { version = "0.6.1", path = "crates/aztec-lint-aztec" }
-aztec-lint-sdk = { version = "0.6.1", path = "crates/aztec-lint-sdk" }
+aztec-lint-core = { version = "0.6.2", path = "crates/aztec-lint-core" }
+aztec-lint-rules = { version = "0.6.2", path = "crates/aztec-lint-rules" }
+aztec-lint-aztec = { version = "0.6.2", path = "crates/aztec-lint-aztec" }
+aztec-lint-sdk = { version = "0.6.2", path = "crates/aztec-lint-sdk" }
 fm = { version = "1.0.0-beta.18", git = "https://github.com/noir-lang/noir.git", rev = "2db78f8894936db05c53430f364360ac9cc5c61f", package = "fm" }
 noirc_driver = { version = "1.0.0-beta.18", git = "https://github.com/noir-lang/noir.git", rev = "2db78f8894936db05c53430f364360ac9cc5c61f", package = "noirc_driver" }
 noirc_frontend = { version = "1.0.0-beta.18", git = "https://github.com/noir-lang/noir.git", rev = "2db78f8894936db05c53430f364360ac9cc5c61f", package = "noirc_frontend" }

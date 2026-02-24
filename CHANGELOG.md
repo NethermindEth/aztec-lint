@@ -9,6 +9,15 @@ Entries are grouped by released version.
 
 - No unreleased changes yet.
 
+## [0.6.2]
+
+### 2026-02-24
+
+- Fixed text-output diagnostic path rendering to use current-working-directory-relative paths for relative CLI targets (Clippy-style), so editor link navigation resolves correctly when linting subpaths from a workspace root.
+- Fixed text-output path rendering to preserve target-root-relative diagnostics for absolute CLI targets, keeping golden snapshot behavior stable for fixture-based test runs.
+- Fixed text-output suggestion-group edit span paths to use the same display-path rebasing as primary/secondary diagnostic spans, preventing mixed-path output within a single diagnostic block.
+- Added CLI regression coverage for text display root/path rebasing behavior across relative and absolute target invocation modes.
+
 ## [0.6.1]
 
 ### 2026-02-23
